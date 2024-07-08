@@ -1,0 +1,26 @@
+[package]
+name = "component-gui"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "component_gui"
+path = "rust-src/cgui.rs"
+
+[[example]]
+name = "component-gui-hello-world"
+path = "examples/rust/hello-world.rs"
+
+[dependencies.sdl2]
+version = ">= 0.36.0"
+optional = true
+features = ["ttf"]
+
+[dev-dependencies]
+sdl2 = { features = ["bundled", "static-link"], version = ">= 0.36.0"}
+sdl2-sys = {features = ["ttf", "static-link"], version = ">= 0.36.0"}
+
+[features]
+default = [ "sdl-backend" ]
+sdl-backend = ["sdl2"]
+
