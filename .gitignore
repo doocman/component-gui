@@ -17,6 +17,7 @@ Cargo.lock
 build/
 install/
 out-*/
+cmake-build-*
 
 CMakeUserPresets.json
 
