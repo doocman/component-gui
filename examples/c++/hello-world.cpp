@@ -7,15 +7,16 @@
 
 #include <cgui/cgui.hpp>
 #include <cgui/sdl.hpp>
+#include <cgui/ft_fonts.hpp>
 
 int main(int, char **) {
   try {
-    auto sdl_context = build(cgui::sdl_context()).unwrap();
-    auto video_subsystem = video(sdl_context).unwrap();
+    auto sdl_context = build(cgui::sdl_context()).value();
+    auto video_subsystem = video(sdl_context).value();
     auto main_window =
         build(window(video_subsystem, "Window Title - Hello World", 1024, 768)
                   (cgui::sdl_window_resizable))
-            .unwrap();
+            .value();
 
     auto gui_ctx = cgui::gui_context(main_window);
 
@@ -26,7 +27,7 @@ int main(int, char **) {
 
     bool do_exit{};
     auto gui = gui_ctx.with(text_widget);
-    gui.render();
+    gui.render(main_window);
     while(!do_exit) {
       while(cgui::poll_event(sdl_context, [&] <typename T> (T) {
         if constexpr(std::is_same_v<T, cgui::sdl_quit_event>) {

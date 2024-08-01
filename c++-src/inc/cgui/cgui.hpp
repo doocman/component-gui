@@ -4,13 +4,11 @@
 #include <type_traits>
 #include <tuple>
 
-#include <cgui/fonts.hpp>
 #include <cgui/cgui-types.hpp>
+#include <cgui/ft_fonts.hpp>
 #include <cgui/stl_extend.hpp>
 
 namespace cgui {
-template <typename T>
-concept renderer = true;
 
 struct dummy_renderer {};
 static_assert(renderer<dummy_renderer>);
@@ -20,7 +18,7 @@ concept widgety = requires(T& t, dummy_renderer& r) {
   t.render(r);
 };
 
-template <typename T, widgety... TWidgets>
+template <canvas T, widgety... TWidgets>
 class gui_context {
   std::tuple<TWidgets...> widgets_;
 
@@ -29,7 +27,7 @@ public:
   explicit constexpr gui_context(TWidgets... ws) : widgets_(std::move(ws)...) {}
   explicit constexpr gui_context(std::tuple<TWidgets...> ws) : widgets_(std::move(ws)) {}
 
-  [[nodiscard]] rect area() const {
+  [[nodiscard]] default_rect area() const {
     return {};
   }
 
@@ -44,15 +42,11 @@ public:
     return gui_context<T, TWidgets..., TW2...>(std::tuple_cat(widgets_, std::tuple(std::move(ws)...)));
   }
 
-  constexpr void render() {
-    tuple_for_each([] (auto && v) {
+  constexpr void render(T& window) {
+
+    tuple_for_each([&window] (auto && v) {
 
     }, widgets_);
-
-    //dooc::tuple_for_each([] (auto&& v) {
-    //  dummy_renderer r;
-    //  v.render(r);
-    //}, widgets_);
   }
 };
 
@@ -68,10 +62,10 @@ template <typename TDisplay = void>
 class widget {
   TDisplay display_;
 public:
-  [[nodiscard]] rect area() const {
+  [[nodiscard]] default_rect area() const {
     return {};
   }
-  widget& area(rect) {
+  widget& area(default_rect) {
     return *this;
   }
   widget& display(auto&&) {

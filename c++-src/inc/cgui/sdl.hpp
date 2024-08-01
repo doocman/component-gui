@@ -14,6 +14,20 @@
 
 namespace cgui {
 using sdl_window_flag_t = std::uint32_t;
+namespace extend {
+constexpr decltype(auto) tl_x(bp::cvref_type<SDL_Rect> auto&& r) {
+  return std::forward<decltype(r)>(r).x;
+}
+constexpr decltype(auto) tl_y(bp::cvref_type<SDL_Rect> auto&& r) {
+  return std::forward<decltype(r)>(r).y;
+}
+constexpr decltype(auto) width(bp::cvref_type<SDL_Rect> auto&& r) {
+  return std::forward<decltype(r)>(r).w;
+}
+constexpr decltype(auto) height(bp::cvref_type<SDL_Rect> auto&& r) {
+  return std::forward<decltype(r)>(r).h;
+}
+}
 namespace details {
 template <typename TTag, typename TType, TType tValue> struct flag_value {
   using tag_type = TTag;
@@ -21,47 +35,6 @@ template <typename TTag, typename TType, TType tValue> struct flag_value {
   static constexpr value_type value = tValue;
 };
 } // namespace details
-
-class bad_sdl_result_access_exception : public std::exception {
-  std::string err_;
-
-public:
-  explicit bad_sdl_result_access_exception(int) : err_(SDL_GetError()) {}
-  [[nodiscard]] const char *what() const override { return err_.c_str(); }
-};
-
-struct sdl_error {
-  int ec;
-};
-
-template <typename T> class sdl_result {
-  std::variant<T, int> res_;
-
-  static constexpr auto
-  do_unwrap(auto &&res_type) -> decltype(cgui::forward_like<decltype(res_type)>(
-                                 std::get<0>(res_type.res_))) {
-    if (!res_type.has_value()) {
-      assert(!res_type.res_.valueless_by_exception());
-      throw bad_sdl_result_access_exception(std::get<1>(res_type.res_));
-    }
-    return cgui::forward_like<decltype(res_type)>(std::get<0>(res_type.res_));
-  }
-
-public:
-  constexpr sdl_result() = default;
-  explicit(false) constexpr sdl_result(T in) : res_(std::move(in)) {}
-  explicit(false) constexpr sdl_result(sdl_error in) : res_(in.ec) {}
-
-  T &operator*() {
-    assert(std::holds_alternative<T>(res_));
-    return std::get<0>(res_);
-  }
-  bool has_value() const noexcept { return std::holds_alternative<T>(res_); }
-  T &unwrap() & { return do_unwrap(*this); }
-  T &&unwrap() && { return do_unwrap(std::move(*this)); }
-  T const &unwrap() const & { return do_unwrap(*this); }
-  T const &&unwrap() const && { return do_unwrap(std::move(*this)); }
-};
 
 class sdl_context_instance {
   // bool init_ = true;
@@ -82,9 +55,9 @@ public:
 
 class sdl_context {
 public:
-  sdl_result<sdl_context_instance> build() && {
+  expected<sdl_context_instance, int> build() && {
     if (auto e = SDL_Init(0); e < 0) {
-      return sdl_error(e);
+      return unexpected(e);
     }
     return sdl_context_instance{};
   }
@@ -154,7 +127,7 @@ public:
     return *this;
   }
 
-  sdl_result<sdl_window> build() && {
+  expected<sdl_window, int> build() && {
     auto happy_res = sdl_window::string_owner(std::move(title_));
     if (auto w = SDL_CreateWindow(happy_res.ctor_string().c_str(),
                                   SDL_WINDOWPOS_CENTERED,
@@ -163,7 +136,7 @@ public:
       return sdl_window(w);
     }
     title_ = std::move(happy_res.ctor_string_mut());
-    return sdl_error(-1);
+    return unexpected(-1);
   }
 };
 
@@ -186,12 +159,12 @@ template <typename T>
 concept sdl_event_callback =
     invocable_for_all<T, sdl_event_t<void>, sdl_quit_event>;
 
-inline sdl_result<sdl_context_instance> build(sdl_context &&ctx) {
+inline expected<sdl_context_instance, int> build(sdl_context &&ctx) {
   return std::move(ctx).build();
 }
-inline sdl_result<sdl_video> video(sdl_context_instance const &) {
+inline expected<sdl_video, int> video(sdl_context_instance const &) {
   if (auto ec = SDL_VideoInit(nullptr); ec < 0) {
-    return sdl_error{ec};
+    return unexpected(ec);
   }
   return sdl_video(auto_cleanup);
 }
@@ -199,7 +172,7 @@ inline sdl_window_builder window(sdl_video const &, std::string title, int w,
                                  int h) {
   return {std::move(title), w, h};
 }
-inline sdl_result<sdl_window> build(sdl_window_builder &&builder) {
+inline expected<sdl_window, int> build(sdl_window_builder &&builder) {
   return std::move(builder).build();
 }
 
