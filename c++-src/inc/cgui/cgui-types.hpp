@@ -196,41 +196,34 @@ template <typename T> constexpr int &y_of(basic_default_pixel_coord<T> &c) {
   return c.y;
 }
 
-template <typename T>
-struct basic_colour_t {
+template <typename T> struct basic_colour_t {
   T red, green, blue, alpha;
 };
 
 using default_colour_t = basic_colour_t<std::uint_least8_t>;
 
-template <typename T>
-constexpr T &red(basic_colour_t<T> &c) noexcept { return c.red; }
-template <typename T>
-constexpr T red(basic_colour_t<T> const &c) noexcept {
+template <typename T> constexpr T &red(basic_colour_t<T> &c) noexcept {
   return c.red;
 }
-template <typename T>
-constexpr T &blue(basic_colour_t<T> &c) noexcept {
+template <typename T> constexpr T red(basic_colour_t<T> const &c) noexcept {
   return c.red;
 }
-template <typename T>
-constexpr T blue(basic_colour_t<T> const &c) noexcept {
+template <typename T> constexpr T &blue(basic_colour_t<T> &c) noexcept {
+  return c.red;
+}
+template <typename T> constexpr T blue(basic_colour_t<T> const &c) noexcept {
   return c.blue;
 }
-template <typename T>
-constexpr T &green(basic_colour_t<T> &c) noexcept {
+template <typename T> constexpr T &green(basic_colour_t<T> &c) noexcept {
   return c.green;
 }
-template <typename T>
-constexpr T green(basic_colour_t<T> const &c) noexcept {
+template <typename T> constexpr T green(basic_colour_t<T> const &c) noexcept {
   return c.green;
 }
-template <typename T>
-constexpr T &alpha(basic_colour_t<T> &c) noexcept {
+template <typename T> constexpr T &alpha(basic_colour_t<T> &c) noexcept {
   return c.alpha;
 }
-template <typename T>
-constexpr T alpha(basic_colour_t<T> const &c) noexcept {
+template <typename T> constexpr T alpha(basic_colour_t<T> const &c) noexcept {
   return c.alpha;
 }
 
@@ -289,7 +282,7 @@ concept bounding_box_xwyh_set =
     requires(bp::as_forward<T> t, bp::as_forward<TVal> v) {
       extend::tl_x(*t, *v);
       extend::width(*t, *v);
-      extend::br_x(*t, *v);
+      extend::tl_y(*t, *v);
       extend::height(*t, *v);
     };
 
@@ -460,13 +453,13 @@ inline constexpr auto y_of = [](auto &&t, auto &&...vals) {
 #define CGUI_CALL_IMPL(NAME, BASE_CONCEPT, MUT_BASE_CONCEPT)                   \
   constexpr decltype(auto) _fallback(auto const &b) const;                     \
   constexpr decltype(auto) _fallback_mut(auto &&b, auto &&v) const;            \
-  constexpr decltype(auto) operator()(BASE_CONCEPT auto &&b) const {      \
-    using fwd_t = decltype(b);                                                                           \
-    auto bf = bp::as_forward<fwd_t>(std::forward<fwd_t>(b));                                                                           \
+  constexpr decltype(auto) operator()(BASE_CONCEPT auto &&b) const {           \
+    using fwd_t = decltype(b);                                                 \
+    auto bf = bp::as_forward<fwd_t>(std::forward<fwd_t>(b));                   \
     if constexpr (requires() { extend::NAME(b); }) {                           \
-      return extend::NAME(*bf);                                                  \
+      return extend::NAME(*bf);                                                \
     } else {                                                                   \
-      return _fallback(bf);                                                     \
+      return _fallback(bf);                                                    \
     }                                                                          \
   }                                                                            \
   template <typename TVal, MUT_BASE_CONCEPT<TVal> T>                           \
@@ -543,7 +536,7 @@ constexpr decltype(auto) br_x_t::_fallback_mut(auto &&b, auto &&v) const {
                 }) {
     return x_of(extend::bottom_right(*b), *v);
   } else {
-    return (xxyy_xwyh_conv(tl_x(*b), extend::width(*b), wh2xy) = *v).value();
+    return extend::width(*b, *v - tl_x(*b));
   }
 }
 constexpr decltype(auto) br_y_t::_fallback(auto const &b) const {
@@ -559,7 +552,7 @@ constexpr decltype(auto) br_y_t::_fallback_mut(auto &&b, auto &&v) const {
                 }) {
     return y_of(extend::bottom_right(*b), *v);
   } else {
-    return (xxyy_xwyh_conv(tl_y(*b), extend::height(*b), wh2xy) = *v).value();
+    return extend::height(*b, *v - tl_y(*b));
   }
 }
 constexpr decltype(auto) width_t::_fallback(auto const &b) const {
@@ -593,43 +586,37 @@ constexpr decltype(auto) height_t::_fallback_mut(auto &&b, auto &&v) const {
   }
 }
 
-template <typename T, typename TX, typename TY>
-class tlbr_wh_conv {
+template <typename T, typename TX, typename TY> class tlbr_wh_conv {
   T val_;
+
 public:
-  constexpr tlbr_wh_conv(T&& v, TX, TY) : val_(std::forward<T>(v)) {}
+  constexpr tlbr_wh_conv(T &&v, TX, TY) : val_(std::forward<T>(v)) {}
 
-  constexpr tlbr_wh_conv(tlbr_wh_conv&&) = delete;
-  constexpr tlbr_wh_conv& operator=(tlbr_wh_conv&&) = delete;
+  constexpr tlbr_wh_conv(tlbr_wh_conv &&) = delete;
+  constexpr tlbr_wh_conv &operator=(tlbr_wh_conv &&) = delete;
 
-  constexpr T&& ref() && {
-    return std::forward<T>(val_);
-  }
+  constexpr T &&ref() && { return std::forward<T>(val_); }
   constexpr tlbr_wh_conv force_copy() && {
     return {std::forward<T>(val_), TX{}, TY{}};
   }
 
-  constexpr decltype(auto) x_of() const {
-    return TX{}(val_);
-  }
-  constexpr decltype(auto) x_of(auto&& v) {
+  constexpr decltype(auto) x_of() const { return TX{}(val_); }
+  constexpr decltype(auto) x_of(auto &&v) {
     return TX{}(val_, std::forward<decltype(v)>(v));
   }
-  constexpr decltype(auto) y_of() const {
-    return TY{}(val_);
-  }
-  constexpr decltype(auto) y_of(auto&& v) {
+  constexpr decltype(auto) y_of() const { return TY{}(val_); }
+  constexpr decltype(auto) y_of(auto &&v) {
     return TY{}(val_, std::forward<decltype(v)>(v));
   }
 };
 
 template <typename T, typename TX, typename TY>
-tlbr_wh_conv(T&&, TX, TY) -> tlbr_wh_conv<T, TX, TY>;
+tlbr_wh_conv(T &&, TX, TY) -> tlbr_wh_conv<T, TX, TY>;
 
 constexpr decltype(auto) top_left_t::_fallback(auto const &b) const {
   return tlbr_wh_conv(*b, tl_x, tl_y);
 }
-constexpr decltype(auto) top_left_t::_fallback_mut(auto &&b, auto&& v) const {
+constexpr decltype(auto) top_left_t::_fallback_mut(auto &&b, auto &&v) const {
   auto val = _fallback(b);
   x_of(val, x_of(*v));
   y_of(val, y_of(*v));
@@ -638,7 +625,8 @@ constexpr decltype(auto) top_left_t::_fallback_mut(auto &&b, auto&& v) const {
 constexpr decltype(auto) bottom_right_t::_fallback(auto const &b) const {
   return tlbr_wh_conv(*b, br_x, br_y);
 }
-constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto&& v) const {
+constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b,
+                                                       auto &&v) const {
   auto val = _fallback(b);
   x_of(val, x_of(*v));
   y_of(val, y_of(*v));

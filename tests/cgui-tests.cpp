@@ -164,32 +164,16 @@ template <bp::cvref_type<xwyh_mut> T> constexpr auto &&height(T &&v) {
   return v.h;
 }
 struct xwyh_set {
-  int x,y,w,h;
-  constexpr int tl_x() const {
-    return x;
-  }
-  constexpr int tl_y() const {
-    return y;
-  }
-  constexpr int width() const {
-    return w;
-  }
-  constexpr int height() const {
-    return h;
-  }
+  int x, y, w, h;
+  constexpr int tl_x() const { return x; }
+  constexpr int tl_y() const { return y; }
+  constexpr int width() const { return w; }
+  constexpr int height() const { return h; }
 
-  constexpr void tl_x(int v) {
-    x = v;
-  }
-  constexpr void tl_y(int v) {
-    y = v;
-  }
-  constexpr void width(int v) {
-    w = v;
-  }
-  constexpr void height(int v) {
-    h = v;
-  }
+  constexpr void tl_x(int v) { x = v; }
+  constexpr void tl_y(int v) { y = v; }
+  constexpr void width(int v) { w = v; }
+  constexpr void height(int v) { h = v; }
 };
 
 struct tlbr_mut {
@@ -215,8 +199,13 @@ template <typename T> class RectApiFixture : public ::testing::Test {
 public:
   T value{};
 };
-
-using RectApiTypes = ::testing::Types<xxyy_set, xxyy_mut, xwyh_set, xwyh_mut, tlbr_mut>;
+using RectApiTypes =
+    ::testing::Types<xxyy_set, xxyy_mut, xwyh_set, xwyh_mut, tlbr_mut>;
+static_assert(mutable_bounding_box<xxyy_set, int>);
+static_assert(mutable_bounding_box<xxyy_mut, int>);
+static_assert(mutable_bounding_box<xwyh_set, int>);
+static_assert(mutable_bounding_box<xwyh_mut, int>);
+static_assert(mutable_bounding_box<tlbr_mut, int>);
 
 TYPED_TEST_SUITE(PixCoordFixture, PixCoordTypes);
 TYPED_TEST_SUITE(RectApiFixture, RectApiTypes);
