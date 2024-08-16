@@ -18,16 +18,18 @@ int main(int, char **) {
                   (cgui::sdl_window_resizable))
             .value();
 
-    auto gui_ctx = cgui::gui_context(main_window);
+    auto full_area = main_window.area();
 
-    auto full_area = gui_ctx.area();
-
+    auto text_library = cgui::ft_font_library::init().value();
+    auto text_font = cgui::ft_font_face::init(text_library, "C:\\Windows\\Fonts\\arial.ttf").value();
     auto text_widget =
-        cgui::text_box_widget().area(full_area).display("Hello World!");
+        cgui::text_box_widget(std::move(text_font)).area(full_area).display("Hello World!");
 
     bool do_exit{};
-    auto gui = gui_ctx.with(text_widget);
-    gui.render(main_window);
+    auto renderer = main_window.canvas().value();
+    auto gui = cgui::gui_context(renderer).with(text_widget);
+    gui.render_direct(renderer);
+    renderer.present();
     while(!do_exit) {
       while(cgui::poll_event(sdl_context, [&] <typename T> (T) {
         if constexpr(std::is_same_v<T, cgui::sdl_quit_event>) {
@@ -38,7 +40,7 @@ int main(int, char **) {
     }
     return EXIT_SUCCESS;
   } catch (std::exception const &e) {
-    std::cout << "Uncought exception: " << e.what() << '\n';
+    std::cout << "Uncaught exception: " << e.what() << '\n';
   }
   return EXIT_FAILURE;
 }

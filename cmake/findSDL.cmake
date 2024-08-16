@@ -26,6 +26,8 @@ foreach (E IN LISTS CGUI_SDL_FETCH)
                 set(SDL_STATIC OFF)
             endif ()
 
+            set(SDL_CMAKE_DEBUG_POSTFIX "" CACHE STRING "" FORCE)
+
             fetchcontent_makeavailable(sdl2)
 
         elseif (E STREQUAL "system")

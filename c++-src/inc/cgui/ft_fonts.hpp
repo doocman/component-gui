@@ -5,9 +5,10 @@
 #ifndef COMPONENT_GUI_FT_FONTS_HPP
 #define COMPONENT_GUI_FT_FONTS_HPP
 
+#include <bit>
+#include <cassert>
 #include <ranges>
 #include <utility>
-#include <bit>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -131,27 +132,43 @@ public:
 
   constexpr void render(renderer auto &&rend, int pen_x = {}, int pen_y = {}) {
     unused(g_, gi_);
-    auto* bitmap_gl = g_;
+    auto *bitmap_gl = g_;
     auto org = FT_Vector{};
-    if(auto ec = FT_Glyph_To_Bitmap(&bitmap_gl, FT_RENDER_MODE_NORMAL, &org, false); ec != 0) {
+    if (auto ec =
+            FT_Glyph_To_Bitmap(&bitmap_gl, FT_RENDER_MODE_NORMAL, &org, false);
+        ec != 0) {
 #pragma message("This should be fixed...")
       std::abort();
     }
     assert(bitmap_gl->format == FT_GLYPH_FORMAT_BITMAP);
     auto bm_destroy = bp::deferred([bitmap_gl] { FT_Done_Glyph(bitmap_gl); });
-    auto& bitmap = std::bit_cast<FT_BitmapGlyph>(bitmap_gl)->bitmap;
+    auto &bitmap = std::bit_cast<FT_BitmapGlyph>(bitmap_gl)->bitmap;
     using int_t = std::make_signed_t<std::size_t>;
-    for (auto y : std::views::iota(int_t{}, static_cast<int_t>(bitmap.rows))) {
-      for (auto x : std::views::iota(int_t{}, static_cast<int_t>(bitmap.width))) {
-        rend(default_pixel_coord{pen_x + static_cast<int>(x), pen_y + static_cast<int>(y)}, default_colour_t{255, 255, 255, bitmap.buffer[y * bitmap.pitch + x]});
-      }
-    }
+    auto res = call::draw_pixels(rend,
+        default_rect{
+            {pen_x, pen_y},
+            {pen_x + static_cast<int>(bitmap.width), pen_y + static_cast<int>(bitmap.rows)}},
+        [&](pixel_drawer auto &&px_rend) {
+          for (auto y :
+               std::views::iota(int_t{}, static_cast<int_t>(bitmap.rows))) {
+            for (auto x :
+                 std::views::iota(int_t{}, static_cast<int_t>(bitmap.width))) {
+              px_rend(default_pixel_coord{static_cast<int>(x),
+                                          static_cast<int>(y)},
+                      default_colour_t{255, 255, 255,
+                                       bitmap.buffer[y * bitmap.pitch + x]});
+            }
+          }
+        });
+    assert(res.has_value());
   }
   constexpr void render(renderer auto &&rend, not_null<int> pen_x,
                         not_null<int> pen_y) {
     render(std::forward<decltype(rend)>(rend), *pen_x, *pen_y);
-    *pen_x += g_->advance.x >> 6;
-    *pen_y += g_->advance.y >> 6;
+#pragma message("This is incorrect. Something is fishy about the 'advance' here")
+    //*pen_x += g_->advance.x >> 6;
+    //*pen_y += g_->advance.y >> 6;
+    *pen_x += 20;
   }
 
   constexpr FT_Glyph handle() noexcept { return g_; }

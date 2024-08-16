@@ -188,6 +188,17 @@ template <bp::cvref_type<tlbr_mut> T> constexpr auto &&bottom_right(T &&t) {
   return t.br;
 }
 
+struct tlbr_static_set {
+  set_pix_coord tl;
+  mut_pix_coord br;
+  static constexpr auto&& top_left(auto&& t) {
+    return std::forward<decltype(t)>(t).tl;
+  }
+  static constexpr auto&& bottom_right(auto&& t) {
+    return std::forward<decltype(t)>(t).br;
+  }
+};
+
 template <typename T> class PixCoordFixture : public ::testing::Test {
 public:
   T value{};
@@ -200,12 +211,17 @@ public:
   T value{};
 };
 using RectApiTypes =
-    ::testing::Types<xxyy_set, xxyy_mut, xwyh_set, xwyh_mut, tlbr_mut>;
+    ::testing::Types<xxyy_set, xxyy_mut, xwyh_set, xwyh_mut, tlbr_mut, tlbr_static_set>;
+static_assert(bounding_box_xwyh<xwyh_mut>);
+static_assert(bounding_box_coord<tlbr_static_set>);
+static_assert(extend::ns_lookup::free_set_tl_x<xxyy_set, int>);
+static_assert(bounding_box_xxyy_set<xxyy_set, int>);
 static_assert(mutable_bounding_box<xxyy_set, int>);
 static_assert(mutable_bounding_box<xxyy_mut, int>);
 static_assert(mutable_bounding_box<xwyh_set, int>);
 static_assert(mutable_bounding_box<xwyh_mut, int>);
 static_assert(mutable_bounding_box<tlbr_mut, int>);
+static_assert(mutable_bounding_box<tlbr_static_set, int>);
 
 TYPED_TEST_SUITE(PixCoordFixture, PixCoordTypes);
 TYPED_TEST_SUITE(RectApiFixture, RectApiTypes);

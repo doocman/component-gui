@@ -32,6 +32,9 @@ struct as_forward {
 };
 
 template <typename T>
+as_forward(T&&) -> as_forward<T>;
+
+template <typename T>
 class deferred {
   T val_;
 

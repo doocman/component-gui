@@ -48,19 +48,28 @@ namespace extend {
   namespace ns_lookup {                                                        \
   inline void NAME() {}                                                        \
   template <typename T>                                                        \
-  concept member_##NAME = requires(T const &tc CGUI_EXTRA_PARAMS) {            \
+  concept member_##NAME = requires(T &&tc CGUI_EXTRA_PARAMS) {                 \
     { tc.NAME(CGUI_EXTRA_ARGS) } -> CONCEPT;                                   \
   };                                                                           \
   template <typename T>                                                        \
-  concept free_##NAME = requires(T const &tc CGUI_EXTRA_PARAMS) {              \
+  concept free_##NAME = requires(T &&tc CGUI_EXTRA_PARAMS) {                   \
     { NAME(tc CGUI_EXTRA_ARGS_COMMA CGUI_EXTRA_ARGS) } -> CONCEPT;             \
   };                                                                           \
   template <typename T>                                                        \
-  concept has_##NAME = member_##NAME<T> || free_##NAME<T>;                     \
+  concept static_##NAME = requires(T &&tc CGUI_EXTRA_PARAMS) {                 \
+    {                                                                          \
+      std::remove_cvref_t<T>::NAME(tc CGUI_EXTRA_ARGS_COMMA CGUI_EXTRA_ARGS)   \
+    } -> CONCEPT;                                                              \
+  };                                                                           \
+  template <typename T>                                                        \
+  concept has_##NAME = member_##NAME<T> || static_##NAME<T> || free_##NAME<T>; \
   constexpr decltype(auto) do_##NAME(has_##NAME auto &&t CGUI_EXTRA_PARAMS) {  \
     using type = decltype(t);                                                  \
     if constexpr (member_##NAME<type>) {                                       \
       return std::forward<type>(t).NAME(CGUI_EXTRA_ARGS);                      \
+    } else if constexpr (static_##NAME<type>) {                                \
+      return std::remove_cvref_t<type>::NAME(                                  \
+          std::forward<type>(t) CGUI_EXTRA_ARGS_COMMA CGUI_EXTRA_ARGS);        \
     } else {                                                                   \
       static_assert(free_##NAME<type>);                                        \
       return NAME(std::forward<type>(t)                                        \
@@ -84,20 +93,21 @@ namespace extend {
   concept member_set_##NAME = requires(                                        \
       bp::as_forward<T> tc, bp::as_forward<TVal> v) { (*tc).NAME(*v); };       \
   template <typename T, typename TVal>                                         \
-  concept member_mut_##NAME = requires(bp::as_forward<T> tc) {                 \
-    { (*tc).NAME() } -> std::assignable_from<TVal>;                            \
-  };                                                                           \
+  concept static_set_##NAME =                                                  \
+      requires(bp::as_forward<T> tc, bp::as_forward<TVal> v) {                 \
+        std::remove_cvref_t<T>::NAME(*tc, *v);                                 \
+      };                                                                       \
   template <typename T, typename TVal>                                         \
   concept free_set_##NAME = requires(                                          \
       bp::as_forward<T> tc, bp::as_forward<TVal> v) { NAME(*tc, *v); };        \
   template <typename T, typename TVal>                                         \
-  concept free_mut_##NAME = requires(bp::as_forward<T> tc) {                   \
-    { NAME(*tc) } -> std::assignable_from<TVal>;                               \
+  concept mut_get_##NAME = has_##NAME<T> && requires(bp::as_forward<T> t) {    \
+    { ns_lookup::do_##NAME(*t) } -> std::assignable_from<TVal>;                \
   };                                                                           \
   template <typename T, typename TV>                                           \
   concept has_set_##NAME =                                                     \
-      member_set_##NAME<T, TV> || member_mut_##NAME<T, TV> ||                  \
-      free_set_##NAME<T, TV> || free_mut_##NAME<T, TV>;                        \
+      member_set_##NAME<T, TV> || static_set_##NAME<T, TV> ||                  \
+      free_set_##NAME<T, TV> || mut_get_##NAME<T, TV>;                         \
                                                                                \
   template <typename TV, has_set_##NAME<TV> T>                                 \
   constexpr auto do_set_##NAME(T &&vorg, TV &&valorg) {                        \
@@ -105,13 +115,13 @@ namespace extend {
     auto val = bp::as_forward<TV>(std::forward<TV>(valorg));                   \
     if constexpr (member_set_##NAME<T, TV>) {                                  \
       return (*v).NAME(*val);                                                  \
+    } else if constexpr (static_set_##NAME<T, TV>) {                           \
+      return std::remove_cvref_t<T>::NAME(*v, *val);                           \
     } else if constexpr (free_set_##NAME<T, TV>) {                             \
       return NAME(*v, *val);                                                   \
-    } else if constexpr (member_mut_##NAME<T, TV>) {                           \
-      return (*v).NAME() = *val;                                               \
     } else {                                                                   \
-      static_assert(free_mut_##NAME<T, TV>);                                   \
-      return NAME(*v) = *val;                                                  \
+      static_assert(mut_get_##NAME<T, TV>);                                    \
+      return do_##NAME(*v) = *val;                                             \
     }                                                                          \
   }                                                                            \
   }                                                                            \
@@ -263,6 +273,20 @@ concept bounding_box_xxyy_set =
       extend::br_y(*t, *v);
     };
 
+template <typename> struct extend_t {};
+
+namespace extend {
+
+template <typename T> struct bounding_box_xwyh_impl {
+  static constexpr bool value = requires(T const &t) {
+    { tl_x(t) } -> pixel_coord_value_cv_t;
+    { width(t) } -> pixel_coord_value_cv_t;
+    { tl_y(t) } -> pixel_coord_value_cv_t;
+    { height(t) } -> pixel_coord_value_cv_t;
+  };
+};
+} // namespace extend
+
 template <typename T>
 concept bounding_box_xwyh = requires(T const &t) {
   { extend::tl_x(t) } -> pixel_coord_value_cv_t;
@@ -270,6 +294,7 @@ concept bounding_box_xwyh = requires(T const &t) {
   { extend::tl_y(t) } -> pixel_coord_value_cv_t;
   { extend::height(t) } -> pixel_coord_value_cv_t;
 };
+
 template <typename T, typename TFrom>
 concept bounding_box_xwyh_mut = requires(bp::as_forward<T> t) {
   { extend::tl_x(*t) } -> mutable_pixel_coord_value<TFrom>;
@@ -374,6 +399,22 @@ concept readable_text8 = basic_readable_text<T, char>;
 
 template <typename>
 concept canvas = true;
+
+template <typename>
+concept text2render = true;
+template <typename T>
+concept pixel_drawer =
+    std::invocable<T &&, default_pixel_coord, default_colour_t>;
+struct dummy_pixel_drawer {
+  constexpr void operator()(pixel_coord auto &&, colour auto &&) {}
+};
+static_assert(pixel_drawer<dummy_pixel_drawer>);
+
+template <typename>
+concept pixel_draw_callback = true;
+
+struct dummy_pixel_draw_callback {};
+static_assert(pixel_draw_callback<dummy_pixel_draw_callback>);
 
 namespace extend {
 #undef CGUI_EXTRA_PARAMS
@@ -633,7 +674,100 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b,
   return val;
 }
 
+namespace impl {
+[[maybe_unused]] inline void render_direct() {}
+[[maybe_unused]] inline void draw_pixels() {}
+template <typename T, typename TR>
+concept member_render_direct =
+    requires(bp::as_forward<T> t, TR &r) { (*t).render_direct(r); };
+template <typename T, typename TR>
+concept static_render_direct = requires(bp::as_forward<T> t, TR &r) {
+  std::remove_cvref_t<T>::render_direct(*t, r);
+};
+template <typename T, typename TR>
+concept free_render_direct =
+    requires(bp::as_forward<T> t, TR &r) { render_direct(*t, r); };
+template <typename T, typename TR>
+concept has_render_direct =
+    renderer<TR> && (member_render_direct<T, TR> || free_render_direct<T, TR> ||
+                     static_render_direct<T, TR>);
+
+inline constexpr auto do_render_direct =
+    []<renderer TR, has_render_direct<TR> T>(T &&torg, TR &&rorg) {
+      auto t = bp::as_forward(std::forward<T>(torg));
+      auto r = bp::as_forward(std::forward<TR>(rorg));
+      if constexpr (member_render_direct<T, TR>) {
+        return (*t).render_direct(*r);
+      } else if constexpr (static_render_direct<T, TR>) {
+        return std::remove_cvref_t<T>::render_direct(*t, *r);
+      } else {
+        static_assert(free_render_direct<T, TR>);
+        return render_direct(*t, *r);
+      }
+    };
+
+template <typename T, typename TRect, typename TCP>
+concept member_draw_pixels = requires(T &&t, TRect const &r, TCP &&cb) {
+  std::forward<T>(t).draw_pixels(r, std::forward<TCP>(cb));
+};
+template <typename T, typename TRect, typename TCP>
+concept static_draw_pixels = requires(T &&t, TRect const &r, TCP &&cb) {
+  std::remove_cvref_t<T>::draw_pixels(std::forward<T>(t), r,
+                                      std::forward<TCP>(cb));
+};
+template <typename T, typename TRect, typename TCP>
+concept free_draw_pixels = requires(T &&t, TRect const &r, TCP &&cb) {
+  draw_pixels(std::forward<T>(t), r, std::forward<TCP>(cb));
+};
+template <typename T, typename TRect, typename TCP>
+concept has_draw_pixels =
+    bounding_box<TRect> && pixel_draw_callback<TCP> &&
+    (member_draw_pixels<T, TRect, TCP> || static_draw_pixels<T, TRect, TCP> ||
+     free_draw_pixels<T, TRect, TCP>);
+
+inline constexpr auto do_draw_pixels =
+    []<pixel_draw_callback TCB, bounding_box TRect,
+       has_draw_pixels<TRect, TCB> T>(T &&torg, TRect const& rorg, TCB &&cborg) {
+      auto t = bp::as_forward(std::forward<T>(torg));
+      auto r = bp::as_forward(rorg);
+      auto cb = bp::as_forward(std::forward<TCB>(cborg));
+      if constexpr (member_draw_pixels<T, TRect, TCB>) {
+        return (*t).draw_pixels(*r, *cb);
+      }
+      else if constexpr (static_draw_pixels<T, TRect, TCB>) {
+        return std::remove_cvref_t<T>::draw_pixels(*t, *r, *cb);
+      }
+      else {
+        static_assert(free_draw_pixels<T, TRect, TCB>);
+        return draw_pixels(*t, *r, *cb);
+      }
+    };
+
+}; // namespace impl
+
+inline constexpr auto render_direct = impl::do_render_direct;
+inline constexpr auto draw_pixels = impl::do_draw_pixels;
+
+inline constexpr auto red = [](colour auto &&c, auto &&...vs) -> auto && {
+  return extend::red(std::forward<decltype(c)>(c),
+                     std::forward<decltype(vs)>(vs)...);
+};
+inline constexpr auto green = [](colour auto &&c, auto &&...vs) -> auto && {
+  return extend::green(std::forward<decltype(c)>(c),
+                       std::forward<decltype(vs)>(vs)...);
+};
+inline constexpr auto blue = [](colour auto &&c, auto &&...vs) -> auto && {
+  return extend::blue(std::forward<decltype(c)>(c),
+                      std::forward<decltype(vs)>(vs)...);
+};
+inline constexpr auto alpha = [](colour auto &&c, auto &&...vs) -> auto && {
+  return extend::alpha(std::forward<decltype(c)>(c),
+                       std::forward<decltype(vs)>(vs)...);
+};
+
 }; // namespace call
+template <typename T, typename TR>
+concept has_render_direct = call::impl::has_render_direct<T, TR>;
 
 template <typename T> class not_null {
 public:
@@ -716,6 +850,12 @@ public:
     cleanup();
     values = std::forward<decltype(v)>(v);
   }
+  constexpr void reset(std::convertible_to<TArgs> auto &&...v) noexcept
+    requires(sizeof...(v) > 1)
+  {
+    cleanup();
+    values = value_type(std::forward<decltype(v)>(v)...);
+  }
   constexpr bool has_value() const noexcept {
     if constexpr (_all_pointers) {
       return std::get<0>(values) != nullptr;
@@ -776,6 +916,21 @@ public:
 };
 
 using whole_point = font_point<std::ratio<1, 1>>;
+
+constexpr default_colour_t to_default_colour(colour auto &&c) {
+  return {call::red(c), call::green(c), call::blue(c), call::alpha(c)};
+}
+constexpr default_colour_t const &to_default_colour(default_colour_t const &c) {
+  return c;
+}
+constexpr default_colour_t &to_default_colour(default_colour_t &c) { return c; }
+constexpr default_colour_t const &&
+to_default_colour(default_colour_t const &&c) {
+  return std::move(c);
+}
+constexpr default_colour_t &&to_default_colour(default_colour_t &&c) {
+  return std::move(c);
+}
 
 } // namespace cgui
 

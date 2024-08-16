@@ -12,6 +12,10 @@ set(_CGUI_SDL_STATIC_DEFAULT OFF)
 
 include(FetchContent)
 
+if (EXISTS local-cmake)
+    add_subdirectory(local-cmake)
+endif ()
+
 include(cmake/findSDL.cmake)
 include(cmake/findDoocNP.cmake)
 include(cmake/findFreeType.cmake)

@@ -13,10 +13,22 @@ namespace cgui {
 struct dummy_renderer {};
 static_assert(renderer<dummy_renderer>);
 
-template <typename T>
-concept widgety = requires(T& t, dummy_renderer& r) {
-  t.render(r);
+template <canvas T>
+class cgui_renderer {
+  T* c_;
+public:
+  constexpr explicit cgui_renderer(T& c) : c_(std::addressof(c)) {}
+
+  constexpr auto draw_pixels(bounding_box auto&& dest, pixel_draw_callback auto&& cb) {
+    return call::draw_pixels(*c_, std::forward<decltype(dest)>(dest), std::forward<decltype(cb)>(cb));
+  }
 };
+
+template <typename T, typename TRender>
+concept widget_display = has_render_direct<T, TRender>;
+
+template <typename T>
+concept widgety = widget_display<T, dummy_renderer>;
 
 template <canvas T, widgety... TWidgets>
 class gui_context {
@@ -32,20 +44,20 @@ public:
   }
 
   template <widgety... TW2>
-  [[nodiscard]] constexpr gui_context<T, TWidgets..., TW2...> with(TW2... ws)&& {
+  [[nodiscard]] constexpr gui_context<T, TWidgets..., TW2...> with(TW2&&... ws)&& {
     unused(ws...);
-    return gui_context<T, TWidgets..., TW2...>(std::tuple_cat(std::move(widgets_), std::tuple(std::move(ws)...)));
+    return gui_context<T, TWidgets..., TW2...>(std::tuple_cat(std::move(widgets_), std::tuple<TW2...>(std::forward<TW2>(ws)...)));
   }
   template <widgety... TW2>
-  [[nodiscard]] constexpr gui_context<T, TWidgets..., TW2...> with(TW2... ws) const& {
+  [[nodiscard]] constexpr gui_context<T, TWidgets..., TW2...> with(TW2&&... ws) const& {
     unused(ws...);
-    return gui_context<T, TWidgets..., TW2...>(std::tuple_cat(widgets_, std::tuple(std::move(ws)...)));
+    return gui_context<T, TWidgets..., TW2...>(std::tuple_cat(widgets_, std::tuple<TW2...>(std::forward<TW2>(ws)...)));
   }
 
-  constexpr void render(T& window) {
-
-    tuple_for_each([&window] (auto && v) {
-
+  constexpr void render_direct(T& c) {
+    auto r = cgui_renderer(c);
+    tuple_for_each([&r] (auto && v) {
+      call::render_direct(v, r);
     }, widgets_);
   }
 };
@@ -53,38 +65,44 @@ public:
 template <typename T>
 gui_context(T&) -> gui_context<std::remove_cvref_t<T>>;
 
-template <typename T>
-concept widget_display = requires(T& t, dummy_renderer& r) {
-  t.do_render(r);
-};
-
 template <typename TDisplay = void>
 class widget {
   TDisplay display_;
 public:
+  constexpr widget() requires(std::is_default_constructible_v<TDisplay>) = default;
+  constexpr explicit widget(TDisplay d) : display_(std::move(d)) {}
+
   [[nodiscard]] default_rect area() const {
     return {};
   }
-  widget& area(default_rect) {
-    return *this;
+  widget&& area(bounding_box auto&&) && {
+    return std::move(*this);
   }
-  widget& display(auto&&) {
-    return *this;
+  widget&& display(auto&&) && {
+    return std::move(*this);
   }
-  void render(renderer auto&& r) requires(widget_display<TDisplay>) {
-    display_.do_render(std::forward<decltype(r)>(r));
+  void render_direct(renderer auto&& r) requires(widget_display<TDisplay, decltype(r)>) {
+    //display_.render_direct(std::forward<decltype(r)>(r));
+    call::render_direct(display_, std::forward<decltype(r)>(r));
   }
 };
 
+template <text2render Txt>
 class text_display {
+  Txt t_;
 public:
-  void do_render(renderer auto&& r) {
+  constexpr explicit text_display(Txt t) : t_(std::move(t)) {}
+  constexpr text_display() requires(std::is_default_constructible_v<Txt>) = default;
 
+
+  void render_direct(renderer auto&& r) {
+    render_text(t_, "Hello world!", r);
   }
 };
 
-constexpr widget<text_display> text_box_widget() {
-  return {};
+template <text2render Txt>
+constexpr widget<text_display<Txt>> text_box_widget(Txt t) {
+  return widget<text_display<Txt>>(text_display<Txt>(std::move(t)));
 }
 
 }
