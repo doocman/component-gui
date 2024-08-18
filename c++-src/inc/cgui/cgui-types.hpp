@@ -677,32 +677,44 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b,
 namespace impl {
 [[maybe_unused]] inline void render_direct() {}
 [[maybe_unused]] inline void draw_pixels() {}
-template <typename T, typename TR>
+[[maybe_unused]] inline void set_displayed() {}
+[[maybe_unused]] inline void set_text() {}
+[[maybe_unused]] inline void render_text() {}
+
+template <typename T, typename TR, typename... Ts>
 concept member_render_direct =
-    requires(bp::as_forward<T> t, TR &r) { (*t).render_direct(r); };
-template <typename T, typename TR>
-concept static_render_direct = requires(bp::as_forward<T> t, TR &r) {
-  std::remove_cvref_t<T>::render_direct(*t, r);
-};
-template <typename T, typename TR>
+    requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
+      (*t).render_direct(r, std::forward<Ts>(args)...);
+    };
+template <typename T, typename TR, typename... Ts>
+concept static_render_direct =
+    requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
+      std::remove_cvref_t<T>::render_direct(*t, r, std::forward<Ts>(args)...);
+    };
+template <typename T, typename TR, typename... Ts>
 concept free_render_direct =
-    requires(bp::as_forward<T> t, TR &r) { render_direct(*t, r); };
-template <typename T, typename TR>
+    requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
+      render_direct(*t, r, std::forward<Ts>(args)...);
+    };
+template <typename T, typename TR, typename... Ts>
 concept has_render_direct =
-    renderer<TR> && (member_render_direct<T, TR> || free_render_direct<T, TR> ||
-                     static_render_direct<T, TR>);
+    renderer<TR> &&
+    (member_render_direct<T, TR, Ts...> || free_render_direct<T, TR, Ts...> ||
+     static_render_direct<T, TR, Ts...>);
 
 inline constexpr auto do_render_direct =
-    []<renderer TR, has_render_direct<TR> T>(T &&torg, TR &&rorg) {
+    []<renderer TR, typename... Ts, has_render_direct<TR, Ts...> T>(
+        T &&torg, TR &&rorg, Ts &&...args) {
       auto t = bp::as_forward(std::forward<T>(torg));
       auto r = bp::as_forward(std::forward<TR>(rorg));
-      if constexpr (member_render_direct<T, TR>) {
-        return (*t).render_direct(*r);
-      } else if constexpr (static_render_direct<T, TR>) {
-        return std::remove_cvref_t<T>::render_direct(*t, *r);
+      if constexpr (member_render_direct<T, TR, Ts...>) {
+        return (*t).render_direct(*r, std::forward<Ts>(args)...);
+      } else if constexpr (static_render_direct<T, TR, Ts...>) {
+        return std::remove_cvref_t<T>::render_direct(*t, *r,
+                                                     std::forward<Ts>(args)...);
       } else {
-        static_assert(free_render_direct<T, TR>);
-        return render_direct(*t, *r);
+        static_assert(free_render_direct<T, TR, Ts...>);
+        return render_direct(*t, *r, std::forward<Ts>(args)...);
       }
     };
 
@@ -727,26 +739,139 @@ concept has_draw_pixels =
 
 inline constexpr auto do_draw_pixels =
     []<pixel_draw_callback TCB, bounding_box TRect,
-       has_draw_pixels<TRect, TCB> T>(T &&torg, TRect const& rorg, TCB &&cborg) {
+       has_draw_pixels<TRect, TCB> T>(T &&torg, TRect const &rorg,
+                                      TCB &&cborg) {
       auto t = bp::as_forward(std::forward<T>(torg));
       auto r = bp::as_forward(rorg);
       auto cb = bp::as_forward(std::forward<TCB>(cborg));
       if constexpr (member_draw_pixels<T, TRect, TCB>) {
         return (*t).draw_pixels(*r, *cb);
-      }
-      else if constexpr (static_draw_pixels<T, TRect, TCB>) {
+      } else if constexpr (static_draw_pixels<T, TRect, TCB>) {
         return std::remove_cvref_t<T>::draw_pixels(*t, *r, *cb);
-      }
-      else {
+      } else {
         static_assert(free_draw_pixels<T, TRect, TCB>);
         return draw_pixels(*t, *r, *cb);
       }
     };
 
+struct do_center {
+  constexpr auto operator()(bounding_box auto const &b) const {
+    auto tl = call::top_left(b);
+    auto br = call::bottom_right(b);
+    return default_pixel_coord{(x_of(br) - x_of(tl)) / 2,
+                               (y_of(br) - y_of(tl)) / 2};
+  };
+};
+
+template <typename T, typename... Ts>
+concept member_set_displayed =
+    requires(bp::as_forward<T> t, bp::as_forward<Ts>... vals) {
+      (*t).set_displayed(*vals...);
+    };
+template <typename T, typename... Ts>
+concept static_set_displayed =
+    requires(bp::as_forward<T> t, bp::as_forward<Ts>... vals) {
+      std::remove_cvref_t<T>::set_displayed(*t, *vals...);
+    };
+template <typename T, typename... Ts>
+concept free_set_displayed =
+    requires(bp::as_forward<T> t, bp::as_forward<Ts>... vals) {
+      set_displayed(*t, *vals...);
+    };
+template <typename T, typename... Ts>
+concept has_set_displayed =
+    member_set_displayed<T, Ts...> || static_set_displayed<T, Ts...> ||
+    free_set_displayed<T, Ts...>;
+
+struct do_set_displayed {
+  template <typename... Ts, has_set_displayed<Ts...> T>
+  constexpr decltype(auto) operator()(T &&torg, Ts &&...vals) const {
+    auto t = bp::as_forward(std::forward<T>(torg));
+    if constexpr (member_set_displayed<T, Ts...>) {
+      return (*t).set_displayed(std::forward<Ts>(vals)...);
+    } else if constexpr (static_set_displayed<T, Ts...>) {
+      return std::remove_cvref_t<T>::set_displayed(*t,
+                                                   std::forward<Ts>(vals)...);
+    } else {
+      static_assert(free_set_displayed<T, Ts...>);
+      return set_displayed(*t, std::forward<Ts>(vals)...);
+    }
+  }
+};
+
+template <typename T, typename TRend>
+concept member_render_text =
+    requires(bp::as_forward<T> t, bp::as_forward<TRend> rend, int w, int h) {
+      (*t).render_text(*rend, w, h);
+    };
+template <typename T, typename TRend>
+concept static_render_text =
+    requires(bp::as_forward<T> t, bp::as_forward<TRend> rend, int w, int h) {
+      std::remove_cvref_t<T>::render_text((*t), *rend, w, h);
+    };
+template <typename T, typename TRend>
+concept free_render_text =
+    requires(bp::as_forward<T> t, bp::as_forward<TRend> rend, int w, int h) {
+      render_text((*t), *rend, w, h);
+    };
+template <typename T, typename TRend>
+concept has_render_text = renderer<TRend> && (member_render_text<T, TRend> ||
+                                              static_render_text<T, TRend> ||
+                                              free_render_text<T, TRend>);
+
+struct do_render_text {
+  template <renderer TRend, has_render_text<TRend> T>
+  constexpr auto operator()(T &&torg, TRend &&rorg, int w, int h) const {
+    auto t = bp::as_forward<T>(std::forward<T>(torg));
+    auto r = bp::as_forward(std::forward<TRend>(rorg));
+    if constexpr (member_render_text<T, TRend>) {
+      return (*t).render_text(*r, w, h);
+    } else if constexpr (static_render_text<T, TRend>) {
+      return std::remove_cvref_t<T>::render_text(*t, *r, w, h);
+    } else {
+      return render_text(*t, *r, w, h);
+    }
+  }
+};
+
+template <typename T, typename TStr>
+concept member_set_text = requires(
+    bp::as_forward<T> t, bp::as_forward<TStr> s) { (*t).set_text(*s); };
+template <typename T, typename TStr>
+concept static_set_text =
+    requires(bp::as_forward<T> t, bp::as_forward<TStr> s) {
+      std::remove_cvref_t<T>::set_text(*t, *s);
+    };
+template <typename T, typename TStr>
+concept free_set_text =
+    requires(bp::as_forward<T> t, bp::as_forward<TStr> s) { set_text(*t, *s); };
+template <typename T, typename TStr>
+concept has_set_text = member_set_text<T, TStr> || static_set_text<T, TStr> ||
+                       free_set_text<T, TStr>;
+
+struct do_set_text {
+  template <typename TStr, has_set_text<TStr> T>
+  constexpr auto operator()(T &&torg, TStr &&sorg) const {
+    auto t = bp::as_forward(std::forward<T>(torg));
+    auto s = bp::as_forward(std::forward<TStr>(sorg));
+    if constexpr (member_set_text<T, TStr>) {
+      return (*t).set_text(*s);
+    } else if constexpr (static_set_text<T, TStr>) {
+      return std::remove_cvref_t<T>::set_text(*t, *s);
+    } else {
+      return set_text(*t, *s);
+    }
+  }
+};
+
 }; // namespace impl
 
 inline constexpr auto render_direct = impl::do_render_direct;
 inline constexpr auto draw_pixels = impl::do_draw_pixels;
+inline constexpr auto center = impl::do_center{};
+inline constexpr impl::do_set_displayed set_displayed;
+inline constexpr impl::do_render_text render_text;
+inline constexpr impl::do_set_text set_text;
 
 inline constexpr auto red = [](colour auto &&c, auto &&...vs) -> auto && {
   return extend::red(std::forward<decltype(c)>(c),
@@ -765,7 +890,7 @@ inline constexpr auto alpha = [](colour auto &&c, auto &&...vs) -> auto && {
                        std::forward<decltype(vs)>(vs)...);
 };
 
-}; // namespace call
+} // namespace call
 template <typename T, typename TR>
 concept has_render_direct = call::impl::has_render_direct<T, TR>;
 
@@ -876,6 +1001,14 @@ public:
   }
   constexpr void swap(cleanup_object_t &r) noexcept {
     std::swap(values, r.values);
+  }
+  [[nodiscard]] constexpr auto release() noexcept {
+    return std::exchange(values, wrapper_t{});
+  }
+  constexpr auto operator->() const
+    requires(sizeof...(TArgs) == 1 && _all_pointers)
+  {
+    return first_value();
   }
 };
 

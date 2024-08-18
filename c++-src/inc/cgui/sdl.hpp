@@ -45,12 +45,10 @@ template <typename T> struct sdl_rect_wrapper {
 template <typename T> constexpr decltype(auto) handle(T &&val) {
   return std::remove_cvref_t<T>::handle(std::forward<T>(val));
 }
-template <typename>
-constexpr bool to_sdl_rect_simple = false;
+template <typename> constexpr bool to_sdl_rect_simple = false;
 template <typename T>
 constexpr bool to_sdl_rect_simple<sdl_rect_wrapper<T>> = true;
-template <>
-constexpr bool to_sdl_rect_simple<SDL_Rect> = true;
+template <> constexpr bool to_sdl_rect_simple<SDL_Rect> = true;
 } // namespace details
 
 using sdl_rect = details::sdl_rect_wrapper<SDL_Rect>;
@@ -136,15 +134,14 @@ class sdl_canvas {
 public:
   constexpr explicit(false) sdl_canvas(SDL_Renderer *r) : r_(r) {}
 
-  void present() {
-    SDL_RenderPresent(r_);
-  }
+  void present() { SDL_RenderPresent(r_); }
 
   constexpr expected<void, std::string>
   draw_pixels(bounding_box auto &&dest_sz, pixel_draw_callback auto &&cb) {
     // SDL_RendererInfo* rif;
     // rif->max_texture_height
-    constexpr auto texture_format = SDL_PixelFormatEnum::SDL_PIXELFORMAT_ABGR8888;
+    constexpr auto texture_format =
+        SDL_PixelFormatEnum::SDL_PIXELFORMAT_ABGR8888;
     SDL_RendererInfo rif;
     if (auto ec = SDL_GetRendererInfo(r_, &rif); ec != 0) {
       return unexpected(SDL_GetError());
@@ -159,11 +156,10 @@ public:
       assert(format == texture_format);
     }
     if (!t_) {
-      t_.reset(SDL_CreateTexture(r_,
-                                 texture_format,
+      t_.reset(SDL_CreateTexture(r_, texture_format,
                                  SDL_TEXTUREACCESS_STREAMING,
                                  call::width(dest_sz), call::height(dest_sz)));
-      if(!t_) {
+      if (!t_) {
         return unexpected(SDL_GetError());
       }
       if (auto ec = SDL_SetTextureBlendMode(texture(), SDL_BLENDMODE_BLEND);
@@ -172,21 +168,24 @@ public:
         return unexpected(SDL_GetError());
       }
     }
-    void* raw_pix_void;
-    //decltype(auto) sdl_rect = to_sdl_rect(dest_sz);
-    auto zero_point_texture = SDL_Rect(0, 0, call::width(dest_sz), call::height(dest_sz));
+    void *raw_pix_void;
+    // decltype(auto) sdl_rect = to_sdl_rect(dest_sz);
+    auto zero_point_texture =
+        SDL_Rect(0, 0, call::width(dest_sz), call::height(dest_sz));
     int pitch;
-    if (auto ec = SDL_LockTexture(texture(), &zero_point_texture, &raw_pix_void, &pitch);
+    if (auto ec = SDL_LockTexture(texture(), &zero_point_texture, &raw_pix_void,
+                                  &pitch);
         ec != 0) {
       return unexpected(SDL_GetError());
     }
-    if(raw_pix_void == nullptr) {
+    if (raw_pix_void == nullptr) {
       return unexpected(SDL_GetError());
     }
-    auto raw_pixels = static_cast<default_colour_t*>(raw_pix_void);
+    auto raw_pixels = static_cast<default_colour_t *>(raw_pix_void);
     static_assert(sizeof(default_colour_t) == 4);
 
-    cb([raw_pixels, pitch = pitch / 4, &dest_sz](pixel_coord auto&& coord, colour auto&& c) {
+    cb([raw_pixels, pitch = pitch / 4, &dest_sz](pixel_coord auto &&coord,
+                                                 colour auto &&c) {
       auto x = call::x_of(coord);
       auto y = call::y_of(coord);
       assert(x < call::width(dest_sz));
@@ -197,14 +196,21 @@ public:
     });
     SDL_UnlockTexture(texture());
     decltype(auto) sdl_dest_rect = to_sdl_rect(dest_sz);
-    if(auto ec = SDL_RenderCopy(r_, texture(), &zero_point_texture, &sdl_dest_rect); ec != 0) {
-    //if(auto ec = SDL_RenderCopy(r_, texture(), &zero_point_texture, &zero_point_texture); ec != 0) {
+    if (auto ec =
+            SDL_RenderCopy(r_, texture(), &zero_point_texture, &sdl_dest_rect);
+        ec != 0) {
+      // if(auto ec = SDL_RenderCopy(r_, texture(), &zero_point_texture,
+      // &zero_point_texture); ec != 0) {
       return unexpected(SDL_GetError());
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
     return {};
   };
+};
+
+struct sdl_display_dpi {
+  float hori, vert, diag;
 };
 
 class sdl_window {
@@ -252,6 +258,17 @@ public:
       return rend;
     }
     return unexpected(SDL_GetError());
+  }
+
+  [[nodiscard]] expected<sdl_display_dpi, std::string> dpi() const {
+    auto display_index = SDL_GetWindowDisplayIndex(handle());
+    sdl_display_dpi res;
+    if (auto ec =
+            SDL_GetDisplayDPI(display_index, &res.diag, &res.hori, &res.vert);
+        ec != 0) {
+      return unexpected(SDL_GetError());
+    }
+    return res;
   }
 };
 
