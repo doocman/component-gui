@@ -128,8 +128,8 @@ public:
     assert(res.has_value());
     return {};
   }
-  constexpr void render(renderer auto &&rend, int bottom, not_null<int> pen_x,
-                        not_null<int> pen_y) const {
+  constexpr void render(renderer auto &&rend, int bottom, not_null<int*> pen_x,
+                        not_null<int*> pen_y) const {
     render(std::forward<decltype(rend)>(rend), bottom, *pen_x, *pen_y);
     *pen_x += g_->advance.x >> 10;
     *pen_y += g_->advance.y >> 10;
