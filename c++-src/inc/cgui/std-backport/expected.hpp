@@ -47,7 +47,7 @@ public:
   T const &&error() const && noexcept { return std::move(e_); }
 
   [[nodiscard]] char const *what() const
-      noexcept(noexcept(std::exception::what())) override {
+      noexcept(noexcept(bad_expected_access<void>::what())) override {
     if constexpr (std::convertible_to<T, char const *>) {
       return static_cast<char const *>(e_);
     } else if constexpr (requires() {
