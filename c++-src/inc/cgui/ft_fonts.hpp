@@ -19,20 +19,26 @@
 #include <cgui/stl_extend.hpp>
 
 namespace cgui {
-namespace extend {
-constexpr decltype(auto) tl_x(bp::cvref_type<FT_BBox> auto &&v) {
-  return std::forward<decltype(v)>(v).xMin;
-}
-constexpr decltype(auto) tl_y(bp::cvref_type<FT_BBox> auto &&v) {
-  return std::forward<decltype(v)>(v).yMin;
-}
-constexpr decltype(auto) br_x(bp::cvref_type<FT_BBox> auto &&v) {
-  return std::forward<decltype(v)>(v).xMax;
-}
-constexpr decltype(auto) br_y(bp::cvref_type<FT_BBox> auto &&v) {
-  return std::forward<decltype(v)>(v).yMax;
-}
-} // namespace extend
+template <> struct extend_api<FT_BBox> {
+  static constexpr auto &&tl_x(bp::cvref_type<FT_BBox> auto &&b) noexcept {
+    return std::forward<decltype(b)>(b).xMin;
+  }
+  static constexpr auto &&tl_y(bp::cvref_type<FT_BBox> auto &&b) noexcept {
+    return std::forward<decltype(b)>(b).yMin;
+  }
+  static constexpr auto &&br_x(bp::cvref_type<FT_BBox> auto &&b) noexcept {
+    return std::forward<decltype(b)>(b).xMax;
+  }
+  static constexpr auto &&br_y(bp::cvref_type<FT_BBox> auto &&b) noexcept {
+    return std::forward<decltype(b)>(b).yMax;
+  }
+
+  static constexpr FT_BBox from_xyxy(FT_Pos xl, FT_Pos yt, FT_Pos xr,
+                                     FT_Pos yb) {
+    return {xl, yt, xr, yb};
+  }
+};
+inline namespace {
 
 class ft_font_library {
   static constexpr auto cleanup_ = [](FT_Library &l) { FT_Done_FreeType(l); };
@@ -128,8 +134,8 @@ public:
     assert(res.has_value());
     return {};
   }
-  constexpr void render(renderer auto &&rend, int bottom, not_null<int*> pen_x,
-                        not_null<int*> pen_y) const {
+  constexpr void render(renderer auto &&rend, int bottom, not_null<int *> pen_x,
+                        not_null<int *> pen_y) const {
     render(std::forward<decltype(rend)>(rend), bottom, *pen_x, *pen_y);
     *pen_x += g_->advance.x >> 10;
     *pen_y += g_->advance.y >> 10;
@@ -268,7 +274,7 @@ inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face, char v) {
   }
   return ft_font_glyph(gl, gl_index);
 }
-
+} // namespace
 } // namespace cgui
 
 #endif

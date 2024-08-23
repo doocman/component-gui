@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <exception>
+#include <functional>
 #include <initializer_list>
 #include <optional>
 #include <string>
@@ -29,7 +30,8 @@ protected:
   ~bad_expected_access() override = default;
 
 public:
-  [[nodiscard]] char const *what() const override {
+  [[nodiscard]] char const *what() const
+      noexcept(noexcept(std::exception::what())) override {
     return "Bad expected access";
   }
 };
@@ -44,12 +46,13 @@ public:
   T &&error() && noexcept { return std::move(e_); }
   T const &&error() const && noexcept { return std::move(e_); }
 
-  [[nodiscard]] char const *what() const override {
+  [[nodiscard]] char const *what() const
+      noexcept(noexcept(std::exception::what())) override {
     if constexpr (std::convertible_to<T, char const *>) {
       return static_cast<char const *>(e_);
     } else if constexpr (requires() {
-                 { e_.c_str() } -> std::convertible_to<char const *>;
-               }) {
+                           { e_.c_str() } -> std::convertible_to<char const *>;
+                         }) {
       return e_.c_str();
     } else {
       return bad_expected_access<void>::what();
@@ -217,8 +220,8 @@ template <typename TExp, typename TErr> class expected {
     if constexpr (std::is_void_v<TExp>) {
       return std::invoke(std::forward<decltype(f)>(f));
     } else {
-      return std::invoke(
-                         std::forward<decltype(f)>(f), *std::forward<decltype(exp)>(exp));
+      return std::invoke(std::forward<decltype(f)>(f),
+                         *std::forward<decltype(exp)>(exp));
     }
   }
 
@@ -303,7 +306,9 @@ public:
       : data_(copy_expected(std::move(other))) {}
 
   template <typename TV2>
-  constexpr explicit(!std::is_convertible_v<TV2, TExp> && !std::is_same_v<TExp, std::remove_cvref_t<TV2>>) expected(TV2 &&v)
+  constexpr explicit(!std::is_convertible_v<TV2, TExp> &&
+                     !std::is_same_v<TExp, std::remove_cvref_t<TV2>>)
+      expected(TV2 &&v)
       : data_(std::in_place, std::forward<TV2>(v)) {}
 
   template <typename TE2>
