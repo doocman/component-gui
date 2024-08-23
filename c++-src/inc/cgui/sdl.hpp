@@ -15,6 +15,25 @@
 #include <cgui/stl_extend.hpp>
 
 namespace cgui {
+template <> struct extend_api<SDL_Rect> {
+  static constexpr auto &&tl_x(bp::cvref_type<SDL_Rect> auto &&r) {
+    return std::forward<decltype(r)>(r).x;
+  }
+  static constexpr auto &&tl_y(bp::cvref_type<SDL_Rect> auto &&r) {
+    return std::forward<decltype(r)>(r).y;
+  }
+  static constexpr auto &&width(bp::cvref_type<SDL_Rect> auto &&r) {
+    return std::forward<decltype(r)>(r).w;
+  }
+  static constexpr auto &&height(bp::cvref_type<SDL_Rect> auto &&r) {
+    return std::forward<decltype(r)>(r).h;
+  }
+  static constexpr SDL_Rect from_xywh(int x, int y, int w, int h) {
+    return {x, y, w, h};
+  }
+};
+
+inline namespace {
 using sdl_window_flag_t = std::uint32_t;
 namespace details {
 
@@ -46,34 +65,17 @@ template <typename T> constexpr decltype(auto) handle(T &&val) {
   return std::remove_cvref_t<T>::handle(std::forward<T>(val));
 }
 template <typename> constexpr bool to_sdl_rect_simple = false;
-template <typename T>
-constexpr bool to_sdl_rect_simple<sdl_rect_wrapper<T>> = true;
 template <> constexpr bool to_sdl_rect_simple<SDL_Rect> = true;
 } // namespace details
-
-using sdl_rect = details::sdl_rect_wrapper<SDL_Rect>;
-using sdl_rect_ref = details::sdl_rect_wrapper<SDL_Rect *>;
-using sdl_rect_cref = details::sdl_rect_wrapper<SDL_Rect const *>;
 
 template <bounding_box T>
   requires(!details::to_sdl_rect_simple<std::remove_cvref_t<T>>)
 constexpr SDL_Rect to_sdl_rect(T &&v) {
   return {call::tl_x(v), call::tl_y(v), call::width(v), call::height(v)};
 }
-template <bounding_box T>
-  requires(details::to_sdl_rect_simple<std::remove_cvref_t<T>>)
-constexpr auto &&to_sdl_rect(T &&v) {
-  auto vf = bp::as_forward(std::forward<T>(v));
-  if constexpr (bp::cvref_type<T, SDL_Rect>) {
-    return *vf;
-  } else {
-    return handle(*vf);
-  }
+constexpr auto &&to_sdl_rect(bp::cvref_type<SDL_Rect> auto &&v) {
+  return std::forward<decltype(v)>(v);
 }
-
-static_assert(bounding_box_xwyh<sdl_rect>);
-static_assert(bounding_box_xwyh<sdl_rect_ref>);
-static_assert(bounding_box_xwyh<sdl_rect_cref>);
 
 namespace details {
 template <typename TTag, typename TType, TType tValue> struct flag_value {
@@ -245,12 +247,11 @@ public:
   std::string &ctor_string_mut() { return s_; }
   void take_ownership(SDL_Window *w, SDL_Renderer *r) { handle_.reset(w, r); }
 
-  [[nodiscard]] sdl_rect area() const {
-    sdl_rect res;
-    auto &r = res.r_;
+  [[nodiscard]] SDL_Rect area() const {
+    SDL_Rect r;
     SDL_GetWindowSize(handle(), &r.w, &r.h);
     SDL_GetWindowPosition(handle(), &r.x, &r.y);
-    return res;
+    return r;
   }
 
   [[nodiscard]] expected<sdl_canvas, std::string> canvas() {
@@ -380,7 +381,7 @@ inline int poll_event(sdl_context_instance &, sdl_event_callback auto &&cb) {
   }
   return 0;
 }
-
+} // namespace
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_SDL_HPP
