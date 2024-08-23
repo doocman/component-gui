@@ -1108,6 +1108,24 @@ constexpr auto trim_from_above(T bptr, TV v) {
   return call::box_from_xyxy<bp::pointer_reference_t<T>>(
       call::tl_x(b), org_y, call::br_x(b), split_y);
 }
+template <typename TV, mut_box_pointer<TV> T>
+constexpr auto trim_from_right(T bptr, TV v) {
+  assert(bptr != nullptr);
+  auto &b = *bptr;
+  assert(v <= call::width(b));
+  call::width(b, call::width(b) - v);
+  return call::box_from_xywh<bp::pointer_reference_t<T>>(
+      call::br_x(b), call::tl_y(b), v, call::height(b));
+}
+template <typename TV, mut_box_pointer<TV> T>
+constexpr auto trim_from_below(T bptr, TV v) {
+  assert(bptr != nullptr);
+  auto &b = *bptr;
+  assert(v <= call::height(b));
+  call::height(b, call::height(b) - v);
+  return call::box_from_xywh<bp::pointer_reference_t<T>>(
+      call::tl_x(b), call::br_y(b), call::width(b), v);
+}
 
 } // namespace call
 template <typename T, typename TR>

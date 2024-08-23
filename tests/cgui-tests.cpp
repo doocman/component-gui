@@ -972,5 +972,40 @@ TYPED_TEST(BoxApiFixture, TrimUp) // NOLINT
   EXPECT_THAT(call::br_y(b2), Eq(4 + 4));
 }
 
+TYPED_TEST(BoxApiFixture, TrimRight) // NOLINT
+{
+  auto &box = this->value;
+  call::tl_y(box, 4);
+  call::br_y(box, 70);
+  call::tl_x(box, 4);
+  call::br_x(box, 15);
+  auto b2 = call::trim_from_right(&box, 4);
+  EXPECT_THAT(call::tl_y(box), Eq(4));
+  EXPECT_THAT(call::br_y(box), Eq(70));
+  EXPECT_THAT(call::tl_x(box), Eq(4));
+  EXPECT_THAT(call::br_x(box), Eq(15 - 4));
+  EXPECT_THAT(call::tl_y(b2), Eq(4));
+  EXPECT_THAT(call::br_y(b2), Eq(70));
+  EXPECT_THAT(call::tl_x(b2), Eq(15 - 4));
+  EXPECT_THAT(call::br_x(b2), Eq(15));
+}
+TYPED_TEST(BoxApiFixture, TrimDown) // NOLINT
+{
+  auto &box = this->value;
+  call::tl_x(box, 4);
+  call::br_x(box, 70);
+  call::tl_y(box, 4);
+  call::br_y(box, 15);
+  auto b2 = call::trim_from_below(&box, 4);
+  EXPECT_THAT(call::tl_x(box), Eq(4));
+  EXPECT_THAT(call::br_x(box), Eq(70));
+  EXPECT_THAT(call::tl_y(box), Eq(4));
+  EXPECT_THAT(call::br_y(box), Eq(15 - 4));
+  EXPECT_THAT(call::tl_x(b2), Eq(4));
+  EXPECT_THAT(call::br_x(b2), Eq(70));
+  EXPECT_THAT(call::tl_y(b2), Eq(15 - 4));
+  EXPECT_THAT(call::br_y(b2), Eq(15));
+}
+
 } // namespace apitests
 } // namespace cgui::tests

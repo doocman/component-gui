@@ -27,13 +27,35 @@ int main(int, char **) {
                                  static_cast<FT_UInt>(dpi_info.vert),
                                  static_cast<FT_UInt>(dpi_info.hori))
             .value();
-    auto text_widget = cgui::text_box_widget(std::move(text_font))
-                           .area(full_area)
-                           .display("Hello World!");
+    auto hello_world_header =
+        cgui::text_box_widget(std::move(text_font))
+            .area(cgui::call::trim_from_above(
+                &full_area, std::min<int>(cgui::call::height(full_area), 128)))
+            .display("Hello World!");
+    auto button_bar_area = cgui::call::trim_from_below(
+        &full_area, std::min<int>(cgui::call::height(full_area), 128));
+    cgui::unused(button_bar_area);
+    auto lorum_ipsum =
+        cgui::text_box_widget(cgui::ft_font_face::init(
+                                  text_library, "C:\\Windows\\Fonts\\arial.ttf",
+                                  static_cast<FT_UInt>(dpi_info.vert),
+                                  static_cast<FT_UInt>(dpi_info.hori))
+                                  .value())
+            .area(full_area)
+            .display(
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed "
+                "do eiusmod tempor incididunt ut labore et dolore magna "
+                "aliqua. Ut enim ad minim veniam, quis nostrud exercitation "
+                "ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis "
+                "aute irure dolor in reprehenderit in voluptate velit esse "
+                "cillum dolore eu fugiat nulla pariatur. Excepteur sint "
+                "occaecat cupidatat non proident, sunt in culpa qui officia "
+                "deserunt mollit anim id est laborum.");
 
     bool do_exit{};
     auto renderer = main_window.canvas().value();
-    auto gui = cgui::gui_context(renderer).with(text_widget);
+    auto gui =
+        cgui::gui_context(renderer).with(hello_world_header, lorum_ipsum);
     gui.render_direct(renderer);
     renderer.present();
     while (!do_exit) {

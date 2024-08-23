@@ -5,6 +5,7 @@ function(cgui_add_example NAME)
             cmpr::add_warnings
             cgui::cgui
             SDL2::SDL2main
+            SDL2::SDL2
     )
 endfunction()
 
