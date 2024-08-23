@@ -19,6 +19,9 @@ namespace cgui::bp {
 struct unexpect_t {};
 inline constexpr unexpect_t unexpect;
 
+inline constexpr bool _is_noexcept_exception_what =
+    noexcept(std::exception{}.what());
+
 template <typename T> class bad_expected_access;
 template <> class bad_expected_access<void> : public std::exception {
 protected:
@@ -31,7 +34,7 @@ protected:
 
 public:
   [[nodiscard]] char const *what() const
-      noexcept(noexcept(std::exception::what())) override {
+      noexcept(_is_noexcept_exception_what) override {
     return "Bad expected access";
   }
 };
@@ -47,7 +50,7 @@ public:
   T const &&error() const && noexcept { return std::move(e_); }
 
   [[nodiscard]] char const *what() const
-      noexcept(noexcept(bad_expected_access<void>::what())) override {
+      noexcept(_is_noexcept_exception_what) override {
     if constexpr (std::convertible_to<T, char const *>) {
       return static_cast<char const *>(e_);
     } else if constexpr (requires() {

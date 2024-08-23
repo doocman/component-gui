@@ -692,7 +692,7 @@ struct extend_api<tests::apitests::xywh_bbox<at>> {
     return std::forward<decltype(v)>(v).h;
   }
 };
-template <> struct ::cgui::extend_api<tests::apitests::tlbr_mut> {
+template <> struct extend_api<tests::apitests::tlbr_mut> {
   static constexpr tests::apitests::tlbr_mut
   from_tlbr(tests::apitests::mut_pix_coord tl,
             tests::apitests::set_pix_coord br) {
@@ -700,7 +700,7 @@ template <> struct ::cgui::extend_api<tests::apitests::tlbr_mut> {
   }
 };
 
-template <> struct ::cgui::extend_api<tests::apitests::tlbr_static_set> {
+template <> struct extend_api<tests::apitests::tlbr_static_set> {
   static constexpr tests::apitests::tlbr_static_set
   from_tlbr(tests::apitests::set_pix_coord tl,
             tests::apitests::mut_pix_coord br) {
