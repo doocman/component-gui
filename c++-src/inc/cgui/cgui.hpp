@@ -13,21 +13,42 @@ namespace cgui {
 struct dummy_renderer {};
 static_assert(renderer<dummy_renderer>);
 
-template <canvas T> class cgui_renderer {
+template <canvas T, bounding_box TB> class sub_renderer {
   T *c_;
+  TB area_;
+
+  using x_t = decltype(call::tl_x(area_));
+  using y_t = decltype(call::tl_y(area_));
+
+  constexpr auto relative_area() const {
+    return call::box_from_xywh<TB>(x_t{}, y_t{}, call::width(area_),
+                                   call::height(area_));
+  }
+
+  template <bounding_box TB2> constexpr auto relative_area(TB2 const &b) const {
+    return call::box_from_xywh(call::tl_x(b) + call::tl_x(area_),
+                               call::tl_y(b) + call::tl_y(area_),
+                               call::width(b), call::height(b));
+  }
 
 public:
-  constexpr explicit cgui_renderer(T &c) : c_(std::addressof(c)) {}
+  constexpr sub_renderer(T &c, TB a) : c_(std::addressof(c)), area_(a) {}
 
-  constexpr auto draw_pixels(bounding_box auto &&dest,
-                             pixel_draw_callback auto &&cb) {
-    return call::draw_pixels(*c_, std::forward<decltype(dest)>(dest),
-                             std::forward<decltype(cb)>(cb));
+  template <bounding_box TB2, pixel_draw_callback TCB>
+  constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
+    // assert(call::box_includes_box(area_, dest));
+    return call::draw_pixels(
+        *c_, dest,
+        [cb = bp::as_forward(std::forward<decltype(cb)>(cb)),
+         real_dest = call::box_intersection<TB2>(relative_area(dest), area_)](
+            auto &&drawer) {
+          std::invoke(*cb, real_dest, std::forward<decltype(drawer)>(drawer));
+        });
   }
 };
 
 template <typename T, typename TRender>
-concept widget_display = has_render_direct<T, TRender>;
+concept widget_display = has_render<T, TRender>;
 
 template <typename T>
 concept widgety = widget_display<T, dummy_renderer>;
@@ -59,9 +80,9 @@ public:
         std::tuple_cat(widgets_, std::tuple<TW2...>(std::forward<TW2>(ws)...)));
   }
 
-  constexpr void render_direct(T &c) {
-    auto r = cgui_renderer(c);
-    tuple_for_each([&r](auto &&v) { call::render_direct(v, r); }, widgets_);
+  constexpr void render(T &c) {
+    auto r = sub_renderer(c);
+    tuple_for_each([&r](auto &&v) { call::render(v, r); }, widgets_);
   }
 };
 
@@ -86,14 +107,16 @@ public:
     return {std::move(display_), a};
   }
   widget display(auto &&...vs) && requires(requires() {
-    call::set_displayed(display_, std::forward<decltype(vs)>(vs)...);
+    call::set_displayed(display_, call::width(area()), call::height(area()),
+                        std::forward<decltype(vs)>(vs)...);
   }) {
-    call::set_displayed(display_, std::forward<decltype(vs)>(vs)...);
+    call::set_displayed(display_, call::width(area()), call::height(area()),
+                        std::forward<decltype(vs)>(vs)...);
     return std::move(*this);
-  } void render_direct(renderer auto &&r) {
-    // display_.render_direct(std::forward<decltype(r)>(r));
-    call::render_direct(display_, std::forward<decltype(r)>(r),
-                        call::width(area()), call::height(area()));
+  } void render(renderer auto &&r) {
+    // display_.render(std::forward<decltype(r)>(r));
+    call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
+                 call::height(area()));
   }
 };
 
@@ -106,11 +129,11 @@ public:
     requires(std::is_default_constructible_v<Txt>)
   = default;
 
-  void render_direct(renderer auto &&r, int width, int height) {
+  void render(renderer auto &&r, int width, int height) {
     call::render_text(t_, r, width, height);
   }
-  void set_displayed(readable_textc auto &&s) {
-    call::set_text(t_, std::forward<decltype(s)>(s));
+  void set_displayed(int w, int h, readable_textc auto &&s) {
+    call::set_text(t_, std::forward<decltype(s)>(s), w, h);
   }
 };
 

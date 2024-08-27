@@ -392,6 +392,10 @@ concept mutable_bounding_box =
 struct default_rect {
   default_pixel_coord tl;
   default_pixel_coord br;
+
+  static constexpr default_rect from_xyxy(int x1, int y1, int x2, int y2) {
+    return {{x1, y1}, {x2, y2}};
+  }
 };
 constexpr default_pixel_coord top_left(default_rect const &r) noexcept {
   return r.tl;
@@ -405,20 +409,10 @@ constexpr default_pixel_coord bottom_right(default_rect const &r) noexcept {
 constexpr default_pixel_coord &bottom_right(default_rect &r) noexcept {
   return r.br;
 }
+static_assert(bounding_box<default_rect>);
 
 template <typename T>
 concept renderer = true;
-template <typename T>
-concept renderer_member_context = requires(T &&t, int x) {
-  { t.context(x, x, x, x) } -> renderer;
-};
-template <typename T>
-concept renderer_free_context = requires(T &&t, int x) {
-  { context(t, x, x, x, x) } -> renderer;
-};
-template <typename T>
-concept renderer_context =
-    renderer_free_context<T> || renderer_member_context<T>;
 
 template <typename T>
 concept boolean_like = std::is_constructible_v<bool, T>;
@@ -462,30 +456,19 @@ struct dummy_pixel_drawer {
 };
 static_assert(pixel_drawer<dummy_pixel_drawer>);
 
+template <typename T, typename TCoord, typename TColour>
+concept single_pixel_draw =
+    pixel_coord<TCoord> && colour<TColour> && std::invocable<TCoord, TColour>;
+
 template <typename>
 concept pixel_draw_callback = true;
 
-struct dummy_pixel_draw_callback {};
+struct dummy_pixel_draw_callback {
+  constexpr void operator()(
+      bounding_box auto &&,
+      single_pixel_draw<default_pixel_coord, default_colour_t> auto &&) const {}
+};
 static_assert(pixel_draw_callback<dummy_pixel_draw_callback>);
-
-namespace extend {
-#undef CGUI_EXTRA_PARAMS
-#undef CGUI_EXTRA_ARGS
-#undef CGUI_EXTRA_ARGS_COMMA
-#define CGUI_EXTRA_PARAMS , default_rect const &r
-#define CGUI_EXTRA_ARGS r
-#define CGUI_EXTRA_ARGS_COMMA ,
-
-CGUI_PIX_FUNC_IMPL(context, renderer)
-
-#undef CGUI_EXTRA_PARAMS
-#undef CGUI_EXTRA_ARGS
-#undef CGUI_EXTRA_ARGS_COMMA
-#define CGUI_EXTRA_PARAMS
-#define CGUI_EXTRA_ARGS
-#define CGUI_EXTRA_ARGS_COMMA
-
-} // namespace extend
 
 struct xy2wh_t {
   static constexpr auto on_fetch(auto const &x1, auto const &x2) {
@@ -742,46 +725,42 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b,
 }
 
 namespace impl {
-[[maybe_unused]] inline void render_direct() {}
+[[maybe_unused]] inline void render() {}
 [[maybe_unused]] inline void draw_pixels() {}
 [[maybe_unused]] inline void set_displayed() {}
 [[maybe_unused]] inline void set_text() {}
 [[maybe_unused]] inline void render_text() {}
 
 template <typename T, typename TR, typename... Ts>
-concept member_render_direct =
-    requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
-      (*t).render_direct(r, std::forward<Ts>(args)...);
-    };
+concept member_render = requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
+  (*t).render(r, std::forward<Ts>(args)...);
+};
 template <typename T, typename TR, typename... Ts>
-concept static_render_direct =
-    requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
-      std::remove_cvref_t<T>::render_direct(*t, r, std::forward<Ts>(args)...);
-    };
+concept static_render = requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
+  std::remove_cvref_t<T>::render(*t, r, std::forward<Ts>(args)...);
+};
 template <typename T, typename TR, typename... Ts>
-concept free_render_direct =
-    requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
-      render_direct(*t, r, std::forward<Ts>(args)...);
-    };
+concept free_render = requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
+  render(*t, r, std::forward<Ts>(args)...);
+};
 template <typename T, typename TR, typename... Ts>
-concept has_render_direct =
-    renderer<TR> &&
-    (member_render_direct<T, TR, Ts...> || free_render_direct<T, TR, Ts...> ||
-     static_render_direct<T, TR, Ts...>);
+concept has_render =
+    renderer<TR> && (member_render<T, TR, Ts...> || free_render<T, TR, Ts...> ||
+                     static_render<T, TR, Ts...>);
 
-inline constexpr auto do_render_direct =
-    []<renderer TR, typename... Ts, has_render_direct<TR, Ts...> T>(
+inline constexpr auto do_render =
+    []<renderer TR, typename... Ts, has_render<TR, Ts...> T>(
         T &&torg, TR &&rorg, Ts &&...args) {
       auto t = bp::as_forward(std::forward<T>(torg));
       auto r = bp::as_forward(std::forward<TR>(rorg));
-      if constexpr (member_render_direct<T, TR, Ts...>) {
-        return (*t).render_direct(*r, std::forward<Ts>(args)...);
-      } else if constexpr (static_render_direct<T, TR, Ts...>) {
-        return std::remove_cvref_t<T>::render_direct(*t, *r,
-                                                     std::forward<Ts>(args)...);
+      if constexpr (member_render<T, TR, Ts...>) {
+        return (*t).render(*r, std::forward<Ts>(args)...);
+      } else if constexpr (static_render<T, TR, Ts...>) {
+        return std::remove_cvref_t<T>::render(*t, *r,
+                                              std::forward<Ts>(args)...);
       } else {
-        static_assert(free_render_direct<T, TR, Ts...>);
-        return render_direct(*t, *r, std::forward<Ts>(args)...);
+        static_assert(free_render<T, TR, Ts...>);
+        return render(*t, *r, std::forward<Ts>(args)...);
       }
     };
 
@@ -901,32 +880,37 @@ struct do_render_text {
   }
 };
 
-template <typename T, typename TStr>
-concept member_set_text = requires(
-    bp::as_forward<T> t, bp::as_forward<TStr> s) { (*t).set_text(*s); };
-template <typename T, typename TStr>
-concept static_set_text =
-    requires(bp::as_forward<T> t, bp::as_forward<TStr> s) {
-      std::remove_cvref_t<T>::set_text(*t, *s);
-    };
-template <typename T, typename TStr>
+template <typename T, typename TStr, typename... Ts>
+concept member_set_text =
+    requires(bp::as_forward<T> t, bp::as_forward<TStr> s,
+             bp::as_forward<Ts>... args) { (*t).set_text(*s, *args...); };
+template <typename T, typename TStr, typename... Ts>
+concept static_set_text = requires(bp::as_forward<T> t, bp::as_forward<TStr> s,
+                                   bp::as_forward<Ts>... args) {
+  std::remove_cvref_t<T>::set_text(*t, *s, *args...);
+};
+template <typename T, typename TStr, typename... Ts>
 concept free_set_text =
-    requires(bp::as_forward<T> t, bp::as_forward<TStr> s) { set_text(*t, *s); };
-template <typename T, typename TStr>
-concept has_set_text = member_set_text<T, TStr> || static_set_text<T, TStr> ||
-                       free_set_text<T, TStr>;
+    requires(bp::as_forward<T> t, bp::as_forward<TStr> s,
+             bp::as_forward<Ts>... args) { set_text(*t, *s, *args...); };
+template <typename T, typename TStr, typename... Ts>
+concept has_set_text =
+    member_set_text<T, TStr, Ts...> || static_set_text<T, TStr, Ts...> ||
+    free_set_text<T, TStr, Ts...>;
 
 struct do_set_text {
-  template <typename TStr, has_set_text<TStr> T>
-  constexpr auto operator()(T &&torg, TStr &&sorg) const {
+  template <typename TStr, typename... Ts, has_set_text<TStr, Ts...> T>
+  constexpr auto operator()(T &&torg, TStr &&sorg, Ts &&...args) const {
     auto t = bp::as_forward(std::forward<T>(torg));
     auto s = bp::as_forward(std::forward<TStr>(sorg));
-    if constexpr (member_set_text<T, TStr>) {
-      return (*t).set_text(*s);
-    } else if constexpr (static_set_text<T, TStr>) {
-      return std::remove_cvref_t<T>::set_text(*t, *s);
+    if constexpr (member_set_text<T, TStr, Ts...>) {
+      return (*t).set_text(*s, std::forward<Ts>(args)...);
+    } else if constexpr (static_set_text<T, TStr, Ts...>) {
+      return std::remove_cvref_t<T>::set_text(*t, *s,
+                                              std::forward<Ts>(args)...);
     } else {
-      return set_text(*t, *s);
+      static_assert(free_set_text<T, TStr, Ts...>);
+      return set_text(*t, *s, std::forward<Ts>(args)...);
     }
   }
 };
@@ -955,7 +939,7 @@ concept has_bbox_init =
 
 struct do_from_xyxy {
   template <typename TXY, has_bbox_init<TXY> T>
-  constexpr bounding_box auto operator()(T const &, TXY xl, TXY yt, TXY xr,
+  constexpr bounding_box auto operator()(std::type_identity<T> const &, TXY xl, TXY yt, TXY xr,
                                          TXY yb) const {
     if constexpr (has_from_xyxy<T, TXY>) {
       return T::from_xyxy(std::move(xl), std::move(yt), std::move(xr),
@@ -974,12 +958,12 @@ struct do_from_xyxy {
 };
 struct do_from_xywh {
   template <typename TXY, has_bbox_init<TXY> T>
-  constexpr bounding_box auto operator()(T const &, TXY x, TXY y, TXY w,
+  constexpr bounding_box auto operator()(std::type_identity<T> const & ti, TXY x, TXY y, TXY w,
                                          TXY h) const {
     if constexpr (has_from_xywh<T, TXY>) {
       return T::from_xywh(x, y, w, h);
     } else {
-      return do_from_xyxy{}(T{}, x, y, x + w, y + h);
+      return do_from_xyxy{}(ti, x, y, x + w, y + h);
     }
   }
 };
@@ -987,11 +971,11 @@ struct do_from_tlbr {
   template <pixel_coord TC, typename T>
     requires(has_from_tlbr<T, TC> ||
              has_bbox_init<T, decltype(call::x_of(std::declval<TC &&>()))>)
-  constexpr bounding_box auto operator()(T const &, TC &&tl, TC &&br) const {
+  constexpr bounding_box auto operator()(std::type_identity<T> const & ti, TC &&tl, TC &&br) const {
     if constexpr (has_from_tlbr<T, TC>) {
       return T::from_tlbr(std::forward<TC>(tl), std::forward<TC>(br));
     } else {
-      return do_from_xyxy{}(T{}, call::x_of(tl), call::y_of(tl), call::x_of(br),
+      return do_from_xyxy{}(ti, call::x_of(tl), call::y_of(tl), call::x_of(br),
                             call::y_of(br));
     }
   }
@@ -999,7 +983,7 @@ struct do_from_tlbr {
 
 } // namespace impl
 
-inline constexpr auto render_direct = impl::do_render_direct;
+inline constexpr auto render = impl::do_render;
 inline constexpr auto draw_pixels = impl::do_draw_pixels;
 inline constexpr auto center = impl::do_center{};
 inline constexpr impl::do_set_displayed set_displayed;
@@ -1026,17 +1010,31 @@ inline constexpr auto alpha = [](colour auto &&c, auto &&...vs) -> auto && {
 template <typename T, typename TXY>
 constexpr auto box_from_xyxy(TXY xl, TXY yt, TXY xr, TXY yb,
                              std::type_identity<T> = {}) {
-  return impl::do_from_xyxy{}(extend_api_t<T>{}, xl, yt, xr, yb);
+  if constexpr(impl::has_bbox_init<T, TXY>) {
+    return impl::do_from_xyxy{}(std::type_identity<T>{}, xl, yt, xr, yb);
+  } else {
+    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{}, xl, yt, xr, yb);
+  }
 }
 template <typename T, typename TXY>
 constexpr auto box_from_xywh(TXY x, TXY y, TXY w, TXY h,
                              std::type_identity<T> = {}) {
-  return impl::do_from_xywh{}(extend_api_t<T>{}, x, y, w, h);
+  if constexpr(impl::has_bbox_init<T, TXY>) {
+    return impl::do_from_xywh{}(std::type_identity<T>{}, x, y, w, h);
+  } else {
+    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w, h);
+  }
 }
 template <typename T, typename TC>
 constexpr auto box_from_tlbr(TC &&tl, TC &&br, std::type_identity<T> = {}) {
-  return impl::do_from_tlbr{}(extend_api_t<T>{}, std::forward<TC>(tl),
-                              std::forward<TC>(br));
+  if constexpr(impl::has_from_tlbr<T, TC> ||
+                impl::has_bbox_init<T, decltype(call::x_of(tl))>) {
+    return impl::do_from_tlbr{}(std::type_identity<T>{}, std::forward<TC>(tl),
+                                std::forward<TC>(br));
+  } else {
+    return impl::do_from_tlbr{}(std::type_identity<extend_api_t<T>>{}, std::forward<TC>(tl),
+                                std::forward<TC>(br));
+  }
 }
 template <typename T, typename TX>
 concept mut_box_pointer =
@@ -1127,9 +1125,72 @@ constexpr auto trim_from_below(T bptr, TV v) {
       call::tl_x(b), call::br_y(b), call::width(b), v);
 }
 
+constexpr bool valid_box(bounding_box auto const &b) {
+  return (call::width(b) >= 0) && (call::height(b) >= 0);
+}
+
+template <typename TRes = void, bounding_box T1, bounding_box T2>
+constexpr auto box_union(T1 const &b1, T2 const &b2) {
+  assert(call::valid_box(b1));
+  assert(call::valid_box(b2));
+  using result_t =
+      std::conditional_t<std::is_void_v<TRes>, std::common_type<T1, T2>,
+                         std::type_identity<TRes>>::type;
+  return call::box_from_xyxy<result_t>(
+      std::min(call::tl_x(b1), call::tl_x(b2)),
+      std::min(call::tl_y(b1), call::tl_y(b2)),
+      std::max(call::br_x(b1), call::br_x(b2)),
+      std::max(call::br_y(b1), call::br_y(b2)));
+}
+
+template <typename TRes = void, bounding_box T1, bounding_box T2>
+constexpr auto box_intersection(T1 const &b1, T2 const &b2) {
+  assert(call::valid_box(b1));
+  assert(call::valid_box(b2));
+  using result_t =
+      std::conditional_t<std::is_void_v<TRes>, std::common_type<T1, T2>,
+                         std::type_identity<TRes>>::type;
+  return call::box_from_xyxy<result_t>(
+      std::max(call::tl_x(b1), call::tl_x(b2)),
+      std::max(call::tl_y(b1), call::tl_y(b2)),
+      std::min(call::br_x(b1), call::br_x(b2)),
+      std::min(call::br_y(b1), call::br_y(b2)));
+}
+
+template <typename T, typename TX>
+concept range_condition = requires(T t, TX v) {
+  { t(v, v, v) } -> std::convertible_to<bool>;
+};
+
+inline constexpr auto inside_open_range = [] (auto&& c, auto&& min, auto&& max) {
+  return (min < c) && (c < max);
+};
+inline constexpr auto inside_closed_range = [] (auto&& c, auto&& min, auto&& max) {
+  return (min <= c) && (c <= max);
+};
+inline constexpr auto inside_semiopen_range = [] (auto&& c, auto&& min, auto&& max) {
+  return (min <= c) && (c < max);
+};
+
+using inside_open_range_t = decltype(inside_open_range);
+using inside_closed_range_t = decltype(inside_closed_range);
+using inside_semiopen_range_t = decltype(inside_semiopen_range);
+
+template <bounding_box TB, pixel_coord TC = default_pixel_coord, range_condition<decltype(call::x_of(std::declval<TC>()))> TRC = inside_semiopen_range_t>
+constexpr bool hit_box(TB const &b, TC const &c, TRC&& inside_range = {}) {
+  assert(call::valid_box(b));
+  return inside_range(call::x_of(c), call::tl_x(b), call::br_x(b)) &&
+         inside_range(call::y_of(c), call::tl_y(b), call::br_y(b));
+};
+
+template <bounding_box TB1, bounding_box TB2>
+constexpr bool box_includes_box(TB1 const& outer, TB2 const& inner) {
+  return call::hit_box(outer, call::top_left(inner), inside_closed_range) && call::hit_box(outer, call::bottom_right(inner), inside_closed_range);
+}
+
 } // namespace call
 template <typename T, typename TR>
-concept has_render_direct = call::impl::has_render_direct<T, TR>;
+concept has_render = call::impl::has_render<T, TR>;
 
 struct position {
   long x;

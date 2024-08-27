@@ -50,13 +50,13 @@ int main(int, char **) {
                 "aute irure dolor in reprehenderit in voluptate velit esse "
                 "cillum dolore eu fugiat nulla pariatur. Excepteur sint "
                 "occaecat cupidatat non proident, sunt in culpa qui officia "
-                "deserunt mollit anim id est laborum.");
+                "deserunt mollit anim id est laborum.\n\nDid you get that?");
 
     bool do_exit{};
     auto renderer = main_window.canvas().value();
     auto gui =
         cgui::gui_context(renderer).with(hello_world_header, lorum_ipsum);
-    gui.render_direct(renderer);
+    gui.render(renderer);
     renderer.present();
     while (!do_exit) {
       while (cgui::poll_event(sdl_context, [&]<typename T>(T) {

@@ -9,6 +9,7 @@
 #include <cassert>
 #include <ranges>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <ft2build.h>
@@ -156,48 +157,19 @@ private:
     glyph_to_render(ft_font_glyph g, FT_Int top)
         : glyph(std::move(g)), bitmap_top(top) {}
   };
+  struct render_box {
+    FT_Int line_width;
+  };
   static constexpr auto cleanup_ = [](FT_Face &f) { FT_Done_Face(f); };
 
   cleanup_object_t<decltype(cleanup_), FT_Face> v_{};
   point_t pts_ = whole_point(12);
-  std::vector<glyph_to_render> string_;
+  std::vector<std::variant<glyph_to_render, render_box>> string_;
   FT_BBox bbox_{};
-  FT_Int string_length_{};
+  FT_Int line_count_{};
 
   constexpr ft_font_face() = default;
 
-  FT_BBox compute_bbox() {
-    auto bbox = FT_BBox{.xMin = highest_possible,
-                        .yMin = highest_possible,
-                        .xMax = lowest_possible,
-                        .yMax = lowest_possible};
-
-    for (auto &g : string_) {
-      FT_BBox glyph_bbox;
-
-      FT_Glyph_Get_CBox(g.glyph.handle(), ft_glyph_bbox_pixels, &glyph_bbox);
-
-      if (glyph_bbox.xMin < bbox.xMin)
-        bbox.xMin = glyph_bbox.xMin;
-
-      if (glyph_bbox.yMin < bbox.yMin)
-        bbox.yMin = glyph_bbox.yMin;
-
-      if (glyph_bbox.xMax > bbox.xMax)
-        bbox.xMax = glyph_bbox.xMax;
-
-      if (glyph_bbox.yMax > bbox.yMax)
-        bbox.yMax = glyph_bbox.yMax;
-    }
-
-    if (bbox.xMin > bbox.xMax) {
-      bbox.xMin = 0;
-      bbox.yMin = 0;
-      bbox.xMax = 0;
-      bbox.yMax = 0;
-    }
-    return bbox;
-  }
 
 public:
   constexpr ft_font_face(ft_font_face &&) noexcept = default;
@@ -228,20 +200,68 @@ public:
 
   FT_Face handle() const { return v_.first_value(); }
 
-  void set_text(readable_textc auto const &text) {
+  void set_text(readable_textc auto const &text, int width, int height) {
     if constexpr (std::is_array_v<std::remove_cvref_t<decltype(text)>>) {
-      set_text(std::string_view(text));
+      set_text(std::string_view(text), width, height);
     } else {
       string_.clear();
-      string_.reserve(std::ranges::size(text));
-      string_length_ = 0;
-      for (auto c : text) {
+      if(empty(text)) {
+        line_count_ = 0;
+        return;
+      }
+      string_.reserve(std::ranges::size(text) + 1);
+      string_.emplace(end(string_), std::in_place_type<render_box>);
+      line_count_ = 1;
+      auto bbox_index = std::make_signed_t<std::size_t>{};
+      unused(height);
+      auto string_length = 0;
+      auto len_at_ws = 0;
+      for (auto last_space = ssize(string_); auto c : text) {
         if (auto gle = glyph(*this, c); gle.has_value()) {
-          string_length_ += gle->handle()->advance.x >> 16;
-          string_.emplace_back(std::move(*gle), handle()->glyph->bitmap_top);
+          FT_BBox glyph_bbox;
+          FT_Glyph_Get_CBox(gle->handle(), ft_glyph_bbox_pixels, &glyph_bbox);
+          auto gl_adv = gle->handle()->advance.x >> 16;
+          auto gl_w = std::max(gl_adv, call::width(glyph_bbox));
+          bool add_char = true;
+          if((string_length + gl_w >= width) || c == '\n') {
+            decltype(begin(string_)) it;
+            decltype(len_at_ws) length_to_set;
+            if(c == ' ' || c == '\n' || last_space == 0) {
+              it = string_.emplace(end(string_), std::in_place_type<render_box>);
+              add_char = (c != ' ') && (c != '\n');
+              length_to_set = string_length;
+            } else {
+              it = begin(string_) + last_space;
+              *it = render_box{};
+              length_to_set = len_at_ws;
+            }
+            assert(bbox_index < ssize(string_));
+            assert(std::holds_alternative<render_box>(string_[bbox_index]));
+            auto& cur_bbox = std::get<render_box>(string_[bbox_index]);
+            cur_bbox.line_width = length_to_set;
+            assert(string_length >= length_to_set);
+            string_length -= length_to_set;
+            last_space = 0;
+            len_at_ws = 0;
+            ++line_count_;
+            bbox_index = std::distance(begin(string_), it);
+          }
+          if (add_char) {
+            bbox_ = call::box_union(bbox_, glyph_bbox);
+            if(c == ' ') {
+              len_at_ws = string_length;
+              last_space = ssize(string_);
+            }
+            string_length += gl_adv;
+            string_.emplace_back(std::in_place_type<glyph_to_render>, std::move(*gle), handle()->glyph->bitmap_top);
+          }
         }
       }
-      bbox_ = compute_bbox();
+      assert(bbox_index < ssize(string_));
+      auto& last_rb = string_[bbox_index];
+      assert(std::holds_alternative<render_box>(last_rb));
+      std::get<render_box>(last_rb).line_width = string_length;
+      //bbox_ = compute_bbox();
     }
   }
 
@@ -250,14 +270,26 @@ public:
     auto draw_center_y = height / 2;
     auto a = handle()->ascender;
     auto d = handle()->descender;
-    auto text_center_x = string_length_ / 2;
-    auto center_x = draw_center_x - text_center_x;
+    //auto text_center_x = std::get<render_box>(string_.front()).line_width / 2;
+    //auto center_x = draw_center_x - text_center_x;
     auto center_y = draw_center_y - (((a - d) / 2) >> 6);
-    auto pen_x = static_cast<int>(center_x) << 6;
-    auto pen_y = int{};
+    int center_x{};
+    //int center_y{};
+    auto pen_x = int{};
+    auto pen_y = static_cast<int>(center_y - (call::height(bbox_) * line_count_) / 2);
     for (auto const &g : string_) {
-      auto pos = center_y - g.bitmap_top;
-      g.glyph.render(ren, pos, &pen_x, &pen_y);
+      std::visit([&] <typename T> (T const& gb) {
+        if constexpr(std::is_same_v<T, render_box>) {
+          auto text_center_x = gb.line_width / 2;
+          pen_y += call::height(bbox_) << 6;
+          center_x = draw_center_x - text_center_x;
+          pen_x = static_cast<int>(center_x) << 6;
+        } else {
+          static_assert(std::is_same_v<T, glyph_to_render>);
+          auto pos = center_y - gb.bitmap_top;
+          gb.glyph.render(ren, pos, &pen_x, &pen_y);
+        }
+      }, g);
     }
   }
 };

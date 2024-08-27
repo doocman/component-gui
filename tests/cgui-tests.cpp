@@ -1,5 +1,6 @@
 
 #include <cgui/cgui-types.hpp>
+#include <cgui/cgui.hpp>
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/expected.hpp>
 #include <cgui/stl_extend.hpp>
@@ -1006,6 +1007,126 @@ TYPED_TEST(BoxApiFixture, TrimDown) // NOLINT
   EXPECT_THAT(call::tl_y(b2), Eq(15 - 4));
   EXPECT_THAT(call::br_y(b2), Eq(15));
 }
+TYPED_TEST(BoxApiFixture, BoxUnion) // NOLINT
+{
+  using box_t = decltype(this->value);
+  auto result = call::box_union(call::box_from_xyxy<box_t>(1, 2, 3, 4), call::box_from_xyxy<box_t>(1,2,3,4));
+  EXPECT_THAT(call::tl_x(result), Eq(1));
+  EXPECT_THAT(call::tl_y(result), Eq(2));
+  EXPECT_THAT(call::br_x(result), Eq(3));
+  EXPECT_THAT(call::br_y(result), Eq(4));
+
+  result = call::box_union(call::box_from_xyxy<box_t>(1, 2, 3, 4), call::box_from_xyxy<box_t>(2,3,4,5));
+  EXPECT_THAT(call::tl_x(result), Eq(1));
+  EXPECT_THAT(call::tl_y(result), Eq(2));
+  EXPECT_THAT(call::br_x(result), Eq(4));
+  EXPECT_THAT(call::br_y(result), Eq(5));
+}
+TYPED_TEST(BoxApiFixture, BoxIntersection) // NOLINT
+{
+  using box_t = decltype(this->value);
+  auto result = call::box_intersection(call::box_from_xyxy<box_t>(1, 2, 3, 4), call::box_from_xyxy<box_t>(1,2,3,4));
+  EXPECT_THAT(call::tl_x(result), Eq(1));
+  EXPECT_THAT(call::tl_y(result), Eq(2));
+  EXPECT_THAT(call::br_x(result), Eq(3));
+  EXPECT_THAT(call::br_y(result), Eq(4));
+
+  result = call::box_intersection(call::box_from_xyxy<box_t>(1, 2, 3, 4), call::box_from_xyxy<box_t>(2,3,4,5));
+  EXPECT_THAT(call::tl_x(result), Eq(2));
+  EXPECT_THAT(call::tl_y(result), Eq(3));
+  EXPECT_THAT(call::br_x(result), Eq(3));
+  EXPECT_THAT(call::br_y(result), Eq(4));
+}
+TYPED_TEST(BoxApiFixture, HitTest) // NOLINT
+{
+  using box_t = decltype(this->value);
+  auto b = call::box_from_xyxy<box_t>(1, 2, 3, 4);
+  EXPECT_TRUE(call::hit_box(b, {1, 2}));
+  EXPECT_TRUE(call::hit_box(b, {2, 3}));
+  EXPECT_FALSE(call::hit_box(b, {0, 3}));
+  EXPECT_FALSE(call::hit_box(b, {2, 1}));
+  EXPECT_FALSE(call::hit_box(b, {3, 4}));
+}
+TYPED_TEST(BoxApiFixture, BoxIncludesBox) // NOLINT
+{
+  using box_t = decltype(this->value);
+  auto b = call::box_from_xyxy<box_t>(1, 2, 4, 5);
+  EXPECT_TRUE(call::box_includes_box(b, call::box_from_xyxy<box_t>(1,2,2,3)));
+  EXPECT_FALSE(call::box_includes_box(b, call::box_from_xyxy<box_t>(0,2,2,3)));
+  EXPECT_TRUE(call::box_includes_box(b, call::box_from_xyxy<default_rect>(1,2,2,3)));
+  EXPECT_TRUE(call::box_includes_box(b, b));
+}
 
 } // namespace apitests
+
+struct test_renderer {
+  default_rect a_;
+  std::vector<default_colour_t> drawn_pixels;
+  std::vector<default_rect> failed_calls;
+  std::vector<default_pixel_coord> failed_pixel_draws;
+
+  explicit test_renderer(default_rect a) : a_(a), drawn_pixels(call::width(a) * call::height(a)) {}
+
+  void draw_pixels(bounding_box auto&& b, auto&& cb) {
+    if(!call::box_includes_box(area(), b)) {
+      failed_calls.push_back(call::box_from_xyxy<default_rect>(call::tl_x(b), call::tl_y(b), call::br_x(b), call::br_y(b)));
+      return;
+    }
+    cb([this, &b] (auto&& pos, auto&& col) {
+      if(!call::hit_box(b, pos)) {
+        failed_pixel_draws.emplace_back(call::x_of(pos), call::y_of(pos));
+        return;
+      }
+      auto index = call::x_of(pos) + call::tl_x(b) + (call::y_of(pos) + call::tl_y(b)) * call::width(area());
+      assert(index < ssize(drawn_pixels));
+      drawn_pixels[index] = {call::red(col), call::green(col), call::blue(col), call::alpha(col)};
+    });
+  }
+
+  default_rect area() const {
+    return a_;
+  }
+};
+
+TEST(SubRenderer, DrawPixels) // NOLINT
+{
+  auto r = test_renderer({{2, 3}, {6, 7}});
+  auto sr1 = sub_renderer(r, r.area());
+  sr1.draw_pixels(default_rect{{0,0}, {4,4}}, [&](bounding_box auto&& b, auto&& drawer) {
+    EXPECT_THAT(call::tl_x(b), Eq(call::tl_x(r.area())));
+    EXPECT_THAT(call::tl_y(b), Eq(call::tl_x(r.area())));
+    EXPECT_THAT(call::br_x(b), Eq(call::tl_x(r.area())));
+    EXPECT_THAT(call::br_y(b), Eq(call::tl_x(r.area())));
+    drawer(default_pixel_coord{}, default_colour_t{1, 1, 1, 1});
+  });
+  EXPECT_THAT(r.failed_calls, ElementsAre());
+  EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
+  auto& pix = r.drawn_pixels;
+  ASSERT_THAT(ssize(pix), Eq(4 * 4));
+  EXPECT_THAT(pix.at(0).red, Eq(1));
+  EXPECT_THAT(pix.at(0).green, Eq(1));
+  EXPECT_THAT(pix.at(0).blue, Eq(1));
+  EXPECT_THAT(pix.at(0).alpha, Eq(1));
+  EXPECT_THAT(pix.at(1).red, Eq(0));
+  EXPECT_THAT(pix.at(1).green, Eq(0));
+  EXPECT_THAT(pix.at(1).blue, Eq(0));
+  EXPECT_THAT(pix.at(1).alpha, Eq(0));
+  EXPECT_THAT(pix.at(4).red, Eq(0));
+  EXPECT_THAT(pix.at(4).green, Eq(0));
+  EXPECT_THAT(pix.at(4).blue, Eq(0));
+  EXPECT_THAT(pix.at(4).alpha, Eq(0));
+}
+
+struct dummy_glyph {
+  default_colour_t colour;
+  int length;
+
+  void render(auto&& renderer) {}
+};
+struct dummy_font_face {
+  int faulty_glyphs{};
+
+};
+
+// TEST()
 } // namespace cgui::tests
