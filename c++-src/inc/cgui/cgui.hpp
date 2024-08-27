@@ -16,33 +16,47 @@ static_assert(renderer<dummy_renderer>);
 template <canvas T, bounding_box TB> class sub_renderer {
   T *c_;
   TB area_;
-
   using x_t = decltype(call::tl_x(area_));
   using y_t = decltype(call::tl_y(area_));
+  x_t offset_x{};
+  y_t offset_y{};
 
   constexpr auto relative_area() const {
     return call::box_from_xywh<TB>(x_t{}, y_t{}, call::width(area_),
                                    call::height(area_));
   }
 
-  template <bounding_box TB2> constexpr auto relative_area(TB2 const &b) const {
-    return call::box_from_xywh(call::tl_x(b) + call::tl_x(area_),
-                               call::tl_y(b) + call::tl_y(area_),
-                               call::width(b), call::height(b));
+  template <bounding_box TB2> constexpr auto absolute_area(TB2 const &b) const {
+    return call::box_from_xywh<TB2>(call::tl_x(b) + offset_x,
+                                    call::tl_y(b) + offset_y, call::width(b),
+                                    call::height(b));
   }
 
 public:
-  constexpr sub_renderer(T &c, TB a) : c_(std::addressof(c)), area_(a) {}
+  constexpr sub_renderer(T &c, TB a)
+      : c_(std::addressof(c)), area_(a), offset_x(call::tl_x(area_)),
+        offset_y(call::tl_y(area_)) {}
 
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
     // assert(call::box_includes_box(area_, dest));
+    auto absolute_dest =
+        call::box_intersection<TB2>(absolute_area(dest), area_);
+    auto relative_dest =
+        call::nudge_left(call::nudge_up(absolute_dest, offset_y), offset_x);
     return call::draw_pixels(
-        *c_, dest,
-        [cb = bp::as_forward(std::forward<decltype(cb)>(cb)),
-         real_dest = call::box_intersection<TB2>(relative_area(dest), area_)](
-            auto &&drawer) {
-          std::invoke(*cb, real_dest, std::forward<decltype(drawer)>(drawer));
+        *c_, absolute_dest,
+        [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
+         offset_x = offset_x, offset_y = offset_y](auto &&drawer) {
+          std::invoke(
+              *cb, relative_dest,
+              [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
+               offset_x, offset_y](pixel_coord auto &&px, colour auto &&col) {
+                std::invoke(
+                    *d,
+                    call::nudge_right(call::nudge_down(px, offset_y), offset_x),
+                    col);
+              });
         });
   }
 };

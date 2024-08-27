@@ -939,8 +939,8 @@ concept has_bbox_init =
 
 struct do_from_xyxy {
   template <typename TXY, has_bbox_init<TXY> T>
-  constexpr bounding_box auto operator()(std::type_identity<T> const &, TXY xl, TXY yt, TXY xr,
-                                         TXY yb) const {
+  constexpr bounding_box auto operator()(std::type_identity<T> const &, TXY xl,
+                                         TXY yt, TXY xr, TXY yb) const {
     if constexpr (has_from_xyxy<T, TXY>) {
       return T::from_xyxy(std::move(xl), std::move(yt), std::move(xr),
                           std::move(yb));
@@ -958,8 +958,8 @@ struct do_from_xyxy {
 };
 struct do_from_xywh {
   template <typename TXY, has_bbox_init<TXY> T>
-  constexpr bounding_box auto operator()(std::type_identity<T> const & ti, TXY x, TXY y, TXY w,
-                                         TXY h) const {
+  constexpr bounding_box auto operator()(std::type_identity<T> const &ti, TXY x,
+                                         TXY y, TXY w, TXY h) const {
     if constexpr (has_from_xywh<T, TXY>) {
       return T::from_xywh(x, y, w, h);
     } else {
@@ -971,7 +971,8 @@ struct do_from_tlbr {
   template <pixel_coord TC, typename T>
     requires(has_from_tlbr<T, TC> ||
              has_bbox_init<T, decltype(call::x_of(std::declval<TC &&>()))>)
-  constexpr bounding_box auto operator()(std::type_identity<T> const & ti, TC &&tl, TC &&br) const {
+  constexpr bounding_box auto operator()(std::type_identity<T> const &ti,
+                                         TC &&tl, TC &&br) const {
     if constexpr (has_from_tlbr<T, TC>) {
       return T::from_tlbr(std::forward<TC>(tl), std::forward<TC>(br));
     } else {
@@ -1010,30 +1011,32 @@ inline constexpr auto alpha = [](colour auto &&c, auto &&...vs) -> auto && {
 template <typename T, typename TXY>
 constexpr auto box_from_xyxy(TXY xl, TXY yt, TXY xr, TXY yb,
                              std::type_identity<T> = {}) {
-  if constexpr(impl::has_bbox_init<T, TXY>) {
+  if constexpr (impl::has_bbox_init<T, TXY>) {
     return impl::do_from_xyxy{}(std::type_identity<T>{}, xl, yt, xr, yb);
   } else {
-    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{}, xl, yt, xr, yb);
+    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{}, xl, yt,
+                                xr, yb);
   }
 }
 template <typename T, typename TXY>
 constexpr auto box_from_xywh(TXY x, TXY y, TXY w, TXY h,
                              std::type_identity<T> = {}) {
-  if constexpr(impl::has_bbox_init<T, TXY>) {
+  if constexpr (impl::has_bbox_init<T, TXY>) {
     return impl::do_from_xywh{}(std::type_identity<T>{}, x, y, w, h);
   } else {
-    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w, h);
+    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w,
+                                h);
   }
 }
 template <typename T, typename TC>
 constexpr auto box_from_tlbr(TC &&tl, TC &&br, std::type_identity<T> = {}) {
-  if constexpr(impl::has_from_tlbr<T, TC> ||
+  if constexpr (impl::has_from_tlbr<T, TC> ||
                 impl::has_bbox_init<T, decltype(call::x_of(tl))>) {
     return impl::do_from_tlbr{}(std::type_identity<T>{}, std::forward<TC>(tl),
                                 std::forward<TC>(br));
   } else {
-    return impl::do_from_tlbr{}(std::type_identity<extend_api_t<T>>{}, std::forward<TC>(tl),
-                                std::forward<TC>(br));
+    return impl::do_from_tlbr{}(std::type_identity<extend_api_t<T>>{},
+                                std::forward<TC>(tl), std::forward<TC>(br));
   }
 }
 template <typename T, typename TX>
@@ -1157,35 +1160,66 @@ constexpr auto box_intersection(T1 const &b1, T2 const &b2) {
       std::min(call::br_y(b1), call::br_y(b2)));
 }
 
+constexpr auto nudge_left(pixel_coord auto c, auto &&val) {
+  call::x_of(c, call::x_of(c) - val);
+  return c;
+}
+constexpr auto nudge_right(pixel_coord auto c, auto &&val) {
+  return nudge_left(c, -val);
+}
+constexpr auto nudge_up(pixel_coord auto c, auto &&val) {
+  call::y_of(c, call::y_of(c) - val);
+  return c;
+}
+constexpr auto nudge_down(pixel_coord auto c, auto &&val) {
+  return nudge_up(c, -val);
+}
+
+constexpr auto nudge_left(bounding_box auto b, auto &&val) {
+  call::set_xx(&b, call::tl_x(b) - val, call::br_x(b) - val);
+  return std::forward<decltype(b)>(b);
+}
+constexpr auto nudge_right(bounding_box auto b, auto &&val) {
+  return nudge_left(b, -val);
+}
+constexpr auto nudge_up(bounding_box auto b, auto &&val) {
+  call::set_yy(&b, call::tl_y(b) - val, call::br_y(b) - val);
+  return std::forward<decltype(b)>(b);
+}
+constexpr auto nudge_down(bounding_box auto b, auto &&val) {
+  return nudge_up(b, -val);
+}
+
 template <typename T, typename TX>
 concept range_condition = requires(T t, TX v) {
   { t(v, v, v) } -> std::convertible_to<bool>;
 };
 
-inline constexpr auto inside_open_range = [] (auto&& c, auto&& min, auto&& max) {
+inline constexpr auto inside_open_range = [](auto &&c, auto &&min, auto &&max) {
   return (min < c) && (c < max);
 };
-inline constexpr auto inside_closed_range = [] (auto&& c, auto&& min, auto&& max) {
-  return (min <= c) && (c <= max);
-};
-inline constexpr auto inside_semiopen_range = [] (auto&& c, auto&& min, auto&& max) {
-  return (min <= c) && (c < max);
-};
+inline constexpr auto inside_closed_range =
+    [](auto &&c, auto &&min, auto &&max) { return (min <= c) && (c <= max); };
+inline constexpr auto inside_semiopen_range =
+    [](auto &&c, auto &&min, auto &&max) { return (min <= c) && (c < max); };
 
 using inside_open_range_t = decltype(inside_open_range);
 using inside_closed_range_t = decltype(inside_closed_range);
 using inside_semiopen_range_t = decltype(inside_semiopen_range);
 
-template <bounding_box TB, pixel_coord TC = default_pixel_coord, range_condition<decltype(call::x_of(std::declval<TC>()))> TRC = inside_semiopen_range_t>
-constexpr bool hit_box(TB const &b, TC const &c, TRC&& inside_range = {}) {
+template <bounding_box TB, pixel_coord TC = default_pixel_coord,
+          range_condition<decltype(call::x_of(std::declval<TC>()))> TRC =
+              inside_semiopen_range_t>
+constexpr bool hit_box(TB const &b, TC const &c, TRC &&inside_range = {}) {
   assert(call::valid_box(b));
   return inside_range(call::x_of(c), call::tl_x(b), call::br_x(b)) &&
          inside_range(call::y_of(c), call::tl_y(b), call::br_y(b));
 };
 
 template <bounding_box TB1, bounding_box TB2>
-constexpr bool box_includes_box(TB1 const& outer, TB2 const& inner) {
-  return call::hit_box(outer, call::top_left(inner), inside_closed_range) && call::hit_box(outer, call::bottom_right(inner), inside_closed_range);
+constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
+  return call::hit_box(outer, call::top_left(inner), inside_closed_range) &&
+         call::hit_box(outer, call::bottom_right(inner), inside_closed_range);
 }
 
 } // namespace call
