@@ -1,5 +1,6 @@
 
-#pragma once
+#ifndef CGUI_CGUI_STD_BACKPORT_EXPECTED
+#define CGUI_CGUI_STD_BACKPORT_EXPECTED
 
 #include <cassert>
 #include <exception>
@@ -520,3 +521,6 @@ public:
   }
 };
 } // namespace cgui::bp
+
+#endif
+

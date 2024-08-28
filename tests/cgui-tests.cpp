@@ -5,6 +5,7 @@
 #include <cgui/std-backport/expected.hpp>
 #include <cgui/stl_extend.hpp>
 
+#include <optional>
 #include <tuple>
 
 #include <gmock/gmock.h>
@@ -1083,6 +1084,16 @@ TYPED_TEST(BoxApiFixture, NudgeDown) // NOLINT
   EXPECT_THAT(call::br_x(b2), Eq(4));
   EXPECT_THAT(call::br_y(b2), Eq(6));
 }
+TYPED_TEST(BoxApiFixture, MoveTlTo) // NOLINT
+{
+  using box_t = decltype(this->value);
+  auto b = call::box_from_xywh<box_t>(1, 2, 4, 5);
+  auto b2 = call::move_tl_to(b, {0, -1});
+  EXPECT_THAT(call::tl_x(b2), Eq(0));
+  EXPECT_THAT(call::tl_y(b2), Eq(-1));
+  EXPECT_THAT(call::width(b2), Eq(4));
+  EXPECT_THAT(call::height(b2), Eq(5));
+}
 
 } // namespace apitests
 
@@ -1095,6 +1106,11 @@ struct test_renderer {
   explicit test_renderer(default_rect a)
       : a_(a), drawn_pixels(call::width(a) * call::height(a)) {}
 
+  auto &at(int x, int y) {
+    auto index = x + y * call::width(area());
+    return drawn_pixels.at(index);
+  }
+
   void draw_pixels(bounding_box auto &&b, auto &&cb) {
     if (!call::box_includes_box(area(), b)) {
       failed_calls.push_back(call::box_from_xyxy<default_rect>(
@@ -1106,12 +1122,8 @@ struct test_renderer {
         failed_pixel_draws.emplace_back(call::x_of(pos), call::y_of(pos));
         return;
       }
-      auto index = call::x_of(pos) - call::tl_x(b) +
-                   (call::y_of(pos) - call::tl_y(b)) * call::width(area());
-      assert(index < ssize(drawn_pixels));
-      assert(index >= std::make_signed_t<std::size_t>{});
-      drawn_pixels[index] = {call::red(col), call::green(col), call::blue(col),
-                             call::alpha(col)};
+      at(call::x_of(pos), call::y_of(pos)) = {
+          call::red(col), call::green(col), call::blue(col), call::alpha(col)};
     });
   }
 
@@ -1120,9 +1132,9 @@ struct test_renderer {
 
 TEST(SubRenderer, DrawPixels) // NOLINT
 {
-  auto r = test_renderer({{2, 3}, {6, 7}});
+  auto r = test_renderer({{0, 0}, {6, 7}});
   auto sr1 = sub_renderer(r, r.area());
-  sr1.draw_pixels(default_rect{{0, 0}, {4, 4}},
+  sr1.draw_pixels(default_rect{{0, 0}, {6, 7}},
                   [&](bounding_box auto &&b, auto &&drawer) {
                     EXPECT_THAT(call::tl_x(b), Eq(0));
                     EXPECT_THAT(call::tl_y(b), Eq(0));
@@ -1132,22 +1144,46 @@ TEST(SubRenderer, DrawPixels) // NOLINT
                   });
   EXPECT_THAT(r.failed_calls, ElementsAre());
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
-  auto &pix = r.drawn_pixels;
-  ASSERT_THAT(ssize(pix), Eq(4 * 4));
-  EXPECT_THAT(pix.at(0).red, Eq(1));
-  EXPECT_THAT(pix.at(0).green, Eq(1));
-  EXPECT_THAT(pix.at(0).blue, Eq(1));
-  EXPECT_THAT(pix.at(0).alpha, Eq(1));
-  EXPECT_THAT(pix.at(1).red, Eq(0));
-  EXPECT_THAT(pix.at(1).green, Eq(0));
-  EXPECT_THAT(pix.at(1).blue, Eq(0));
-  EXPECT_THAT(pix.at(1).alpha, Eq(0));
-  EXPECT_THAT(pix.at(4).red, Eq(0));
-  EXPECT_THAT(pix.at(4).green, Eq(0));
-  EXPECT_THAT(pix.at(4).blue, Eq(0));
-  EXPECT_THAT(pix.at(4).alpha, Eq(0));
-  FAIL() << "Add further sub-renderer here";
-  auto s2 = sr1.sub(default_rect{{1, 1}, {2, 2}});
+  ASSERT_THAT(ssize(r.drawn_pixels), Eq(6 * 7));
+  EXPECT_THAT(r.at(0, 0).red, Eq(1));
+  EXPECT_THAT(r.at(0, 0).green, Eq(1));
+  EXPECT_THAT(r.at(0, 0).blue, Eq(1));
+  EXPECT_THAT(r.at(0, 0).alpha, Eq(1));
+  EXPECT_THAT(r.at(1, 0).red, Eq(0));
+  EXPECT_THAT(r.at(1, 0).green, Eq(0));
+  EXPECT_THAT(r.at(1, 0).blue, Eq(0));
+  EXPECT_THAT(r.at(1, 0).alpha, Eq(0));
+  EXPECT_THAT(r.at(0, 1).red, Eq(0));
+  EXPECT_THAT(r.at(0, 1).green, Eq(0));
+  EXPECT_THAT(r.at(0, 1).blue, Eq(0));
+  EXPECT_THAT(r.at(0, 1).alpha, Eq(0));
+  auto s2_x = 1;
+  auto s2_y = 1;
+  auto s2 = sr1.sub(default_rect{{s2_x, s2_y}, {4, 4}});
+  s2.draw_pixels(default_rect{{0, 0}, {4, 4}},
+                 [&](bounding_box auto &&b, auto &&drawer) {
+                   EXPECT_THAT(call::tl_x(b), Eq(0));
+                   EXPECT_THAT(call::tl_y(b), Eq(0));
+                   EXPECT_THAT(call::width(b), Eq(3));
+                   EXPECT_THAT(call::height(b), Eq(3));
+                   drawer(default_pixel_coord{}, default_colour_t{2, 1, 1, 1});
+                 });
+  EXPECT_THAT(r.at(0, 0).red, Eq(1));
+  EXPECT_THAT(r.at(0, 0).green, Eq(1));
+  EXPECT_THAT(r.at(0, 0).blue, Eq(1));
+  EXPECT_THAT(r.at(0, 0).alpha, Eq(1));
+  EXPECT_THAT(r.at(1, 0).red, Eq(0));
+  EXPECT_THAT(r.at(1, 0).green, Eq(0));
+  EXPECT_THAT(r.at(1, 0).blue, Eq(0));
+  EXPECT_THAT(r.at(1, 0).alpha, Eq(0));
+  EXPECT_THAT(r.at(0, 1).red, Eq(0));
+  EXPECT_THAT(r.at(0, 1).green, Eq(0));
+  EXPECT_THAT(r.at(0, 1).blue, Eq(0));
+  EXPECT_THAT(r.at(0, 1).alpha, Eq(0));
+  EXPECT_THAT(r.at(1, 1).red, Eq(2));
+  EXPECT_THAT(r.at(1, 1).green, Eq(1));
+  EXPECT_THAT(r.at(1, 1).blue, Eq(1));
+  EXPECT_THAT(r.at(1, 1).alpha, Eq(1));
 }
 
 struct dummy_glyph {

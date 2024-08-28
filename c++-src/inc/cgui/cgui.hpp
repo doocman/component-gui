@@ -33,17 +33,17 @@ template <canvas T, bounding_box TB> class sub_renderer {
   }
 
 public:
+  constexpr sub_renderer(T &c, TB a, x_t x, y_t y)
+      : c_(std::addressof(c)), area_(a), offset_x(x), offset_y(y) {}
   constexpr sub_renderer(T &c, TB a)
-      : c_(std::addressof(c)), area_(a), offset_x(call::tl_x(area_)),
-        offset_y(call::tl_y(area_)) {}
+      : sub_renderer(c, call::move_tl_to(a, {0, 0}), call::tl_x(a),
+                     call::tl_y(a)) {}
 
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
-    // assert(call::box_includes_box(area_, dest));
+    auto relative_dest = call::box_intersection<TB2>(dest, area_);
     auto absolute_dest =
-        call::box_intersection<TB2>(absolute_area(dest), area_);
-    auto relative_dest =
-        call::nudge_left(call::nudge_up(absolute_dest, offset_y), offset_x);
+        call::nudge_right(call::nudge_down(relative_dest, offset_y), offset_x);
     return call::draw_pixels(
         *c_, absolute_dest,
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
@@ -52,12 +52,16 @@ public:
               *cb, relative_dest,
               [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
                offset_x, offset_y](pixel_coord auto &&px, colour auto &&col) {
-                std::invoke(
-                    *d,
-                    call::nudge_right(call::nudge_down(px, offset_y), offset_x),
-                    col);
+                auto absolute_pos =
+                    call::nudge_right(call::nudge_down(px, offset_y), offset_x);
+                std::invoke(*d, absolute_pos, col);
               });
         });
+  }
+
+  constexpr sub_renderer sub(bounding_box auto &&b) const {
+    return {*c_, call::move_tl_to(call::box_intersection<TB>(b, area_), {0, 0}),
+            offset_x + call::tl_x(b), offset_y + call::tl_y(b)};
   }
 };
 

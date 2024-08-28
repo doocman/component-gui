@@ -283,7 +283,7 @@ template <typename T> constexpr T red(basic_colour_t<T> const &c) noexcept {
   return c.red;
 }
 template <typename T> constexpr T &blue(basic_colour_t<T> &c) noexcept {
-  return c.red;
+  return c.blue;
 }
 template <typename T> constexpr T blue(basic_colour_t<T> const &c) noexcept {
   return c.blue;
@@ -1068,6 +1068,16 @@ constexpr void set_xx(T b, TV1 lx, TV2 rx) {
 template <typename TV1, typename TV2, mut_box_pair<TV1, TV2> T>
 constexpr void set_yy(T b, TV1 ty, TV2 by) {
   _set_xx_or_yy(b, ty, by, call::tl_y, call::br_y);
+}
+template <bounding_box TB, pixel_coord TC = default_pixel_coord>
+constexpr auto move_tl_to(TB b, TC tl) {
+  auto w = call::width(b);
+  auto h = call::height(b);
+  call::tl_x(b, call::x_of(tl));
+  call::tl_y(b, call::y_of(tl));
+  call::width(b, w);
+  call::height(b, h);
+  return b;
 }
 
 template <typename TX, mut_box_pointer<TX> T>
