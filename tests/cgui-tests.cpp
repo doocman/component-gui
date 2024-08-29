@@ -1098,6 +1098,22 @@ TYPED_TEST(BoxApiFixture, MoveTlTo) // NOLINT
 } // namespace apitests
 
 struct test_renderer {
+  struct individual_colours_t {
+    std::vector<std::uint_least8_t> red, green, blue, alpha;
+    explicit individual_colours_t(std::vector<default_colour_t> const &pix) {
+      red.reserve(size(pix));
+      green.reserve(size(pix));
+      blue.reserve(size(pix));
+      alpha.reserve(size(pix));
+      for (auto const &c : pix) {
+        red.push_back(c.red);
+        green.push_back(c.green);
+        blue.push_back(c.blue);
+        alpha.push_back(c.alpha);
+      }
+    }
+  };
+
   default_rect a_;
   std::vector<default_colour_t> drawn_pixels;
   std::vector<default_rect> failed_calls;
@@ -1128,6 +1144,10 @@ struct test_renderer {
   }
 
   default_rect area() const { return a_; }
+
+  individual_colours_t individual_colours() const {
+    return individual_colours_t(drawn_pixels);
+  }
 };
 
 TEST(SubRenderer, DrawPixels) // NOLINT
@@ -1184,6 +1204,119 @@ TEST(SubRenderer, DrawPixels) // NOLINT
   EXPECT_THAT(r.at(1, 1).green, Eq(1));
   EXPECT_THAT(r.at(1, 1).blue, Eq(1));
   EXPECT_THAT(r.at(1, 1).alpha, Eq(1));
+}
+
+TEST(SubRenderer, PartialDrawPixels) // NOLINT
+{
+  auto r = test_renderer({{0, 0}, {4, 4}});
+  auto s1 = sub_renderer(r, default_rect{{1, 2}, {3, 3}});
+  s1.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+    EXPECT_THAT(call::tl_x(b), Eq(1));
+    EXPECT_THAT(call::tl_y(b), Eq(2));
+    EXPECT_THAT(call::br_x(b), Eq(3));
+    EXPECT_THAT(call::br_y(b), Eq(3));
+    drawer(call::top_left(b), default_colour_t{1, 1, 1, 255});
+  });
+  EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
+  EXPECT_THAT(r.failed_calls, ElementsAre());
+  using namespace std::views;
+  auto ic = r.individual_colours();
+  EXPECT_THAT(ic.red, ElementsAre(    //
+                          0, 0, 0, 0, //
+                          0, 0, 0, 0, //
+                          0, 1, 0, 0, //
+                          0, 0, 0, 0  //
+                          ));
+  EXPECT_THAT(ic.green, ElementsAre(    //
+                            0, 0, 0, 0, //
+                            0, 0, 0, 0, //
+                            0, 1, 0, 0, //
+                            0, 0, 0, 0  //
+                            ));
+  EXPECT_THAT(ic.blue, ElementsAre(    //
+                           0, 0, 0, 0, //
+                           0, 0, 0, 0, //
+                           0, 1, 0, 0, //
+                           0, 0, 0, 0  //
+                           ));
+  EXPECT_THAT(ic.alpha, ElementsAre(      //
+                            0, 0, 0, 0,   //
+                            0, 0, 0, 0,   //
+                            0, 255, 0, 0, //
+                            0, 0, 0, 0    //
+                            ));
+
+  auto s2full = s1.sub(r.area());
+  s2full.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+    EXPECT_THAT(call::tl_x(b), Eq(1));
+    EXPECT_THAT(call::tl_y(b), Eq(2));
+    EXPECT_THAT(call::br_x(b), Eq(3));
+    EXPECT_THAT(call::br_y(b), Eq(3));
+    drawer(call::top_left(b), default_colour_t{2, 0, 0, 255});
+  });
+  EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
+  EXPECT_THAT(r.failed_calls, ElementsAre());
+  ic = r.individual_colours();
+  EXPECT_THAT(ic.red, ElementsAre(    //
+                          0, 0, 0, 0, //
+                          0, 0, 0, 0, //
+                          0, 2, 0, 0, //
+                          0, 0, 0, 0  //
+                          ));
+
+  auto s2xid = s2full.sub(default_rect{{1, 0}, {3, 4}});
+  s2xid.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+    EXPECT_THAT(call::tl_x(b), Eq(0));
+    EXPECT_THAT(call::tl_y(b), Eq(2));
+    EXPECT_THAT(call::br_x(b), Eq(2));
+    EXPECT_THAT(call::br_y(b), Eq(3));
+    drawer(call::top_left(b), default_colour_t{3, 0, 0, 255});
+  });
+  EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
+  EXPECT_THAT(r.failed_calls, ElementsAre());
+  ic = r.individual_colours();
+  EXPECT_THAT(ic.red, ElementsAre(    //
+                          0, 0, 0, 0, //
+                          0, 0, 0, 0, //
+                          0, 3, 0, 0, //
+                          0, 0, 0, 0  //
+                          ));
+
+  auto s3x = s2xid.sub(default_rect{{1, 0}, {3, 4}});
+  s3x.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+    EXPECT_THAT(call::tl_x(b), Eq(0));
+    EXPECT_THAT(call::tl_y(b), Eq(2));
+    EXPECT_THAT(call::br_x(b), Eq(1));
+    EXPECT_THAT(call::br_y(b), Eq(3));
+    drawer(call::top_left(b), default_colour_t{4, 0, 0, 255});
+  });
+  EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
+  EXPECT_THAT(r.failed_calls, ElementsAre());
+  ic = r.individual_colours();
+  EXPECT_THAT(ic.red, ElementsAre(    //
+                          0, 0, 0, 0, //
+                          0, 0, 0, 0, //
+                          0, 3, 4, 0, //
+                          0, 0, 0, 0  //
+                          ));
+
+  auto s4 = s2full.sub(default_rect{{2, 2}, {4, 4}});
+  s4.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+    EXPECT_THAT(call::tl_x(b), Eq(0));
+    EXPECT_THAT(call::tl_y(b), Eq(0));
+    EXPECT_THAT(call::br_x(b), Eq(1));
+    EXPECT_THAT(call::br_y(b), Eq(1));
+    drawer(call::top_left(b), default_colour_t{5, 0, 0, 255});
+  });
+  EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
+  EXPECT_THAT(r.failed_calls, ElementsAre());
+  ic = r.individual_colours();
+  EXPECT_THAT(ic.red, ElementsAre(    //
+                          0, 0, 0, 0, //
+                          0, 0, 0, 0, //
+                          0, 3, 5, 0, //
+                          0, 0, 0, 0  //
+                          ));
 }
 
 struct dummy_glyph {

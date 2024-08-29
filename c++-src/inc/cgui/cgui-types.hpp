@@ -456,7 +456,8 @@ struct dummy_pixel_drawer {
 };
 static_assert(pixel_drawer<dummy_pixel_drawer>);
 
-template <typename T, typename TCoord, typename TColour>
+template <typename T, typename TCoord = default_pixel_coord,
+          typename TColour = default_colour_t>
 concept single_pixel_draw =
     pixel_coord<TCoord> && colour<TColour> && std::invocable<TCoord, TColour>;
 
