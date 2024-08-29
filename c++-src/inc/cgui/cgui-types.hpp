@@ -446,8 +446,6 @@ concept readable_text8 = basic_readable_text<T, char>;
 template <typename>
 concept canvas = true;
 
-template <typename>
-concept text2render = true;
 template <typename T>
 concept pixel_drawer =
     std::invocable<T &&, default_pixel_coord, default_colour_t>;
@@ -982,8 +980,45 @@ struct do_from_tlbr {
     }
   }
 };
+template <typename T, typename... Ts>
+concept member_area = requires(
+    bp::as_forward<T> t, bp::as_forward<Ts>... args) { (*t).area((*args)...); };
+template <typename T, typename... Ts>
+concept static_area =
+    requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {
+      std::remove_cvref_t<T>::area((*t), (*args)...);
+    };
+template <typename T, typename... Ts>
+concept free_area = requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {
+  area((*t), (*args)...);
+};
+template <typename T, typename... Ts>
+concept extend_api_area =
+    requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {
+      extend_api_t<T>::area(*t, *args...);
+    };
 
-} // namespace impl
+template <typename T, typename... Ts>
+concept has_area = member_area<T, Ts...> || static_area<T, Ts...> ||
+                   free_area<T, Ts...> || extend_api_area<T, Ts...>;
+
+struct do_area {
+  template <typename... Ts, has_area<Ts...> T>
+  constexpr decltype(auto) operator()(T &&torg, Ts &&...args) const {
+    auto t = bp::as_forward<T>(torg);
+    if constexpr (member_area<T, Ts...>) {
+      return (*t).area(std::forward<Ts>(args)...);
+    } else if constexpr (static_area<T, Ts...>) {
+      return std::remove_cvref_t<T>::area((*t), std::forward<Ts>(args)...);
+    } else if constexpr (extend_api_area<T, Ts...>) {
+      return extend_api_t<T>::area(*t, std::forward<Ts>(args)...);
+    } else {
+      return area(*t, std::forward<Ts>(args)...);
+    }
+  }
+};
+
+}; // namespace impl
 
 inline constexpr auto render = impl::do_render;
 inline constexpr auto draw_pixels = impl::do_draw_pixels;
@@ -991,6 +1026,7 @@ inline constexpr auto center = impl::do_center{};
 inline constexpr impl::do_set_displayed set_displayed;
 inline constexpr impl::do_render_text render_text;
 inline constexpr impl::do_set_text set_text;
+inline constexpr impl::do_area area;
 
 inline constexpr auto red = [](colour auto &&c, auto &&...vs) -> auto && {
   return extend::red(std::forward<decltype(c)>(c),
@@ -1236,6 +1272,20 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 } // namespace call
 template <typename T, typename TR>
 concept has_render = call::impl::has_render<T, TR>;
+
+struct dummy_renderer {};
+static_assert(renderer<dummy_renderer>);
+
+template <typename T, typename TRen = dummy_renderer &, typename TXY = int>
+concept text2render = requires(bp::as_forward<T> t, std::string_view s,
+                               bp::as_forward<TRen> r, TXY xy) {
+  call::set_displayed(*t, s);
+  call::render_text(*t, *r, xy, xy);
+};
+template <typename>
+concept font_glyph = true;
+template <typename>
+concept font_face = true;
 
 struct position {
   long x;

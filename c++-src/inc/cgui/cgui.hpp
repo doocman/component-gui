@@ -10,8 +10,6 @@
 
 namespace cgui {
 
-struct dummy_renderer {};
-static_assert(renderer<dummy_renderer>);
 
 template <canvas T, bounding_box TB> class sub_renderer {
   T *c_;
@@ -36,6 +34,7 @@ public:
   constexpr sub_renderer(T &c, TB a, x_t x, y_t y)
       : c_(std::addressof(c)), area_(a), offset_x(x), offset_y(y) {}
   constexpr sub_renderer(T &c, TB a) : sub_renderer(c, a, 0, 0) {}
+  constexpr explicit sub_renderer(T &c) : sub_renderer(c, call::area(c)) {}
 
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
@@ -66,6 +65,11 @@ public:
         offset_x + call::tl_x(b), offset_y + call::tl_y(b)};
   }
 };
+
+template <typename T, typename TB> sub_renderer(T &, TB) -> sub_renderer<T, TB>;
+template <typename T>
+sub_renderer(T &t)
+    -> sub_renderer<T, std::remove_cvref_t<decltype(call::area(t))>>;
 
 template <typename T, typename TRender>
 concept widget_display = has_render<T, TRender>;
@@ -155,6 +159,13 @@ public:
   void set_displayed(int w, int h, readable_textc auto &&s) {
     call::set_text(t_, std::forward<decltype(s)>(s), w, h);
   }
+};
+
+template <font_face TFont> class cached_text_renderer {
+public:
+  constexpr explicit cached_text_renderer(TFont) {}
+
+  constexpr void set_displayed(readable_textc auto &&) {}
 };
 
 template <text2render Txt, bounding_box TArea = default_rect>

@@ -1320,14 +1320,37 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
 }
 
 struct dummy_glyph {
-  default_colour_t colour;
   int length;
+  std::uint_least8_t alpha;
 
   void render(auto &&renderer) {}
 };
 struct dummy_font_face {
   int faulty_glyphs{};
+
+  expected<dummy_glyph, bool> glyph(char c) {
+    switch(c) {
+    case '0':
+      return dummy_glyph{1, 255};
+    case '1':
+      return dummy_glyph{2, 127};
+    case '-':
+      return dummy_glyph{1, 63};
+    default:
+      ++faulty_glyphs;
+      return unexpected(false);
+    }
+  }
 };
 
-// TEST()
+TEST(TextRender, SmallString) // NOLINT
+{
+  using t2r_t = cached_text_renderer<dummy_font_face>;
+  auto t2r = t2r_t(dummy_font_face{});
+  call::set_displayed(t2r, "10");
+  auto r = test_renderer({0, 0, 4, 4});
+  auto sr = sub_renderer(r);
+  call::render_text(t2r, sr, 4, 4);
+
+}
 } // namespace cgui::tests
