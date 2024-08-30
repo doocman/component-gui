@@ -359,6 +359,9 @@ public:
   [[nodiscard]] constexpr bool has_value() const noexcept {
     return data_.has_value();
   }
+  [[nodiscard]] constexpr explicit operator bool() const noexcept {
+    return has_value();
+  }
   template <typename TRet = TExp> [[nodiscard]] constexpr TRet &operator*() & {
     return member_t::exp(data_);
   }
@@ -523,4 +526,3 @@ public:
 } // namespace cgui::bp
 
 #endif
-

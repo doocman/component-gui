@@ -273,8 +273,16 @@ template <typename T> constexpr int &y_of(basic_default_pixel_coord<T> &c) {
 template <typename T> struct basic_colour_t {
   T red, green, blue, alpha;
 };
+template <typename T> struct basic_rgb_t {
+  T r,g,b;
+  static constexpr auto&& red(auto&& c) { return std::forward<decltype(c)>(c).r; }
+  static constexpr auto&& green(auto&& c) { return std::forward<decltype(c)>(c).r; }
+  static constexpr auto&& blue(auto&& c) { return std::forward<decltype(c)>(c).r; }
+  static constexpr T alpha(auto&& c) { return std::numeric_limits<T>::max(); }
+};
 
 using default_colour_t = basic_colour_t<std::uint_least8_t>;
+using default_rgb_t = basic_rgb_t<std::uint_least8_t>;
 
 template <typename T> constexpr T &red(basic_colour_t<T> &c) noexcept {
   return c.red;
@@ -724,11 +732,15 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b,
 }
 
 namespace impl {
+// Namespace poisons to not look in call-namespace for these functions
 [[maybe_unused]] inline void render() {}
 [[maybe_unused]] inline void draw_pixels() {}
 [[maybe_unused]] inline void set_displayed() {}
 [[maybe_unused]] inline void set_text() {}
 [[maybe_unused]] inline void render_text() {}
+[[maybe_unused]] inline void area() {}
+[[maybe_unused]] inline void glyph() {}
+[[maybe_unused]] inline void text_colour() {}
 
 template <typename T, typename TR, typename... Ts>
 concept member_render = requires(bp::as_forward<T> t, TR &r, Ts &&...args) {
@@ -1018,6 +1030,92 @@ struct do_area {
   }
 };
 
+template <typename T, typename TChar = char>
+concept member_glyph = requires(bp::as_forward<T> t, TChar c) {
+  (*t).glyph(c);
+};
+template <typename T, typename TChar = char>
+concept static_glyph = requires(bp::as_forward<T> t, TChar c) {
+  std::remove_cvref_t<T>::glyph(*t, c);
+};
+template <typename T, typename TChar = char>
+concept free_glyph = requires(bp::as_forward<T> t, TChar c) {
+  glyph(*t, c);
+};
+template <typename T, typename TChar = char>
+concept has_glyph = member_glyph<T, TChar> || free_glyph<T, TChar>;
+
+struct do_glyph {
+  template <typename TChar, has_glyph<TChar> T>
+  constexpr decltype(auto) operator()(T&& torg, TChar c) const {
+    auto t = bp::as_forward<T>(torg);
+    if constexpr(member_glyph<T, TChar>) {
+      return (*t).glyph(c);
+    } else if constexpr(static_glyph<T, TChar>) {
+      return std::remove_cvref_t<T>::glyph(*t, c);
+    } else {
+      static_assert(free_glyph<T, TChar>);
+      return glyph(*t, c);
+    }
+  }
+};
+
+template <typename T, typename... Ts>
+concept member_text_colour = requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {
+  (*t).text_colour(*args...);
+};
+template <typename T, typename... Ts>
+concept static_text_colour = requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {
+  std::remove_cvref_t<T>::text_colour(*t, *args...);
+};
+template <typename T, typename... Ts>
+concept free_text_colour = requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {
+  std::remove_cvref_t<T>::text_colour(*t, *args...);
+};
+template <typename T, typename... Ts>
+concept has_text_colour = member_text_colour<T, Ts...> || static_text_colour<T, Ts...> || free_text_colour<T, Ts...>;
+
+template <typename T, typename TOp, typename TVal>
+concept has_assignable_get = requires(bp::as_forward<T> t, bp::as_forward<TOp> op) {
+  {(*op)(*t)} -> std::assignable_from<TVal>;
+};
+
+struct do_text_colour_get {
+  constexpr decltype(auto) operator()(has_text_colour auto&& torg) const {
+    using type = decltype(torg);
+    auto t = bp::as_forward<type>(torg);
+    if constexpr(member_text_colour<type>) {
+      return (*t).text_colour();
+    } else if constexpr(static_text_colour<type>) {
+      return std::remove_cvref_t<type>::text_colour(*t);
+    } else {
+      static_assert(free_text_colour<type>);
+      return text_colour(*t);
+    }
+  }
+};
+
+struct do_text_colour : private do_text_colour_get {
+  using do_text_colour_get::operator();
+  template <typename T, colour TC>
+    requires(has_text_colour<T, TC> || has_assignable_get<T, do_text_colour_get, TC>)
+  constexpr decltype(auto) operator()(T&& torg, TC&& vorg) const {
+    auto t = bp::as_forward<T>(torg);
+    auto v = bp::as_forward<TC>(vorg);
+    if constexpr(member_text_colour<T, TC>) {
+      return (*t).text_colour(*v);
+    } else if constexpr(static_text_colour<T, TC>) {
+      return std::remove_cvref_t<T>::text_colour(*t, *v);
+    } else if constexpr(free_text_colour<T, TC>) {
+      return text_colour(*t, *v);
+    } else {
+      static_assert(has_assignable_get<T, do_text_colour_get, TC>);
+      (*this)(*t) = *v;
+      return;
+    }
+  }
+};
+
 }; // namespace impl
 
 inline constexpr auto render = impl::do_render;
@@ -1027,6 +1125,8 @@ inline constexpr impl::do_set_displayed set_displayed;
 inline constexpr impl::do_render_text render_text;
 inline constexpr impl::do_set_text set_text;
 inline constexpr impl::do_area area;
+inline constexpr impl::do_glyph glyph;
+inline constexpr impl::do_text_colour text_colour;
 
 inline constexpr auto red = [](colour auto &&c, auto &&...vs) -> auto && {
   return extend::red(std::forward<decltype(c)>(c),

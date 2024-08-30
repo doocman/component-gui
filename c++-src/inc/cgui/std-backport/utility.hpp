@@ -22,6 +22,7 @@ struct as_forward {
   T&& val_;
 
   constexpr explicit(false) as_forward(T&& v) : val_(std::forward<T>(v)) {}
+  constexpr explicit as_forward(T& v) requires(!std::is_lvalue_reference_v<T>) : val_(std::forward<T>(v)) {}
 
   constexpr T&& value() const noexcept {
     return std::forward<T>(val_);

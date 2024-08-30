@@ -162,10 +162,32 @@ public:
 };
 
 template <font_face TFont> class cached_text_renderer {
-public:
-  constexpr explicit cached_text_renderer(TFont) {}
+  TFont f_;
+  default_colour_t colour_{};
 
-  constexpr void set_displayed(readable_textc auto &&) {}
+  std::string text_;
+
+public:
+  using glyph_t = decltype(call::glyph(std::declval<TFont&>(), 'a').value());
+
+  constexpr explicit cached_text_renderer(TFont&& f) : f_(std::move(f)) {}
+  constexpr explicit cached_text_renderer(TFont const& f) : f_(f) {}
+
+  constexpr void set_displayed(readable_textc auto && t) {
+    //text_.assign(std::ranges::begin(t), std::ranges::end(t));
+    text_.assign(t);
+  }
+  constexpr void render_text(auto&& r, int w, int h) /*requires(glyph render...)*/ {
+    unused(w, h);
+    int penx{};
+    int peny{};
+    for(auto const& c : text_) {
+      if(auto gexp = call::glyph(f_, c)) {
+        call::render(*gexp, r);
+      }
+    }
+  }
+  static constexpr auto&& text_colour(bp::cvref_type<cached_text_renderer<TFont>> auto&& r) { return std::forward<decltype(r)>(r).colour_; }
 };
 
 template <text2render Txt, bounding_box TArea = default_rect>

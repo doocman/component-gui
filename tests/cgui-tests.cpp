@@ -1329,7 +1329,7 @@ struct dummy_font_face {
   int faulty_glyphs{};
 
   expected<dummy_glyph, bool> glyph(char c) {
-    switch(c) {
+    switch (c) {
     case '0':
       return dummy_glyph{1, 255};
     case '1':
@@ -1348,9 +1348,15 @@ TEST(TextRender, SmallString) // NOLINT
   using t2r_t = cached_text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
   call::set_displayed(t2r, "10");
-  auto r = test_renderer({0, 0, 4, 4});
+  auto r = test_renderer({0, 0, 5, 5});
   auto sr = sub_renderer(r);
+  call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render_text(t2r, sr, 4, 4);
-
+  auto ic = r.individual_colours();
+  EXPECT_THAT(ic.red, ElementsAre(0, 255, 255, 255, 0, //
+                                  0, 0, 0, 0, 0,       //
+                                  0, 0, 0, 0, 0,       //
+                                  0, 0, 0, 0, 0        //
+                                  ));
 }
 } // namespace cgui::tests
