@@ -530,10 +530,11 @@ template <bp::cvref_type<tlbr_mut> T> constexpr auto &&bottom_right(T &&t) {
 struct tlbr_static_set {
   set_pix_coord tl;
   mut_pix_coord br;
-  static constexpr auto &&top_left(auto &&t) {
+  static constexpr auto &&top_left(bp::cvref_type<tlbr_static_set> auto &&t) {
     return std::forward<decltype(t)>(t).tl;
   }
-  static constexpr auto &&bottom_right(auto &&t) {
+  static constexpr auto &&
+  bottom_right(bp::cvref_type<tlbr_static_set> auto &&t) {
     return std::forward<decltype(t)>(t).br;
   }
 };
@@ -731,6 +732,9 @@ using RectApiTypes = concat_types_t<::testing::Types<tlbr_mut, tlbr_static_set>,
 static_assert(bounding_box_coord<tlbr_static_set>);
 static_assert(mutable_bounding_box<tlbr_mut, int>);
 static_assert(mutable_bounding_box<tlbr_static_set, int>);
+
+static_assert(call::has_assignable_get<xywh_bbox<access_type::extend_mut> &,
+                                       call::impl::_do_width, int>);
 
 TYPED_TEST_SUITE(PixCoordFixture, PixCoordTypes);
 TYPED_TEST_SUITE(BoxApiFixture, RectApiTypes);
