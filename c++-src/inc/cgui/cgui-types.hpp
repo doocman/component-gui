@@ -502,7 +502,7 @@ inline constexpr auto y_of = [](auto &&t, auto &&...vals) {
   }                                                                            \
   ;
 
-#define CGUI_CALL_MEMBER(NAME, CONCEPT, MUTCONCEPT)                            \
+#define CGUI_CALL_BBOX_MEMBER(NAME, CONCEPT, MUTCONCEPT)                       \
   static constexpr decltype(auto) _fallback(auto const &b);                    \
   static constexpr decltype(auto) _fallback_mut(auto &&b, auto &&v);           \
   static constexpr decltype(auto) call(CONCEPT auto &&b) {                     \
@@ -595,28 +595,28 @@ template <typename T, typename TVal>
 concept has_any_mut_br = has_any_mut_brx<T, TVal> && has_any_mut_bry<T, TVal>;
 
 struct tl_x_t {
-  CGUI_CALL_MEMBER(tl_x, has_any_tlx, has_any_mut_tlx)
+  CGUI_CALL_BBOX_MEMBER(tl_x, has_any_tlx, has_any_mut_tlx)
 };
 struct tl_y_t {
-  CGUI_CALL_MEMBER(tl_y, has_any_tly, has_any_mut_tly)
+  CGUI_CALL_BBOX_MEMBER(tl_y, has_any_tly, has_any_mut_tly)
 };
 struct br_x_t {
-  CGUI_CALL_MEMBER(br_x, has_any_brx, has_any_mut_brx)
+  CGUI_CALL_BBOX_MEMBER(br_x, has_any_brx, has_any_mut_brx)
 };
 struct br_y_t {
-  CGUI_CALL_MEMBER(br_y, has_any_bry, has_any_mut_bry)
+  CGUI_CALL_BBOX_MEMBER(br_y, has_any_bry, has_any_mut_bry)
 };
 struct width_t {
-  CGUI_CALL_MEMBER(width, has_any_brx, has_any_mut_brx)
+  CGUI_CALL_BBOX_MEMBER(width, has_any_brx, has_any_mut_brx)
 };
 struct height_t {
-  CGUI_CALL_MEMBER(height, has_any_bry, has_any_mut_bry)
+  CGUI_CALL_BBOX_MEMBER(height, has_any_bry, has_any_mut_bry)
 };
 struct top_left_t {
-  CGUI_CALL_MEMBER(top_left, has_any_tl, has_any_mut_tl)
+  CGUI_CALL_BBOX_MEMBER(top_left, has_any_tl, has_any_mut_tl)
 };
 struct bottom_right_t {
-  CGUI_CALL_MEMBER(bottom_right, has_any_br, has_any_mut_br)
+  CGUI_CALL_BBOX_MEMBER(bottom_right, has_any_br, has_any_mut_br)
 };
 
 constexpr decltype(auto) tl_x_t::_fallback(auto const &b) {
@@ -747,6 +747,11 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
   y_of(val, y_of(*v));
   return val;
 }
+
+CGUI_CALL_CONCEPT(draw_alpha);
+CGUI_CALL_CONCEPT(advance_x);
+CGUI_CALL_CONCEPT(advance_y);
+
 } // namespace impl
 inline constexpr impl::tl_x_t tl_x;
 inline constexpr impl::tl_y_t tl_y;
@@ -756,7 +761,17 @@ inline constexpr impl::width_t width;
 inline constexpr impl::height_t height;
 inline constexpr impl::top_left_t top_left;
 inline constexpr impl::bottom_right_t bottom_right;
+
+inline constexpr impl::_do_draw_alpha draw_alpha;
+inline constexpr impl::_do_advance_x advance_x;
+inline constexpr impl::_do_advance_y advance_y;
 } // namespace call
+
+constexpr auto multiply_alpha(colour auto c, std::uint_least8_t alpha) {
+  extend::alpha(
+      c, static_cast<std::uint_least8_t>((extend::alpha(c) * alpha) / 255));
+  return c;
+}
 
 template <typename T>
 concept bounding_box_xxyy = requires(T const &t) {
@@ -1048,19 +1063,19 @@ struct do_set_text {
 
 template <typename T, typename TC>
 concept has_from_xyxy = requires(bp::as_forward<TC> v) {
-  { T::from_xyxy(*v, *v, *v, *v) } -> bounding_box;
+  { std::remove_cvref_t<T>::from_xyxy(*v, *v, *v, *v) } -> bounding_box;
 };
 template <typename T, typename TC>
 concept has_from_xywh = requires(bp::as_forward<TC> v) {
-  { T::from_xywh(*v, *v, *v, *v) } -> bounding_box;
+  { std::remove_cvref_t<T>::from_xywh(*v, *v, *v, *v) } -> bounding_box;
 };
 template <typename T, typename TC>
 concept has_from_tlbr_ils = requires(bp::as_forward<TC> v) {
-  { T::from_tlbr({*v, *v}, {*v, *v}) } -> bounding_box;
+  { std::remove_cvref_t<T>::from_tlbr({*v, *v}, {*v, *v}) } -> bounding_box;
 };
 template <typename T, typename TC>
 concept has_from_tlbr = requires(bp::as_forward<TC> v) {
-  { T::from_tlbr(*v, *v) } -> bounding_box;
+  { std::remove_cvref_t<T>::from_tlbr(*v, *v) } -> bounding_box;
 };
 template <typename T, typename TC>
 concept has_bbox_init =
@@ -1072,16 +1087,17 @@ struct do_from_xyxy {
   template <typename TXY, has_bbox_init<TXY> T>
   constexpr bounding_box auto operator()(std::type_identity<T> const &, TXY xl,
                                          TXY yt, TXY xr, TXY yb) const {
+    using raw_t = std::remove_cvref_t<T>;
     if constexpr (has_from_xyxy<T, TXY>) {
-      return T::from_xyxy(std::move(xl), std::move(yt), std::move(xr),
-                          std::move(yb));
+      return raw_t::from_xyxy(std::move(xl), std::move(yt), std::move(xr),
+                              std::move(yb));
     } else if constexpr (has_from_xywh<T, TXY>) {
-      return T::from_xywh(std::move(xl), std::move(yt), xr - xl, yb - yt);
+      return raw_t::from_xywh(std::move(xl), std::move(yt), xr - xl, yb - yt);
     } else if constexpr (has_from_tlbr_ils<T, TXY>) {
-      return T::from_tlbr({std::move(xl), std::move(yt)},
-                          {std::move(xr), std::move(yb)});
+      return raw_t::from_tlbr({std::move(xl), std::move(yt)},
+                              {std::move(xr), std::move(yb)});
     } else {
-      return T::from_tlbr(
+      return raw_t::from_tlbr(
           basic_default_pixel_coord<TXY>(std::move(xl), std::move(yt)),
           basic_default_pixel_coord<TXY>(std::move(xr), std::move(yb)));
     }
@@ -1669,6 +1685,6 @@ constexpr default_colour_t &&to_default_colour(default_colour_t &&c) {
 #undef CGUI_EXTRA_PARAMS
 #undef CGUI_EXTRA_ARGS
 #undef CGUI_EXTRA_ARGS_COMMA
-#undef CGUI_CALL_MEMBER
+#undef CGUI_CALL_BBOX_MEMBER
 
 #endif // COMPONENT_GUI_CGUI_TYPES_HPP

@@ -1,15 +1,17 @@
 #ifndef COMPONENT_GUI_CGUI_HPP
 #define COMPONENT_GUI_CGUI_HPP
 
+#include <memory>
 #include <tuple>
 #include <type_traits>
+#include <variant>
+#include <vector>
 
 #include <cgui/cgui-types.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/stl_extend.hpp>
 
 namespace cgui {
-
 
 template <canvas T, bounding_box TB> class sub_renderer {
   T *c_;
@@ -18,6 +20,7 @@ template <canvas T, bounding_box TB> class sub_renderer {
   using y_t = decltype(call::tl_y(area_));
   x_t offset_x{};
   y_t offset_y{};
+  default_colour_t set_colour_{};
 
   constexpr auto relative_area() const {
     return call::box_from_xywh<TB>(x_t{}, y_t{}, call::width(area_),
@@ -31,9 +34,10 @@ template <canvas T, bounding_box TB> class sub_renderer {
   }
 
 public:
-  constexpr sub_renderer(T &c, TB a, x_t x, y_t y)
-      : c_(std::addressof(c)), area_(a), offset_x(x), offset_y(y) {}
-  constexpr sub_renderer(T &c, TB a) : sub_renderer(c, a, 0, 0) {}
+  constexpr sub_renderer(T &c, TB a, x_t x, y_t y, default_colour_t sc)
+      : c_(std::addressof(c)), area_(a), offset_x(x), offset_y(y),
+        set_colour_(sc) {}
+  constexpr sub_renderer(T &c, TB a) : sub_renderer(c, a, 0, 0, {}) {}
   constexpr explicit sub_renderer(T &c) : sub_renderer(c, call::area(c)) {}
 
   template <bounding_box TB2, pixel_draw_callback TCB>
@@ -56,14 +60,36 @@ public:
         });
   }
 
-  constexpr sub_renderer sub(bounding_box auto &&b) const {
+  void draw_alpha(bounding_box auto &&b, auto &&cb) {
+    draw_pixels(std::forward<decltype(b)>(b),
+                [this, &cb](auto &&bbox, auto &&drawer) {
+                  cb(bbox, [this, &drawer](auto &&point, auto &&alpha) {
+                    drawer(point, multiply_alpha(set_colour_, alpha));
+                  });
+                });
+  }
+
+  constexpr sub_renderer sub(bounding_box auto &&b,
+                             default_colour_t col) const {
     return {
         *c_,
         call::nudge_up(call::nudge_left(call::box_intersection<TB>(b, area_),
                                         call::tl_x(b)),
                        call::tl_y(b)),
-        offset_x + call::tl_x(b), offset_y + call::tl_y(b)};
+        offset_x + call::tl_x(b), offset_y + call::tl_y(b), col};
   }
+
+  constexpr sub_renderer sub(bounding_box auto &&b) const {
+    return sub(b, set_colour_);
+  }
+
+  constexpr sub_renderer with(default_colour_t c) {
+    auto res = *this;
+    res.set_colour_ = c;
+    return res;
+  }
+
+  constexpr TB const &area() const { return area_; }
 };
 
 template <typename T, typename TB> sub_renderer(T &, TB) -> sub_renderer<T, TB>;
@@ -163,31 +189,67 @@ public:
 
 template <font_face TFont> class cached_text_renderer {
   TFont f_;
+  using glyph_t = std::remove_cvref_t<
+      decltype(call::glyph(std::declval<TFont &>(), 'a').value())>;
+
   default_colour_t colour_{};
+
+  struct glyph_entry {
+    glyph_t g;
+  };
+  struct newline_entry {};
+
+  using token_t = std::variant<newline_entry, glyph_entry>;
+  std::vector<token_t> tokens_;
+
+  int line_length_{};
 
   std::string text_;
 
 public:
-  using glyph_t = decltype(call::glyph(std::declval<TFont&>(), 'a').value());
+  constexpr explicit cached_text_renderer(TFont &&f) : f_(std::move(f)) {}
+  constexpr explicit cached_text_renderer(TFont const &f) : f_(f) {}
 
-  constexpr explicit cached_text_renderer(TFont&& f) : f_(std::move(f)) {}
-  constexpr explicit cached_text_renderer(TFont const& f) : f_(f) {}
-
-  constexpr void set_displayed(readable_textc auto && t) {
-    //text_.assign(std::ranges::begin(t), std::ranges::end(t));
-    text_.assign(t);
-  }
-  constexpr void render_text(auto&& r, int w, int h) /*requires(glyph render...)*/ {
-    unused(w, h);
-    int penx{};
-    int peny{};
-    for(auto const& c : text_) {
-      if(auto gexp = call::glyph(f_, c)) {
-        call::render(*gexp, r);
+  constexpr void set_displayed(std::string_view t) {
+    tokens_.clear();
+    line_length_ = 0;
+    tokens_.reserve(std::ranges::ssize(t) +
+                    1); // This may be slightly less than actual used depending
+                        // on line breaks.
+    for (auto const &c : t) {
+      if (auto gexp = call::glyph(f_, c)) {
+        tokens_.emplace_back(glyph_entry{std::move(*gexp)});
+        auto &last_tok = std::get<glyph_entry>(tokens_.back());
+        line_length_ += call::advance_x(last_tok.g);
       }
     }
   }
-  static constexpr auto&& text_colour(bp::cvref_type<cached_text_renderer<TFont>> auto&& r) { return std::forward<decltype(r)>(r).colour_; }
+  constexpr void render_text(auto &&rorg, int w,
+                             int h) /*requires(glyph render...)*/ {
+    unused(w, h);
+    int penx{};
+    int peny{};
+    auto x = (w - line_length_) / 2;
+    auto area = call::box_from_xywh<default_rect>(static_cast<int>(x), int{},
+                                                  line_length_, h);
+    call::trim_from_above(&area, h / 2);
+    for (auto r = rorg.with(colour_); auto const &t : tokens_) {
+      std::visit(
+          [r = rorg.with(colour_), &area]<typename T>(T const &tok) {
+            if constexpr (std::is_same_v<T, glyph_entry>) {
+              call::render(tok.g, r.sub(area));
+              call::trim_from_left(&area, call::advance_x(tok.g));
+              call::trim_from_above(&area, call::advance_y(tok.g));
+            }
+          },
+          t);
+    }
+  }
+  constexpr auto const &font() const { return f_; }
+  static constexpr auto &&
+  text_colour(bp::cvref_type<cached_text_renderer<TFont>> auto &&r) {
+    return std::forward<decltype(r)>(r).colour_;
+  }
 };
 
 template <text2render Txt, bounding_box TArea = default_rect>
