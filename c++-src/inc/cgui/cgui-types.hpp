@@ -279,7 +279,7 @@ template <typename T> struct basic_rgb_t {
   static constexpr auto &&blue(auto &&c) {
     return std::forward<decltype(c)>(c).r;
   }
-  static constexpr T alpha(auto &&c) { return std::numeric_limits<T>::max(); }
+  static constexpr T alpha(auto &&) { return std::numeric_limits<T>::max(); }
 };
 
 using default_colour_t = basic_colour_t<std::uint_least8_t>;
@@ -751,6 +751,8 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
 CGUI_CALL_CONCEPT(draw_alpha);
 CGUI_CALL_CONCEPT(advance_x);
 CGUI_CALL_CONCEPT(advance_y);
+CGUI_CALL_CONCEPT(pixel_area);
+CGUI_CALL_CONCEPT(full_height);
 
 } // namespace impl
 inline constexpr impl::tl_x_t tl_x;
@@ -765,6 +767,8 @@ inline constexpr impl::bottom_right_t bottom_right;
 inline constexpr impl::_do_draw_alpha draw_alpha;
 inline constexpr impl::_do_advance_x advance_x;
 inline constexpr impl::_do_advance_y advance_y;
+inline constexpr impl::_do_pixel_area pixel_area;
+inline constexpr impl::_do_full_height full_height;
 } // namespace call
 
 constexpr auto multiply_alpha(colour auto c, std::uint_least8_t alpha) {

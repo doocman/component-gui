@@ -1,6 +1,7 @@
 #ifndef COMPONENT_GUI_CGUI_HPP
 #define COMPONENT_GUI_CGUI_HPP
 
+#include <algorithm>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -197,12 +198,14 @@ template <font_face TFont> class cached_text_renderer {
   struct glyph_entry {
     glyph_t g;
   };
-  struct newline_entry {};
+  struct newline_entry {
+    int length{};
+  };
 
   using token_t = std::variant<newline_entry, glyph_entry>;
   std::vector<token_t> tokens_;
 
-  int line_length_{};
+  int line_count_{};
 
   std::string text_;
 
@@ -210,36 +213,92 @@ public:
   constexpr explicit cached_text_renderer(TFont &&f) : f_(std::move(f)) {}
   constexpr explicit cached_text_renderer(TFont const &f) : f_(f) {}
 
-  constexpr void set_displayed(std::string_view t) {
+  constexpr void set_displayed(std::string_view t, int w, int h) {
+    unused(h);
     tokens_.clear();
-    line_length_ = 0;
+    line_count_ = 0;
+    if(size(t) == 0) { return; }
     tokens_.reserve(std::ranges::ssize(t) +
                     1); // This may be slightly less than actual used depending
                         // on line breaks.
+    std::size_t cur_line_index{};
+    auto current_line = [this, &cur_line_index] () -> newline_entry& {
+      assert(cur_line_index < size(tokens_));
+      auto& val = tokens_[cur_line_index];
+      assert(std::holds_alternative<newline_entry>(val));
+      return std::get<newline_entry>(val);
+    };
+    auto set_line = [this, &cur_line_index] (auto pos) -> newline_entry& {
+      assert(pos < size(tokens_));
+      cur_line_index = pos;
+      return tokens_[pos].template emplace<newline_entry>();
+    };
+    auto add_line = [this, &cur_line_index] () -> newline_entry& {
+      cur_line_index = size(tokens_);
+      ++line_count_;
+      return std::get<newline_entry>(tokens_.emplace_back(std::in_place_type<newline_entry>));
+    };
+    add_line();
+    std::size_t last_ws{};
+    int last_ws_length{};
     for (auto const &c : t) {
       if (auto gexp = call::glyph(f_, c)) {
-        tokens_.emplace_back(glyph_entry{std::move(*gexp)});
-        auto &last_tok = std::get<glyph_entry>(tokens_.back());
-        line_length_ += call::advance_x(last_tok.g);
+        auto gbox = call::pixel_area(*gexp);
+        auto gl_adv = call::advance_x(*gexp);
+        using int_t = std::common_type_t<decltype(call::width(gbox)), decltype(gl_adv)>;
+        auto gl_w = std::max<int_t>(call::width(gbox), gl_adv);
+        bool add_token = true;
+        if(current_line().length + gl_w > w
+            ) {
+          if(c == ' ') {
+            add_line();
+            add_token = false;
+          } else {
+            assert(last_ws != 0);
+            auto length_left = current_line().length - last_ws_length;
+            current_line().length = last_ws_length;
+            set_line(last_ws).length = length_left;
+            //add_line(begin(tokens_) + last_ws);
+          }
+          last_ws = 0;
+        }
+        if (add_token) {
+          if(c == ' ') {
+            last_ws = size(tokens_);
+            last_ws_length = current_line().length;
+          }
+          tokens_.emplace_back(glyph_entry{std::move(*gexp)});
+          auto &last_tok = std::get<glyph_entry>(tokens_.back());
+          current_line().length += call::advance_x(last_tok.g);
+        }
       }
     }
   }
   constexpr void render_text(auto &&rorg, int w,
                              int h) /*requires(glyph render...)*/ {
-    unused(w, h);
-    int penx{};
-    int peny{};
-    auto x = (w - line_length_) / 2;
-    auto area = call::box_from_xywh<default_rect>(static_cast<int>(x), int{},
-                                                  line_length_, h);
-    call::trim_from_above(&area, h / 2);
-    for (auto r = rorg.with(colour_); auto const &t : tokens_) {
+    auto r = rorg.with(colour_);
+    // auto tl_y = (h - call::full_height(f_) * line_count_) / 2;
+    CGUI_DEBUG_ONLY(bool _area_initialised{};)
+    auto do_new_area = [w, h, fh = call::full_height(f_), count = line_count_] (
+                           newline_entry nl
+                           ) mutable {
+      auto tl_y = (h - fh * count) / 2;
+      count -= 2;
+      auto x = (w - nl.length) / 2;
+      return call::box_from_xywh<default_rect>(x, tl_y, nl.length, fh);
+    };
+    decltype(do_new_area(newline_entry{})) area;
+    for ( auto const &t : tokens_) {
       std::visit(
-          [r = rorg.with(colour_), &area]<typename T>(T const &tok) {
+          [r = rorg.with(colour_), &area, &do_new_area CGUI_DEBUG_ONLY(, &_area_initialised)]<typename T>(T const &tok) {
             if constexpr (std::is_same_v<T, glyph_entry>) {
+              assert(_area_initialised);
               call::render(tok.g, r.sub(area));
               call::trim_from_left(&area, call::advance_x(tok.g));
               call::trim_from_above(&area, call::advance_y(tok.g));
+            } else if constexpr(std::is_same_v<T, newline_entry>) {
+              area = do_new_area(tok);
+              CGUI_DEBUG_ONLY(_area_initialised = true;)
             }
           },
           t);

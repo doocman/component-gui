@@ -145,6 +145,12 @@ public:
   constexpr FT_Glyph handle() const noexcept { return glyph(); }
 };
 
+constexpr FT_BBox pixel_area(ft_font_glyph const& g) noexcept {
+  FT_BBox b;
+  FT_Glyph_Get_CBox(g.handle(), ft_glyph_bbox_pixels, &b);
+  return b;
+}
+
 class ft_font_face {
 public:
   using point_t = font_point<std::ratio<1, 64>, FT_F26Dot6>;
@@ -263,6 +269,10 @@ public:
       std::get<render_box>(last_rb).line_width = string_length;
       //bbox_ = compute_bbox();
     }
+  }
+
+  [[nodiscard]] constexpr int full_height() const noexcept {
+    return (handle()->ascender + handle()->descender) >> 6;
   }
 
   void render_text(renderer auto &&ren, int width, int height) {

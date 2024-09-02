@@ -7,6 +7,11 @@
 
 namespace cgui {
 constexpr void unused(auto&&...) {}
+#ifndef NDEBUG
+#define CGUI_DEBUG_ONLY(...) __VA_ARGS__
+#else
+#define CGUI_DEBUG_ONLY(...)
+#endif
 }
 
 #endif

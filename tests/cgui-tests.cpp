@@ -1343,6 +1343,7 @@ struct dummy_glyph {
 
   constexpr std::uint_least8_t advance_x() const { return length; }
   static constexpr std::uint_least8_t advance_y() { return {}; }
+  constexpr default_rect pixel_area() const { return {{0, 0}, {length, 1}}; }
 };
 struct dummy_font_face {
   int faulty_glyphs{};
@@ -1362,13 +1363,16 @@ struct dummy_font_face {
       return unexpected(false);
     }
   }
+  constexpr int full_height() const {
+    return 1;
+  }
 };
 
 TEST(TextRender, PerfectWidthString) // NOLINT
 {
   using t2r_t = cached_text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
-  call::set_displayed(t2r, "1 0");
+  call::set_displayed(t2r, "1 0", 4, 1);
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
@@ -1390,9 +1394,10 @@ TEST(TextRender, CenterAligned) // NOLINT
   using t2r_t = cached_text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
 
-  call::set_displayed(t2r, "1 0");
   auto r = test_renderer({0, 0, 6, 3});
   auto sr = sub_renderer(r);
+  call::set_displayed(t2r, "1 0", call::width(r.area()),
+                      call::height(r.area()));
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
@@ -1412,15 +1417,46 @@ TEST(TextRender, CenterAligned) // NOLINT
   EXPECT_THAT(ic.green, Each(Eq(0)));
 }
 
-TEST(TextRender, MultiLineSpace) // NOLINT
+TEST(TextRender, TwoLinesSpace) // NOLINT
+{
+  using t2r_t = cached_text_renderer<dummy_font_face>;
+  auto t2r = t2r_t(dummy_font_face{});
+
+  auto r = test_renderer({0, 0, 4, 2});
+  auto sr = sub_renderer(r);
+  call::set_displayed(t2r, "1 1", call::width(r.area()),
+                      call::height(r.area()));
+  call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
+  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  EXPECT_THAT(r.failed_calls, IsEmpty());
+  EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
+  EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
+  auto ic = r.individual_colours();
+  EXPECT_THAT(ic.red, ElementsAre(          //
+                          0, 255, 255, AnyOf(Eq(0), Eq(255)), //
+                          0, 255, 255, 0    //
+                          ));
+  EXPECT_THAT(ic.alpha, ElementsAre(        //
+                            0, 127, 127, 0, //
+                            0, 127, 127, 0  //
+                            ));
+  EXPECT_THAT(ic.blue, Each(Eq(0)));
+  EXPECT_THAT(ic.green, Each(Eq(0)));
+}
+TEST(TextRender, TwoLinesDash) // NOLINT
 {
   FAIL() << "Not yet implemented";
 }
-TEST(TextRender, MultiLineDash) // NOLINT
+TEST(TextRender, ThreeLines) // NOLINT
 {
   FAIL() << "Not yet implemented";
 }
-TEST(TextRender, CenterWithAscendAndDescend) // NOLINT
+TEST(TextRender,
+     CenterWithAscendAndDescend) // NOLINT
+{
+  FAIL() << "Not yet implemented";
+}
+TEST(TextRender, ManualNewLine) // NOLINT
 {
   FAIL() << "Not yet implemented";
 }
