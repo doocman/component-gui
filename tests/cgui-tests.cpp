@@ -1337,11 +1337,9 @@ struct dummy_glyph {
     call::draw_alpha(
         renderer, default_rect{0, 0, length, height()},
         [alpha = alpha](bounding_box auto &&bbox, auto &&drawer) {
-          if (call::height(bbox) == 1) {
-            for (auto i = call::tl_x(bbox); i < call::br_x(bbox); ++i) {
-              for (auto j = call::tl_y(bbox); j < call::br_y(bbox); ++j) {
-                drawer(default_pixel_coord{i, j}, alpha);
-              }
+          for (auto i = call::tl_x(bbox); i < call::br_x(bbox); ++i) {
+            for (auto j = call::tl_y(bbox); j < call::br_y(bbox); ++j) {
+              drawer(default_pixel_coord{i, j}, alpha);
             }
           }
         });
@@ -1388,8 +1386,12 @@ struct dummy_font_face {
       return unexpected(false);
     }
   }
-  constexpr int full_height() const { return 1; }
+  constexpr int full_height() const { return ascender() + descender(); }
 };
+
+constexpr int bitmap_top(dummy_font_face const& font, dummy_glyph const& g) {
+  return font.ascender() - g.ascend - 1;
+}
 
 TEST(TextRender, PerfectWidthString) // NOLINT
 {
@@ -1562,9 +1564,9 @@ TEST(TextRender,
      CenterWithAscendAndDescend) // NOLINT
 {
   using t2r_t = cached_text_renderer<dummy_font_face>;
-  auto t2r = t2r_t(dummy_font_face{});
+  auto t2r = t2r_t(dummy_font_face(true));
 
-  auto r = test_renderer({0, 0, 5, 6});
+  auto r = test_renderer({0, 0, 6, 5});
   auto sr = sub_renderer(r);
   call::set_displayed(t2r, "012", call::width(r.area()),
                       call::height(r.area()));
@@ -1574,12 +1576,12 @@ TEST(TextRender,
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
   auto ic = r.individual_colours();
-  EXPECT_THAT(ic.alpha, ElementsAre(              //
-                            0, 0, 0, 0, 0, 0,     //
-                            0, 127, 127, 3, 3, 3, //
-                            255, 127, 3, 3, 3,    //
-                            255, 0, 0, 3, 3, 3,   //
-                            0, 0, 0, 0, 0, 0      //
+  EXPECT_THAT(ic.alpha, ElementsAre(                //
+                            0, 0, 0, 0, 0, 0,       //
+                            0, 127, 127, 3, 3, 3,   //
+                            255, 127, 127, 3, 3, 3, //
+                            255, 0, 0, 3, 3, 3,     //
+                            0, 0, 0, 0, 0, 0        //
                             ));
   EXPECT_THAT(ic.blue, Each(Eq(0)));
 }

@@ -754,7 +754,18 @@ CGUI_CALL_CONCEPT(advance_y);
 CGUI_CALL_CONCEPT(pixel_area);
 CGUI_CALL_CONCEPT(full_height);
 
-} // namespace impl
+[[maybe_unused]] inline void bitmap_top() {}
+
+struct do_bitmap_top {
+  template <typename TFont, typename TGlyph>
+  constexpr auto operator()(TFont&& f, TGlyph&& g) const requires(requires {
+      bitmap_top(std::forward<TFont>(f), std::forward<TGlyph>(g));
+    }) {
+    return bitmap_top(std::forward<TFont>(f), std::forward<TGlyph>(g));
+  }
+};
+
+}; // namespace impl
 inline constexpr impl::tl_x_t tl_x;
 inline constexpr impl::tl_y_t tl_y;
 inline constexpr impl::br_x_t br_x;
@@ -769,6 +780,7 @@ inline constexpr impl::_do_advance_x advance_x;
 inline constexpr impl::_do_advance_y advance_y;
 inline constexpr impl::_do_pixel_area pixel_area;
 inline constexpr impl::_do_full_height full_height;
+inline constexpr impl::do_bitmap_top bitmap_top;
 } // namespace call
 
 constexpr auto multiply_alpha(colour auto c, std::uint_least8_t alpha) {
@@ -1690,5 +1702,6 @@ constexpr default_colour_t &&to_default_colour(default_colour_t &&c) {
 #undef CGUI_EXTRA_ARGS
 #undef CGUI_EXTRA_ARGS_COMMA
 #undef CGUI_CALL_BBOX_MEMBER
+#undef CGUI_CALL_CONCEPT
 
 #endif // COMPONENT_GUI_CGUI_TYPES_HPP

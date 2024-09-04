@@ -157,17 +157,14 @@ public:
   widget<TDisplay, TArea2> area(TArea2 const &a) && {
     return {std::move(display_), a};
   }
-  widget display(auto &&...vs) &&
-    requires(requires() {
-      call::set_displayed(display_, call::width(area()), call::height(area()),
-                          std::forward<decltype(vs)>(vs)...);
-    })
-  {
+  widget display(auto &&...vs) && requires(requires() {
+    call::set_displayed(display_, call::width(area()), call::height(area()),
+                        std::forward<decltype(vs)>(vs)...);
+  }) {
     call::set_displayed(display_, call::width(area()), call::height(area()),
                         std::forward<decltype(vs)>(vs)...);
     return std::move(*this);
-  }
-  void render(renderer auto &&r) {
+  } void render(renderer auto &&r) {
     // display_.render(std::forward<decltype(r)>(r));
     call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
                  call::height(area()));
@@ -262,8 +259,7 @@ public:
     for (auto const &c : t) {
       if (c == '\n') {
         add_line();
-      }
-      else if (auto gexp = call::glyph(f_, c)) {
+      } else if (auto gexp = call::glyph(f_, c)) {
         auto gbox = call::pixel_area(*gexp);
         auto gl_adv = call::advance_x(*gexp);
         using int_t =
@@ -360,9 +356,10 @@ public:
     auto r = rorg.with(colour_);
     // auto tl_y = (h - call::full_height(f_) * line_count_) / 2;
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
-    auto do_new_area = [w, h, fh = call::full_height(f_),
+    auto fh = call::full_height(f_);
+    auto do_new_area = [w, base_y = h + call::ascender(fh), fh,
                         count = line_count_](newline_entry nl) mutable {
-      auto tl_y = (h - fh * count) / 2;
+      auto tl_y = (base_y - fh * count) / 2;
       count -= 2;
       auto x = (w - nl.length) / 2;
       return call::box_from_xywh<default_rect>(x, tl_y, nl.length, fh);
@@ -371,11 +368,14 @@ public:
     for (auto const &t : tokens_) {
       std::visit(
           [r = rorg.with(colour_), &area,
-           &do_new_area CGUI_DEBUG_ONLY(, &_area_initialised)]<typename T>(
+           &do_new_area, fh, &f = f_ CGUI_DEBUG_ONLY(, &_area_initialised)]<typename T>(
               T const &tok) {
             if constexpr (std::is_same_v<T, glyph_entry>) {
               assert(_area_initialised);
-              call::render(tok.g, r.sub(area));
+              auto a2 = area;
+              call::tl_y(a2, call::tl_y(a2) - call::base_to_top(tok.g));
+              call::render(tok.g,
+                           r.sub(a2));
               call::trim_from_left(&area, call::advance_x(tok.g));
               call::trim_from_above(&area, call::advance_y(tok.g));
             } else if constexpr (std::is_same_v<T, newline_entry>) {
