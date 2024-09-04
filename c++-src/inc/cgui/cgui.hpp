@@ -260,7 +260,10 @@ public:
     int last_ws_length{};
     int last_ws_size{};
     for (auto const &c : t) {
-      if (auto gexp = call::glyph(f_, c)) {
+      if (c == '\n') {
+        add_line();
+      }
+      else if (auto gexp = call::glyph(f_, c)) {
         auto gbox = call::pixel_area(*gexp);
         auto gl_adv = call::advance_x(*gexp);
         using int_t =
@@ -310,9 +313,8 @@ public:
                         dash_pos = rev_toks.end();
                       }
                       break;
-                    } else {
-                      ++dash_pos;
                     }
+                    ++dash_pos;
                   }
                   dash_pos_native = dash_pos.base();
                 }
