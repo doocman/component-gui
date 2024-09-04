@@ -1354,8 +1354,10 @@ struct dummy_font_face {
       return dummy_glyph{1, 255};
     case '1':
       return dummy_glyph{2, 127};
+    case '2':
+      return dummy_glyph{3, 3};
     case '-':
-      return dummy_glyph{1, 63};
+      return dummy_glyph{2, 63};
     case ' ':
       return dummy_glyph{1, 0};
     default:
@@ -1443,9 +1445,51 @@ TEST(TextRender, TwoLinesSpace) // NOLINT
   EXPECT_THAT(ic.blue, Each(Eq(0)));
   EXPECT_THAT(ic.green, Each(Eq(0)));
 }
-TEST(TextRender, TwoLinesDash) // NOLINT
+TEST(TextRender, TwoLinesDashDirect) // NOLINT
 {
-  FAIL() << "Not yet implemented";
+  using t2r_t = cached_text_renderer<dummy_font_face>;
+  auto t2r = t2r_t(dummy_font_face{});
+
+  auto r = test_renderer({0, 0, 4, 2});
+  auto sr = sub_renderer(r);
+  call::set_displayed(t2r, "120", call::width(r.area()),
+                      call::height(r.area()));
+  call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
+  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  EXPECT_THAT(r.failed_calls, IsEmpty());
+  EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
+  EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
+  auto ic = r.individual_colours();
+  EXPECT_THAT(ic.red, Each(Eq(255)));
+  EXPECT_THAT(ic.alpha, ElementsAre(        //
+                            127, 127, 63, 63, //
+                            3, 3, 3, 255  //
+                            ));
+  EXPECT_THAT(ic.blue, Each(Eq(0)));
+  EXPECT_THAT(ic.green, Each(Eq(0)));
+}
+TEST(TextRender, TwoLinesDashIndirect) // NOLINT
+{
+  using t2r_t = cached_text_renderer<dummy_font_face>;
+  auto t2r = t2r_t(dummy_font_face{});
+
+  auto r = test_renderer({0, 0, 4, 2});
+  auto sr = sub_renderer(r);
+  call::set_displayed(t2r, "1001", call::width(r.area()),
+                      call::height(r.area()));
+  call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
+  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  EXPECT_THAT(r.failed_calls, IsEmpty());
+  EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
+  EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
+  auto ic = r.individual_colours();
+  EXPECT_THAT(ic.red, Each(Eq(255)));
+  EXPECT_THAT(ic.alpha, ElementsAre(        //
+                            127, 127, 63, 63, //
+                            255, 255, 127, 127  //
+                            ));
+  EXPECT_THAT(ic.blue, Each(Eq(0)));
+  EXPECT_THAT(ic.green, Each(Eq(0)));
 }
 TEST(TextRender, ThreeLines) // NOLINT
 {

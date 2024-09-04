@@ -235,11 +235,19 @@ public:
       cur_line_index = pos;
       return tokens_[pos].template emplace<newline_entry>();
     };
-    auto add_line = [this, &cur_line_index]() -> newline_entry & {
-      cur_line_index = size(tokens_);
-      ++line_count_;
-      return std::get<newline_entry>(
-          tokens_.emplace_back(std::in_place_type<newline_entry>));
+    auto add_line = [this, &cur_line_index](auto... pos) -> newline_entry & {
+      if constexpr (sizeof...(pos) == 0) {
+        cur_line_index = size(tokens_);
+        ++line_count_;
+        return std::get<newline_entry>(
+            tokens_.emplace_back(std::in_place_type<newline_entry>));
+      } else {
+        static_assert(sizeof...(pos) == 1);
+        ++line_count_;
+        cur_line_index = std::distance(begin(tokens_), pos...);
+        return std::get<newline_entry>(
+            *tokens_.emplace(pos..., std::in_place_type<newline_entry>));
+      }
     };
     add_line();
     std::size_t last_ws{};
@@ -257,8 +265,60 @@ public:
           if (c == ' ') {
             add_line();
             add_token = false;
+          } else if (last_ws == 0) {
+            if (auto dgexp = call::glyph(f_, '-'); dgexp) {
+              auto dash_box = call::pixel_area(*dgexp);
+              auto dw = call::width(dash_box);
+              if (current_line().length + dw <= w) {
+                current_line().length += call::width(dash_box);
+                tokens_.emplace_back(glyph_entry{std::move(*dgexp)});
+                add_line();
+              } else {
+                using namespace std::views;
+                auto rev_toks = reverse(tokens_);
+                auto nl_pos = rev_toks.begin();
+                auto width_threshold = w - current_line().length + dw;
+                auto acc_width = 0;
+                while (true) {
+                  if (nl_pos == rev_toks.end()) {
+                    break;
+                  }
+                  if (std::holds_alternative<newline_entry>(*nl_pos)) {
+                    nl_pos = rev_toks.end();
+                    break;
+                  }
+                  assert(std::holds_alternative<glyph_entry>(*nl_pos));
+                  auto gw = call::advance_x(std::get<glyph_entry>(*nl_pos).g);
+                  acc_width += gw;
+
+                  auto it_pos = std::distance(begin(tokens_), nl_pos.base());
+
+                  if (acc_width >= width_threshold) {
+                    ++nl_pos;
+                    if (nl_pos != rev_toks.end() &&
+                        std::holds_alternative<newline_entry>(*nl_pos)) {
+                      nl_pos = rev_toks.end();
+                    }
+                    break;
+                  } else {
+                    ++nl_pos;
+                  }
+                }
+                if (nl_pos != rev_toks.end()) {
+                  current_line().length += dw - acc_width;
+                  add_line(nl_pos.base()).length = acc_width;
+                  --nl_pos;
+                  tokens_.emplace(nl_pos.base(),
+                                  glyph_entry(std::move(*dgexp)));
+                } else {
+                  add_line();
+                }
+              }
+            } else {
+              // No dash, then we just add a new line directly.
+              add_line();
+            }
           } else {
-            assert(last_ws != 0);
             auto length_left =
                 current_line().length - last_ws_length - last_ws_size;
             current_line().length = last_ws_length;
