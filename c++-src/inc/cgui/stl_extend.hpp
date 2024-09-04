@@ -17,11 +17,14 @@
 #include <utility>
 #include <variant>
 
-#if CGUI_HAS_INCLUDE(<expected>)
+#if __cplusplus > 202002L && CGUI_HAS_INCLUDE(<expected>)
 #include <expected>
+#define CGUI_HAS_EXPECTED __cpp_lib_expected >= 202202L
+#else
+#define CGUI_HAS_EXPECTED false
 #endif
 
-#if __cpp_lib_expected < 202202L
+#if !CGUI_HAS_EXPECTED
 #include <cgui/std-backport/expected.hpp>
 #endif
 
@@ -75,7 +78,7 @@ constexpr void tuple_for_each(auto &&cb, auto &&t) {
              std::forward<decltype(t)>(t));
 }
 
-#if __cpp_lib_expected >= 202202L
+#if CGUI_HAS_EXPECTED
 using std::bad_expected_access;
 using std::expected;
 using std::unexpect;

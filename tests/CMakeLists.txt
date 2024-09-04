@@ -7,4 +7,8 @@ target_link_libraries(cgui-tests
         cgui::cgui
 )
 
+if (WIN32 AND ${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
+    target_compile_options(cgui-tests PRIVATE /bigobj)
+endif ()
+
 gtest_discover_tests(cgui-tests DISCOVERY_MODE PRE_TEST)

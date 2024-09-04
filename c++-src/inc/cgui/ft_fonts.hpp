@@ -145,7 +145,7 @@ public:
   constexpr FT_Glyph handle() const noexcept { return glyph(); }
 };
 
-constexpr FT_BBox pixel_area(ft_font_glyph const& g) noexcept {
+inline FT_BBox pixel_area(ft_font_glyph const &g) noexcept {
   FT_BBox b;
   FT_Glyph_Get_CBox(g.handle(), ft_glyph_bbox_pixels, &b);
   return b;
@@ -176,7 +176,6 @@ private:
 
   constexpr ft_font_face() = default;
 
-
 public:
   constexpr ft_font_face(ft_font_face &&) noexcept = default;
   constexpr ft_font_face &operator=(ft_font_face &&) noexcept = default;
@@ -204,14 +203,14 @@ public:
     return f;
   }
 
-  FT_Face handle() const { return v_.first_value(); }
+  [[nodiscard]] constexpr FT_Face handle() const { return v_.first_value(); }
 
   void set_text(readable_textc auto const &text, int width, int height) {
     if constexpr (std::is_array_v<std::remove_cvref_t<decltype(text)>>) {
       set_text(std::string_view(text), width, height);
     } else {
       string_.clear();
-      if(empty(text)) {
+      if (empty(text)) {
         line_count_ = 0;
         return;
       }
@@ -229,11 +228,12 @@ public:
           auto gl_adv = gle->handle()->advance.x >> 16;
           auto gl_w = std::max(gl_adv, call::width(glyph_bbox));
           bool add_char = true;
-          if((string_length + gl_w >= width) || c == '\n') {
+          if ((string_length + gl_w >= width) || c == '\n') {
             decltype(begin(string_)) it;
             decltype(len_at_ws) length_to_set;
-            if(c == ' ' || c == '\n' || last_space == 0) {
-              it = string_.emplace(end(string_), std::in_place_type<render_box>);
+            if (c == ' ' || c == '\n' || last_space == 0) {
+              it =
+                  string_.emplace(end(string_), std::in_place_type<render_box>);
               add_char = (c != ' ') && (c != '\n');
               length_to_set = string_length;
             } else {
@@ -243,7 +243,7 @@ public:
             }
             assert(bbox_index < ssize(string_));
             assert(std::holds_alternative<render_box>(string_[bbox_index]));
-            auto& cur_bbox = std::get<render_box>(string_[bbox_index]);
+            auto &cur_bbox = std::get<render_box>(string_[bbox_index]);
             cur_bbox.line_width = length_to_set;
             assert(string_length >= length_to_set);
             string_length -= length_to_set;
@@ -254,20 +254,21 @@ public:
           }
           if (add_char) {
             bbox_ = call::box_union(bbox_, glyph_bbox);
-            if(c == ' ') {
+            if (c == ' ') {
               len_at_ws = string_length;
               last_space = ssize(string_);
             }
             string_length += gl_adv;
-            string_.emplace_back(std::in_place_type<glyph_to_render>, std::move(*gle), handle()->glyph->bitmap_top);
+            string_.emplace_back(std::in_place_type<glyph_to_render>,
+                                 std::move(*gle), handle()->glyph->bitmap_top);
           }
         }
       }
       assert(bbox_index < ssize(string_));
-      auto& last_rb = string_[bbox_index];
+      auto &last_rb = string_[bbox_index];
       assert(std::holds_alternative<render_box>(last_rb));
       std::get<render_box>(last_rb).line_width = string_length;
-      //bbox_ = compute_bbox();
+      // bbox_ = compute_bbox();
     }
   }
 
@@ -280,26 +281,29 @@ public:
     auto draw_center_y = height / 2;
     auto a = handle()->ascender;
     auto d = handle()->descender;
-    //auto text_center_x = std::get<render_box>(string_.front()).line_width / 2;
-    //auto center_x = draw_center_x - text_center_x;
+    // auto text_center_x = std::get<render_box>(string_.front()).line_width /
+    // 2; auto center_x = draw_center_x - text_center_x;
     auto center_y = draw_center_y - (((a - d) / 2) >> 6);
     int center_x{};
-    //int center_y{};
+    // int center_y{};
     auto pen_x = int{};
-    auto pen_y = static_cast<int>(center_y - (call::height(bbox_) * line_count_) / 2);
+    auto pen_y =
+        static_cast<int>(center_y - (call::height(bbox_) * line_count_) / 2);
     for (auto const &g : string_) {
-      std::visit([&] <typename T> (T const& gb) {
-        if constexpr(std::is_same_v<T, render_box>) {
-          auto text_center_x = gb.line_width / 2;
-          pen_y += call::height(bbox_) << 6;
-          center_x = draw_center_x - text_center_x;
-          pen_x = static_cast<int>(center_x) << 6;
-        } else {
-          static_assert(std::is_same_v<T, glyph_to_render>);
-          auto pos = center_y - gb.bitmap_top;
-          gb.glyph.render(ren, pos, &pen_x, &pen_y);
-        }
-      }, g);
+      std::visit(
+          [&]<typename T>(T const &gb) {
+            if constexpr (std::is_same_v<T, render_box>) {
+              auto text_center_x = gb.line_width / 2;
+              pen_y += call::height(bbox_) << 6;
+              center_x = draw_center_x - text_center_x;
+              pen_x = static_cast<int>(center_x) << 6;
+            } else {
+              static_assert(std::is_same_v<T, glyph_to_render>);
+              auto pos = center_y - gb.bitmap_top;
+              gb.glyph.render(ren, pos, &pen_x, &pen_y);
+            }
+          },
+          g);
     }
   }
 };
