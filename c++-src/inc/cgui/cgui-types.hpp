@@ -902,9 +902,12 @@ inline constexpr impl::_do_draw_pixels draw_pixels;
 } // namespace call
 
 template <typename T, typename TArea = default_rect,
-          typename TDrawPixels = dummy_pixel_draw_callback>
-concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb) {
+          typename TDrawPixels = dummy_pixel_draw_callback, typename TColour = default_colour_t >
+concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb, TColour const& col) {
   call::draw_pixels(t, a, pixel_cb);
+  t.sub(a);
+  t.sub(a, col);
+  t.with(col);
 };
 
 namespace call {
@@ -1511,15 +1514,19 @@ constexpr auto center(bounding_box auto const &b) {
 }
 
 struct dummy_renderer {
-  template <bounding_box TArea, pixel_draw_callback TDrawPixels>
-  constexpr void draw_pixels(TArea const &, TDrawPixels &&) {}
+  constexpr void draw_pixels(bounding_box auto const &, pixel_draw_callback auto &&) {}
+  constexpr dummy_renderer with(colour auto&&) const { return {}; }
+  constexpr dummy_renderer sub(bounding_box auto&&, colour auto&&) const { return {}; }
+  constexpr dummy_renderer sub(bounding_box auto&&) const { return {}; }
 };
 static_assert(renderer<dummy_renderer>);
 
 template <typename T, typename TRen = dummy_renderer &, typename TXY = int>
-concept text2render = requires(bp::as_forward<T> t, std::string_view s,
+concept text2render =
+    call::impl::has_set_displayed<T, std::string_view, TXY, TXY> &&
+    requires(bp::as_forward<T> t, std::string_view s,
                                bp::as_forward<TRen> r, TXY xy) {
-  call::set_displayed(*t, s);
+  //call::set_displayed(*t, s, xy, xy);
   call::render_text(*t, *r, xy, xy);
 };
 template <typename T, typename TRenderer = dummy_renderer>

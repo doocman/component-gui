@@ -216,7 +216,7 @@ public:
   constexpr explicit text_renderer(TFont &&f) : f_(std::move(f)) {}
   constexpr explicit text_renderer(TFont const &f) : f_(f) {}
 
-  constexpr void set_displayed(std::string_view t, int w, int h) {
+  constexpr void set_displayed(std::string_view t, int w, int) {
     using iterator_t = decltype(tokens_.begin());
     tokens_.clear();
     line_count_ = 0;
@@ -353,7 +353,6 @@ public:
   }
   constexpr void render_text(auto &&rorg, int w,
                              int h) /*requires(glyph render...)*/ {
-    auto r = rorg.with(colour_);
     // auto tl_y = (h - call::full_height(f_) * line_count_) / 2;
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
@@ -367,8 +366,8 @@ public:
     decltype(do_new_area(newline_entry{})) area;
     for (auto const &t : tokens_) {
       std::visit(
-          [r = rorg.with(colour_), &area, &do_new_area, fh,
-           &f = f_ CGUI_DEBUG_ONLY(, &_area_initialised)]<typename T>(
+          [r = rorg.with(colour_), &area, &do_new_area
+           CGUI_DEBUG_ONLY(, &_area_initialised)]<typename T>(
               T const &tok) {
             if constexpr (std::is_same_v<T, glyph_entry>) {
               assert(_area_initialised);
@@ -392,7 +391,7 @@ public:
   }
 };
 
-template <text2render Txt, bounding_box TArea = default_rect>
+template <font_face Txt, bounding_box TArea = default_rect>
 constexpr widget<text_display<Txt>, TArea> text_box_widget(Txt t,
                                                            TArea a = {}) {
   return widget<text_display<Txt>, TArea>(text_display<Txt>(std::move(t)),

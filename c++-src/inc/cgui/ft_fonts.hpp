@@ -86,6 +86,7 @@ class ft_font_glyph {
   };
   cleanup_object_t<decltype(cleanup), FT_Glyph> g_{};
   FT_UInt gi_{};
+  FT_Int top_{};
   constexpr ft_font_glyph() = default;
   constexpr FT_Glyph &glyph() { return g_.first_value(); }
   constexpr FT_Glyph glyph() const { return g_.first_value(); }
@@ -94,7 +95,8 @@ public:
   friend inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face,
                                                         char v);
 
-  constexpr ft_font_glyph(FT_Glyph g, FT_UInt gi) : g_(g), gi_(gi) {}
+  constexpr ft_font_glyph(FT_Glyph g, FT_UInt gi, FT_Int top) : g_(g), gi_(gi), top_(top) {}
+  constexpr auto base_to_top() const noexcept { return top_; }
 
   constexpr expected<void, FT_Error> render(renderer auto &&rend, int bottom,
                                             int pen_x26_6 = {},
@@ -306,6 +308,10 @@ public:
           g);
     }
   }
+
+  auto ascender() const {
+    return handle()->ascender;
+  }
 };
 
 inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face, char v) {
@@ -318,7 +324,7 @@ inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face, char v) {
   if (auto ec = FT_Get_Glyph(face.handle()->glyph, &gl)) {
     return unexpected(ec);
   }
-  return ft_font_glyph(gl, gl_index);
+  return ft_font_glyph(gl, gl_index, face.handle()->glyph->bitmap_top);
 }
 } // namespace
 } // namespace cgui
