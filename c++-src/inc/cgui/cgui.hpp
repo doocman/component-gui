@@ -357,9 +357,9 @@ public:
     // auto tl_y = (h - call::full_height(f_) * line_count_) / 2;
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
-    auto do_new_area = [w, base_y = h + call::ascender(fh), fh,
+    auto do_new_area = [w, base_y2 = h + 2 * call::ascender(f_), fh,
                         count = line_count_](newline_entry nl) mutable {
-      auto tl_y = (base_y - fh * count) / 2;
+      auto tl_y = (base_y2 - fh * count) / 2;
       count -= 2;
       auto x = (w - nl.length) / 2;
       return call::box_from_xywh<default_rect>(x, tl_y, nl.length, fh);
