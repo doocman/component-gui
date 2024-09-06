@@ -1396,7 +1396,7 @@ constexpr int bitmap_top(dummy_font_face const &font, dummy_glyph const &g) {
 
 TEST(TextRender, PerfectWidthString) // NOLINT
 {
-  using t2r_t = cached_text_renderer<dummy_font_face>;
+  using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
   call::set_displayed(t2r, "1 0", 4, 1);
   auto r = test_renderer({0, 0, 4, 2});
@@ -1417,7 +1417,7 @@ TEST(TextRender, PerfectWidthString) // NOLINT
 
 TEST(TextRender, CenterAligned) // NOLINT
 {
-  using t2r_t = cached_text_renderer<dummy_font_face>;
+  using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
 
   auto r = test_renderer({0, 0, 6, 3});
@@ -1445,7 +1445,7 @@ TEST(TextRender, CenterAligned) // NOLINT
 
 TEST(TextRender, TwoLinesSpace) // NOLINT
 {
-  using t2r_t = cached_text_renderer<dummy_font_face>;
+  using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
 
   auto r = test_renderer({0, 0, 4, 2});
@@ -1471,7 +1471,7 @@ TEST(TextRender, TwoLinesSpace) // NOLINT
 }
 TEST(TextRender, TwoLinesDashDirect) // NOLINT
 {
-  using t2r_t = cached_text_renderer<dummy_font_face>;
+  using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
 
   auto r = test_renderer({0, 0, 4, 2});
@@ -1494,7 +1494,7 @@ TEST(TextRender, TwoLinesDashDirect) // NOLINT
 }
 TEST(TextRender, TwoLinesDashIndirect) // NOLINT
 {
-  using t2r_t = cached_text_renderer<dummy_font_face>;
+  using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
 
   auto r = test_renderer({0, 0, 4, 2});
@@ -1518,7 +1518,7 @@ TEST(TextRender, TwoLinesDashIndirect) // NOLINT
 TEST(TextRender, ManualNewLine) // NOLINT
 {
 
-  using t2r_t = cached_text_renderer<dummy_font_face>;
+  using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
 
   auto r = test_renderer({0, 0, 4, 2});
@@ -1541,7 +1541,7 @@ TEST(TextRender, ManualNewLine) // NOLINT
 TEST(TextRender, ThreeLines) // NOLINT
 {
 
-  using t2r_t = cached_text_renderer<dummy_font_face>;
+  using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
 
   auto r = test_renderer({0, 0, 4, 3});
@@ -1564,7 +1564,7 @@ TEST(TextRender, ThreeLines) // NOLINT
 TEST(TextRender,
      CenterWithAscendAndDescend) // NOLINT
 {
-  using t2r_t = cached_text_renderer<dummy_font_face>;
+  using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face(true));
 
   auto r = test_renderer({0, 0, 6, 5});

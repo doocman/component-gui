@@ -191,7 +191,7 @@ public:
   }
 };
 
-template <font_face TFont> class cached_text_renderer {
+template <font_face TFont> class text_renderer {
   TFont f_;
   using glyph_t = std::remove_cvref_t<
       decltype(call::glyph(std::declval<TFont &>(), 'a').value())>;
@@ -213,11 +213,11 @@ template <font_face TFont> class cached_text_renderer {
   std::string text_;
 
 public:
-  constexpr explicit cached_text_renderer(TFont &&f) : f_(std::move(f)) {}
-  constexpr explicit cached_text_renderer(TFont const &f) : f_(f) {}
+  constexpr explicit text_renderer(TFont &&f) : f_(std::move(f)) {}
+  constexpr explicit text_renderer(TFont const &f) : f_(f) {}
 
   constexpr void set_displayed(std::string_view t, int w, int h) {
-    unused(h);
+    using iterator_t = decltype(tokens_.begin());
     tokens_.clear();
     line_count_ = 0;
     if (size(t) == 0) {
@@ -238,22 +238,19 @@ public:
       cur_line_index = pos;
       return tokens_[pos].template emplace<newline_entry>();
     };
-    auto add_line = [this, &cur_line_index](auto... pos)
-        -> std::pair<newline_entry &, decltype(tokens_.begin())> {
-      if constexpr (sizeof...(pos) == 0) {
-        cur_line_index = size(tokens_);
-        ++line_count_;
-        return {std::get<newline_entry>(
-                    tokens_.emplace_back(std::in_place_type<newline_entry>)),
-                end(tokens_)};
-      } else {
-        static_assert(sizeof...(pos) == 1);
-        ++line_count_;
-        cur_line_index = std::distance(begin(tokens_), pos...);
-        auto new_pos =
-            tokens_.emplace(pos..., std::in_place_type<newline_entry>);
-        return {std::get<newline_entry>(*new_pos), new_pos};
-      }
+    auto add_line = [this, &cur_line_index]() -> newline_entry & {
+      cur_line_index = size(tokens_);
+      ++line_count_;
+      return std::get<newline_entry>(
+          tokens_.emplace_back(std::in_place_type<newline_entry>));
+    };
+    auto add_line_at =
+        [this, &cur_line_index](
+            iterator_t pos) -> std::pair<newline_entry &, iterator_t> {
+      ++line_count_;
+      cur_line_index = std::distance(begin(tokens_), pos);
+      auto new_pos = tokens_.emplace(pos, std::in_place_type<newline_entry>);
+      return {std::get<newline_entry>(*new_pos), new_pos};
     };
     add_line();
     std::size_t last_ws{};
@@ -323,7 +320,7 @@ public:
                       tokens_.emplace(dash_pos_native,
                                       glyph_entry{std::move(*dgexp)}) +
                       1;
-                  add_line(nl_pos).first.length = acc_width;
+                  add_line_at(nl_pos).first.length = acc_width;
                 } else {
                   add_line();
                 }
@@ -390,7 +387,7 @@ public:
   }
   constexpr auto const &font() const { return f_; }
   static constexpr auto &&
-  text_colour(bp::cvref_type<cached_text_renderer<TFont>> auto &&r) {
+  text_colour(bp::cvref_type<text_renderer<TFont>> auto &&r) {
     return std::forward<decltype(r)>(r).colour_;
   }
 };
