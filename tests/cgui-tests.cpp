@@ -1350,9 +1350,7 @@ struct dummy_glyph {
   constexpr default_rect pixel_area() const {
     return {{0, 0}, {length, height()}};
   }
-  constexpr auto base_to_top() const {
-    return ascend + 1;
-  }
+  constexpr auto base_to_top() const { return ascend + 1; }
 };
 struct dummy_font_face {
   int faulty_glyphs{};
@@ -1392,7 +1390,7 @@ struct dummy_font_face {
   constexpr int full_height() const { return ascender() + descender(); }
 };
 
-constexpr int bitmap_top(dummy_font_face const& font, dummy_glyph const& g) {
+constexpr int bitmap_top(dummy_font_face const &font, dummy_glyph const &g) {
   return font.ascender() - g.ascend - 1;
 }
 

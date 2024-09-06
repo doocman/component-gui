@@ -157,14 +157,17 @@ public:
   widget<TDisplay, TArea2> area(TArea2 const &a) && {
     return {std::move(display_), a};
   }
-  widget display(auto &&...vs) && requires(requires() {
-    call::set_displayed(display_, call::width(area()), call::height(area()),
-                        std::forward<decltype(vs)>(vs)...);
-  }) {
+  widget display(auto &&...vs) &&
+    requires(requires() {
+      call::set_displayed(display_, call::width(area()), call::height(area()),
+                          std::forward<decltype(vs)>(vs)...);
+    })
+  {
     call::set_displayed(display_, call::width(area()), call::height(area()),
                         std::forward<decltype(vs)>(vs)...);
     return std::move(*this);
-  } void render(renderer auto &&r) {
+  }
+  void render(renderer auto &&r) {
     // display_.render(std::forward<decltype(r)>(r));
     call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
                  call::height(area()));
@@ -367,15 +370,14 @@ public:
     decltype(do_new_area(newline_entry{})) area;
     for (auto const &t : tokens_) {
       std::visit(
-          [r = rorg.with(colour_), &area,
-           &do_new_area, fh, &f = f_ CGUI_DEBUG_ONLY(, &_area_initialised)]<typename T>(
+          [r = rorg.with(colour_), &area, &do_new_area, fh,
+           &f = f_ CGUI_DEBUG_ONLY(, &_area_initialised)]<typename T>(
               T const &tok) {
             if constexpr (std::is_same_v<T, glyph_entry>) {
               assert(_area_initialised);
               auto a2 = area;
               call::tl_y(a2, call::tl_y(a2) - call::base_to_top(tok.g));
-              call::render(tok.g,
-                           r.sub(a2));
+              call::render(tok.g, r.sub(a2));
               call::trim_from_left(&area, call::advance_x(tok.g));
               call::trim_from_above(&area, call::advance_y(tok.g));
             } else if constexpr (std::is_same_v<T, newline_entry>) {
