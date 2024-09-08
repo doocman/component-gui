@@ -67,7 +67,7 @@ public:
                offset_x, offset_y](pixel_coord auto &&px, colour auto &&col) {
                 auto absolute_pos =
                     call::nudge_right(call::nudge_down(px, offset_y), offset_x);
-                std::invoke(*d, px, col);
+                std::invoke(*d, absolute_pos, col);
               });
         });
   }
@@ -197,7 +197,7 @@ template <font_face TFont> class text_renderer {
   using glyph_t = std::remove_cvref_t<
       decltype(call::glyph(std::declval<TFont &>(), 'a').value())>;
 
-  default_colour_t colour_{};
+  default_colour_t colour_{255, 255, 255, 255};
 
   struct glyph_entry {
     glyph_t g;
@@ -342,9 +342,8 @@ public:
             last_ws_length = current_line().length;
             last_ws_size = call::advance_x(*gexp);
           }
+          current_line().length +=  call::advance_x(*gexp);
           tokens_.emplace_back(glyph_entry{std::move(*gexp)});
-          auto &last_tok = std::get<glyph_entry>(tokens_.back());
-          current_line().length += call::advance_x(last_tok.g);
         }
       }
     }
@@ -371,6 +370,7 @@ public:
               assert(_area_initialised);
               auto a2 = area;
               call::tl_y(a2, call::tl_y(a2) - call::base_to_top(tok.g));
+              assert(call::valid_box(a2));
               call::render(tok.g, r.sub(a2));
               call::trim_from_left(&area, call::advance_x(tok.g));
               call::trim_from_above(&area, call::advance_y(tok.g));

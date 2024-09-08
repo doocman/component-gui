@@ -171,9 +171,9 @@ public:
     // decltype(auto) sdl_rect = to_sdl_rect(dest_sz);
     auto zero_point_texture =
         SDL_Rect(0, 0, call::width(dest_sz), call::height(dest_sz));
-    int pitch;
+    int pitch_bytes;
     if (auto ec = SDL_LockTexture(texture(), &zero_point_texture, &raw_pix_void,
-                                  &pitch);
+                                  &pitch_bytes);
         ec != 0) {
       return unexpected(SDL_GetError());
     }
@@ -183,14 +183,14 @@ public:
     auto raw_pixels = static_cast<default_colour_t *>(raw_pix_void);
     static_assert(sizeof(default_colour_t) == 4);
 
-    cb([raw_pixels, pitch = pitch / 4, &dest_sz](pixel_coord auto &&coord,
+    cb([raw_pixels, pitch = pitch_bytes / 4, &dest_sz, backstep = call::tl_x(dest_sz) + call::tl_y(dest_sz) * pitch_bytes / 4](pixel_coord auto &&coord,
                                                  colour auto &&c) {
       auto x = call::x_of(coord);
       auto y = call::y_of(coord);
-      assert(x < call::width(dest_sz));
-      assert(y < call::height(dest_sz));
       unused(dest_sz);
-      auto index = x + y * pitch;
+      auto index = x + y * pitch - backstep;
+      assert(index >= 0);
+      assert(index <= call::height(dest_sz) * pitch);
       raw_pixels[index] = to_default_colour(c);
     });
     SDL_UnlockTexture(texture());
