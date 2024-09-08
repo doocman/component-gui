@@ -34,10 +34,21 @@ template <canvas T, bounding_box TB> class sub_renderer {
                                     call::height(b));
   }
 
+  static constexpr TB bound_area(TB a) {
+    if(!call::valid_box(a)) {
+      call::height(a, 0);
+      call::width(a, 0);
+      assert(call::valid_box(a));
+    }
+    return a;
+  }
+
 public:
   constexpr sub_renderer(T &c, TB a, x_t x, y_t y, default_colour_t sc)
       : c_(std::addressof(c)), area_(a), offset_x(x), offset_y(y),
-        set_colour_(sc) {}
+        set_colour_(sc) {
+    assert(call::valid_box(area_));
+  }
   constexpr sub_renderer(T &c, TB a) : sub_renderer(c, a, 0, 0, {}) {}
   constexpr explicit sub_renderer(T &c) : sub_renderer(c, call::area(c)) {}
 
@@ -50,13 +61,13 @@ public:
         *c_, absolute_dest,
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
          offset_x = offset_x, offset_y = offset_y](auto &&drawer) {
-          std::invoke(
-              *cb, relative_dest,
+          //std::invoke(
+              (*cb)(relative_dest,
               [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
                offset_x, offset_y](pixel_coord auto &&px, colour auto &&col) {
                 auto absolute_pos =
                     call::nudge_right(call::nudge_down(px, offset_y), offset_x);
-                std::invoke(*d, absolute_pos, col);
+                std::invoke(*d, px, col);
               });
         });
   }
@@ -72,12 +83,19 @@ public:
 
   constexpr sub_renderer sub(bounding_box auto &&b,
                              default_colour_t col) const {
-    return {
+    auto intersection = call::box_intersection<TB>(b, area_);
+    if(call::valid_box(intersection)) {
+      return {
         *c_,
-        call::nudge_up(call::nudge_left(call::box_intersection<TB>(b, area_),
+        call::nudge_up(call::nudge_left(intersection,
                                         call::tl_x(b)),
                        call::tl_y(b)),
         offset_x + call::tl_x(b), offset_y + call::tl_y(b), col};
+    } else {
+      auto x = call::tl_x(area_);
+      auto y = call::tl_y(area_);
+      return {*c_, call::box_from_xyxy<TB>(x,y,x,y), offset_x, offset_y, col};
+    }
   }
 
   constexpr sub_renderer sub(bounding_box auto &&b) const {
@@ -174,23 +192,6 @@ public:
   }
 };
 
-template <text2render Txt> class text_display {
-  Txt t_;
-
-public:
-  constexpr explicit text_display(Txt t) : t_(std::move(t)) {}
-  constexpr text_display()
-    requires(std::is_default_constructible_v<Txt>)
-  = default;
-
-  void render(renderer auto &&r, int width, int height) {
-    call::render_text(t_, r, width, height);
-  }
-  void set_displayed(int w, int h, readable_textc auto &&s) {
-    call::set_text(t_, std::forward<decltype(s)>(s), w, h);
-  }
-};
-
 template <font_face TFont> class text_renderer {
   TFont f_;
   using glyph_t = std::remove_cvref_t<
@@ -216,7 +217,7 @@ public:
   constexpr explicit text_renderer(TFont &&f) : f_(std::move(f)) {}
   constexpr explicit text_renderer(TFont const &f) : f_(f) {}
 
-  constexpr void set_displayed(std::string_view t, int w, int) {
+  constexpr void set_displayed(int w, int, std::string_view t) {
     using iterator_t = decltype(tokens_.begin());
     tokens_.clear();
     line_count_ = 0;
@@ -299,9 +300,6 @@ public:
                         call::advance_x(std::get<glyph_entry>(*dash_pos).g);
                     acc_width += gw;
 
-                    auto it_pos =
-                        std::distance(begin(tokens_), dash_pos.base());
-
                     if (acc_width >= width_threshold) {
                       ++dash_pos;
                       if (dash_pos != rev_toks.end() &&
@@ -351,7 +349,7 @@ public:
       }
     }
   }
-  constexpr void render_text(auto &&rorg, int w,
+  constexpr void render(auto &&rorg, int w,
                              int h) /*requires(glyph render...)*/ {
     // auto tl_y = (h - call::full_height(f_) * line_count_) / 2;
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
@@ -392,9 +390,9 @@ public:
 };
 
 template <font_face Txt, bounding_box TArea = default_rect>
-constexpr widget<text_display<Txt>, TArea> text_box_widget(Txt t,
+constexpr widget<text_renderer<Txt>, TArea> text_box_widget(Txt t,
                                                            TArea a = {}) {
-  return widget<text_display<Txt>, TArea>(text_display<Txt>(std::move(t)),
+  return widget<text_renderer<Txt>, TArea>(text_renderer<Txt>(std::move(t)),
                                           std::move(a));
 }
 

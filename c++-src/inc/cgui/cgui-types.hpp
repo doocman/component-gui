@@ -867,9 +867,6 @@ concept mutable_bounding_box =
 
 static_assert(bounding_box<default_rect>);
 
-template <typename>
-concept canvas = true;
-
 template <typename T>
 concept pixel_drawer =
     std::invocable<T &&, default_pixel_coord, default_colour_t>;
@@ -1503,6 +1500,13 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 
 } // namespace call
 
+
+template <typename T>
+concept canvas = requires(T const& tc)
+{
+  {call::area(tc)} -> bounding_box;
+};
+
 template <typename T, typename TR>
 concept has_render = call::impl::has_render<T, TR>;
 
@@ -1521,14 +1525,6 @@ struct dummy_renderer {
 };
 static_assert(renderer<dummy_renderer>);
 
-template <typename T, typename TRen = dummy_renderer &, typename TXY = int>
-concept text2render =
-    call::impl::has_set_displayed<T, std::string_view, TXY, TXY> &&
-    requires(bp::as_forward<T> t, std::string_view s,
-                               bp::as_forward<TRen> r, TXY xy) {
-  //call::set_displayed(*t, s, xy, xy);
-  call::render_text(*t, *r, xy, xy);
-};
 template <typename T, typename TRenderer = dummy_renderer>
 concept font_glyph = requires(T const &ct, TRenderer &r) {
   call::base_to_top(ct);
@@ -1686,6 +1682,13 @@ to_default_colour(default_colour_t const &&c) {
 }
 constexpr default_colour_t &&to_default_colour(default_colour_t &&c) {
   return std::move(c);
+}
+
+constexpr auto x_view(bounding_box auto&& b) {
+  return std::views::iota(call::tl_x(b), call::br_x(b));
+}
+constexpr auto y_view(bounding_box auto&& b) {
+  return std::views::iota(call::tl_y(b), call::br_y(b));
 }
 
 } // namespace cgui

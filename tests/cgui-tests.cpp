@@ -1323,6 +1323,19 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
                           ));
 }
 
+TEST(SubRender, DrawPixelOutsideCanvas) // NOLINT
+{
+  auto r = test_renderer({{0, 0}, {4, 4}});
+  auto s_main = sub_renderer(r, r.area());
+  auto s1 = s_main.sub(default_rect{{4, 5}, {5, 6}});
+  s1.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+    EXPECT_THAT(call::width(b), Eq(0));
+    EXPECT_THAT(call::height(b), Eq(0));
+  });
+  EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
+  EXPECT_THAT(r.failed_calls, ElementsAre());
+}
+
 struct dummy_glyph {
   int length;
   int ascend;
@@ -1398,11 +1411,11 @@ TEST(TextRender, PerfectWidthString) // NOLINT
 {
   using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
-  call::set_displayed(t2r, "1 0", 4, 1);
+  call::set_displayed(t2r, 4, 1, "1 0");
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render_text(t2r, sr, 4, 1);
+  call::render(t2r, sr, 4, 1);
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1422,10 +1435,10 @@ TEST(TextRender, CenterAligned) // NOLINT
 
   auto r = test_renderer({0, 0, 6, 3});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, "1 0", call::width(r.area()),
-                      call::height(r.area()));
+  call::set_displayed(t2r, call::width(r.area()),
+                      call::height(r.area()), "1 0");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1450,10 +1463,10 @@ TEST(TextRender, TwoLinesSpace) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, "1 1", call::width(r.area()),
-                      call::height(r.area()));
+  call::set_displayed(t2r, call::width(r.area()),
+                      call::height(r.area()), "1 1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1476,10 +1489,10 @@ TEST(TextRender, TwoLinesDashDirect) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, "120", call::width(r.area()),
-                      call::height(r.area()));
+  call::set_displayed(t2r, call::width(r.area()),
+                      call::height(r.area()), "120");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1499,10 +1512,10 @@ TEST(TextRender, TwoLinesDashIndirect) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, "1001", call::width(r.area()),
-                      call::height(r.area()));
+  call::set_displayed(t2r, call::width(r.area()),
+                      call::height(r.area()), "1001");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1523,10 +1536,10 @@ TEST(TextRender, ManualNewLine) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, "1\n1", call::width(r.area()),
-                      call::height(r.area()));
+  call::set_displayed(t2r, call::width(r.area()),
+                      call::height(r.area()), "1\n1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1546,10 +1559,10 @@ TEST(TextRender, ThreeLines) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 3});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, "10011", call::width(r.area()),
-                      call::height(r.area()));
+  call::set_displayed(t2r, call::width(r.area()),
+                      call::height(r.area()), "10011");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1569,10 +1582,10 @@ TEST(TextRender,
 
   auto r = test_renderer({0, 0, 6, 5});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, "012", call::width(r.area()),
-                      call::height(r.area()));
+  call::set_displayed(t2r, call::width(r.area()),
+                      call::height(r.area()), "012");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render_text(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));

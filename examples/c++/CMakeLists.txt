@@ -1,11 +1,17 @@
 
+if (CGUI_SDL_STATIC)
+    set (CGUI_SDL_LINK SDL2::SDL2-static)
+else ()
+    set (CGUI_SDL_LINK SDL2::SDL2)
+endif ()
+
 function(cgui_add_example NAME)
     add_executable(${NAME} ${NAME}.cpp)
     target_link_libraries(${NAME} PRIVATE
             cmpr::add_warnings
             cgui::cgui
             SDL2::SDL2main
-            SDL2::SDL2
+            ${CGUI_SDL_LINK}
     )
 endfunction()
 

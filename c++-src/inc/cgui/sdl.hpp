@@ -129,12 +129,13 @@ class sdl_canvas {
     }
   };
   SDL_Renderer *r_;
+  default_rect a_;
   cleanup_object_t<decltype(cleanup), SDL_Texture *> t_{};
 
   constexpr SDL_Texture *texture() const { return t_.first_value(); }
 
 public:
-  constexpr explicit(false) sdl_canvas(SDL_Renderer *r) : r_(r) {}
+  constexpr sdl_canvas(SDL_Renderer *r, default_rect const& a) : r_(r), a_(a) {}
 
   void present() { SDL_RenderPresent(r_); }
 
@@ -144,10 +145,6 @@ public:
     // rif->max_texture_height
     constexpr auto texture_format =
         SDL_PixelFormatEnum::SDL_PIXELFORMAT_ABGR8888;
-    SDL_RendererInfo rif;
-    if (auto ec = SDL_GetRendererInfo(r_, &rif); ec != 0) {
-      return unexpected(SDL_GetError());
-    }
     if (t_) {
       int w, h;
       Uint32 format;
@@ -208,7 +205,11 @@ public:
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
     return {};
-  };
+  }
+
+  default_rect area() const {
+    return a_;
+  }
 };
 
 struct sdl_display_dpi {
@@ -256,7 +257,9 @@ public:
 
   [[nodiscard]] expected<sdl_canvas, std::string> canvas() {
     if (auto rend = SDL_GetRenderer(handle()); rend != nullptr) {
-      return rend;
+      int w, h;
+      SDL_GetWindowSize(handle(), &w, &h);
+      return sdl_canvas{rend, default_rect{{0, 0}, {w, h}}};
     }
     return unexpected(SDL_GetError());
   }

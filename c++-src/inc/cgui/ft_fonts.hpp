@@ -98,14 +98,10 @@ public:
   constexpr ft_font_glyph(FT_Glyph g, FT_UInt gi, FT_Int top) : g_(g), gi_(gi), top_(top) {}
   constexpr auto base_to_top() const noexcept { return top_; }
 
-  constexpr expected<void, FT_Error> render(renderer auto &&rend, int bottom,
-                                            int pen_x26_6 = {},
-                                            int pen_y26_6 = {}) const {
+  constexpr expected<void, FT_Error> render(renderer auto &&rend) const {
     unused(g_, gi_);
     auto *bitmap_gl = glyph();
-    auto org = FT_Vector{pen_x26_6, pen_y26_6};
-    auto pen_x = pen_x26_6 >> 6;
-    auto pen_y = pen_y26_6 >> 6;
+    auto org = FT_Vector{};
     if (auto ec =
             FT_Glyph_To_Bitmap(&bitmap_gl, FT_RENDER_MODE_NORMAL, &org, false);
         ec != 0) {
@@ -114,19 +110,16 @@ public:
     assert(bitmap_gl->format == FT_GLYPH_FORMAT_BITMAP);
     auto bm_destroy = bp::deferred([bitmap_gl] { FT_Done_Glyph(bitmap_gl); });
     auto &bitmap = std::bit_cast<FT_BitmapGlyph>(bitmap_gl)->bitmap;
-    using int_t = std::make_signed_t<std::size_t>;
-    // assert(static_cast<unsigned>(bottom) >= bitmap.rows);
-    auto y_offset = bottom; // static_cast<int>(bottom - bitmap.rows);
-    auto res = call::draw_pixels(
+    call::draw_pixels(
         rend,
-        default_rect{{pen_x, pen_y + y_offset},
-                     {pen_x + static_cast<int>(bitmap.width),
-                      pen_y + y_offset + static_cast<int>(bitmap.rows)}},
-        [&](pixel_drawer auto &&px_rend) {
+        default_rect{{},
+                     {static_cast<int>(bitmap.width),
+                      static_cast<int>(bitmap.rows)}},
+        [&](bounding_box auto const& b, pixel_drawer auto &&px_rend) {
           for (auto y :
-               std::views::iota(int_t{}, static_cast<int_t>(bitmap.rows))) {
+               cgui::y_view(b)) {
             for (auto x :
-                 std::views::iota(int_t{}, static_cast<int_t>(bitmap.width))) {
+                cgui::x_view(b)) {
               px_rend(
                   default_pixel_coord{static_cast<int>(x), static_cast<int>(y)},
                   default_colour_t{255, 255, 255,
@@ -134,14 +127,14 @@ public:
             }
           }
         });
-    assert(res.has_value());
     return {};
   }
-  constexpr void render(renderer auto &&rend, int bottom, not_null<int *> pen_x,
-                        not_null<int *> pen_y) const {
-    render(std::forward<decltype(rend)>(rend), bottom, *pen_x, *pen_y);
-    *pen_x += g_->advance.x >> 10;
-    *pen_y += g_->advance.y >> 10;
+
+  constexpr auto advance_x() const {
+    return g_->advance.x >> 16;
+  }
+  constexpr auto advance_y() const {
+    return g_->advance.y >> 16;
   }
 
   constexpr FT_Glyph handle() const noexcept { return glyph(); }
@@ -278,39 +271,8 @@ public:
     return (handle()->ascender + handle()->descender) >> 6;
   }
 
-  void render_text(renderer auto &&ren, int width, int height) {
-    auto draw_center_x = width / 2;
-    auto draw_center_y = height / 2;
-    auto a = handle()->ascender;
-    auto d = handle()->descender;
-    // auto text_center_x = std::get<render_box>(string_.front()).line_width /
-    // 2; auto center_x = draw_center_x - text_center_x;
-    auto center_y = draw_center_y - (((a - d) / 2) >> 6);
-    int center_x{};
-    // int center_y{};
-    auto pen_x = int{};
-    auto pen_y =
-        static_cast<int>(center_y - (call::height(bbox_) * line_count_) / 2);
-    for (auto const &g : string_) {
-      std::visit(
-          [&]<typename T>(T const &gb) {
-            if constexpr (std::is_same_v<T, render_box>) {
-              auto text_center_x = gb.line_width / 2;
-              pen_y += call::height(bbox_) << 6;
-              center_x = draw_center_x - text_center_x;
-              pen_x = static_cast<int>(center_x) << 6;
-            } else {
-              static_assert(std::is_same_v<T, glyph_to_render>);
-              auto pos = center_y - gb.bitmap_top;
-              gb.glyph.render(ren, pos, &pen_x, &pen_y);
-            }
-          },
-          g);
-    }
-  }
-
   auto ascender() const {
-    return handle()->ascender;
+    return handle()->ascender >> 6;
   }
 };
 

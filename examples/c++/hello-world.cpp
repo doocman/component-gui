@@ -10,7 +10,6 @@
 #include <cgui/sdl.hpp>
 
 int main(int, char **) {
-  static_assert(cgui::text2render<cgui::text_renderer<cgui::ft_font_face>>);
   try {
     auto sdl_context = build(cgui::sdl_context()).value();
     auto video_subsystem = video(sdl_context).value();
