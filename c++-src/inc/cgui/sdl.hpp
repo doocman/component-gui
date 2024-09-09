@@ -183,6 +183,8 @@ public:
     auto raw_pixels = static_cast<default_colour_t *>(raw_pix_void);
     static_assert(sizeof(default_colour_t) == 4);
 
+    std::fill_n(raw_pixels, call::width(dest_sz) *  call::height(dest_sz), default_colour_t{0, 0, 0, 255});
+
     cb([raw_pixels, pitch = pitch_bytes / 4, &dest_sz,
         backstep = call::tl_x(dest_sz) + call::tl_y(dest_sz) * pitch_bytes / 4](
            pixel_coord auto &&coord, colour auto &&c) {

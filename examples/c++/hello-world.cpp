@@ -24,10 +24,10 @@ int main(int, char **) {
     auto dpi_info =
         main_window.dpi().value_or(cgui::sdl_display_dpi{72.f, 72.f, 72.f});
     constexpr auto font_path =
-#if 1
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+#if defined(__WIN32__)
+        R"(C:\Windows\Fonts\arial.ttf)"
 #else
-        "C:\\Windows\\Fonts\\arial.ttf"
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 #endif
         ;
     auto text_font =
@@ -40,7 +40,7 @@ int main(int, char **) {
         cgui::text_box_widget(std::move(text_font))
             .area(cgui::call::trim_from_above(
                 &full_area, std::min<int>(cgui::call::height(full_area), 128)))
-            .display("Hello a World!");
+            .display("Hello i World!");
     auto button_bar_area = cgui::call::trim_from_below(
         &full_area, std::min<int>(cgui::call::height(full_area), 128));
     cgui::unused(button_bar_area);

@@ -87,6 +87,9 @@ class ft_font_glyph {
   cleanup_object_t<decltype(cleanup), FT_Glyph> g_{};
   FT_UInt gi_{};
   FT_Int top_{};
+  std::vector<std::uint_least8_t> bm_;
+  int bm_w_{};
+  int bm_h_{};
   constexpr ft_font_glyph() = default;
   constexpr FT_Glyph &glyph() { return g_.first_value(); }
   constexpr FT_Glyph glyph() const { return g_.first_value(); }
@@ -95,12 +98,38 @@ public:
   friend inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face,
                                                         char v);
 
-  constexpr ft_font_glyph(FT_Glyph g, FT_UInt gi, FT_Int top)
-      : g_(g), gi_(gi), top_(top) {}
+  ft_font_glyph(FT_Glyph g, FT_UInt gi, FT_Int top)
+      : g_(g), gi_(gi), top_(top) {
+
+    auto *bitmap_gl = glyph();
+    assert(bitmap_gl != nullptr);
+    constexpr auto org = FT_Vector{};
+    if (auto ec =
+            FT_Glyph_To_Bitmap(&bitmap_gl, FT_RENDER_MODE_NORMAL, &org, false);
+        ec != FT_Error{}) {
+      return;
+    }
+    assert(bitmap_gl->format == FT_GLYPH_FORMAT_BITMAP);
+    auto bm_destroy = bp::deferred([bitmap_gl] { FT_Done_Glyph(bitmap_gl); });
+    auto &bitmap = std::bit_cast<FT_BitmapGlyph>(bitmap_gl)->bitmap;
+    assert(bitmap.width <= static_cast<decltype(bitmap.width)>(
+                               std::numeric_limits<int>::max()));
+    assert(bitmap.rows <=
+           static_cast<decltype(bitmap.rows)>(std::numeric_limits<int>::max()));
+    auto tot_count = bitmap.width * bitmap.rows;
+    bm_.reserve(tot_count);
+    for (auto i : std::views::iota(0u, bitmap.rows)) {
+      std::copy_n(bitmap.buffer + i * bitmap.pitch, tot_count,
+                  std::back_insert_iterator(bm_));
+    }
+    bm_w_ = static_cast<long>(bitmap.width);
+    bm_h_ = static_cast<long>(bitmap.rows);
+  }
   constexpr auto base_to_top() const noexcept { return top_; }
 
   constexpr expected<void, FT_Error> render(renderer auto &&rend) const {
     unused(g_, gi_);
+#if 0
     auto *bitmap_gl = glyph();
     assert(bitmap_gl != nullptr);
     constexpr auto org = FT_Vector{};
@@ -130,6 +159,24 @@ public:
                          }
                        }
                      });
+
+#else
+    call::draw_alpha(
+        rend, default_rect{{}, {bm_w_, bm_h_}},
+        [&](bounding_box auto const &b, auto &&px_rend) {
+          assert(call::box_includes_box(
+              default_rect{{},
+                           {static_cast<int>(bm_w_), static_cast<int>(bm_h_)}},
+              b));
+          for (auto y : cgui::y_view(b)) {
+            for (auto x : cgui::x_view(b)) {
+              px_rend(
+                  default_pixel_coord{static_cast<int>(x), static_cast<int>(y)},
+                  bm_[y * bm_w_ + x]);
+            }
+          }
+        });
+#endif
     return {};
   }
 
@@ -160,7 +207,11 @@ private:
   struct render_box {
     FT_Int line_width;
   };
-  static constexpr auto cleanup_ = [](FT_Face &f) { FT_Done_Face(f); };
+  static constexpr auto cleanup_ = [](FT_Face &f) {
+    if (f != nullptr) {
+      FT_Done_Face(f);
+    }
+  };
 
   cleanup_object_t<decltype(cleanup_), FT_Face> v_{};
   point_t pts_ = whole_point(12);
@@ -275,11 +326,11 @@ public:
 
 inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face, char v) {
   auto gl_index = FT_Get_Char_Index(face.handle(), v);
-  FT_Glyph gl;
   if (auto ec = FT_Load_Glyph(face.handle(), gl_index, FT_LOAD_DEFAULT);
       ec != 0) {
     return unexpected(ec);
   }
+  FT_Glyph gl;
   if (auto ec = FT_Get_Glyph(face.handle()->glyph, &gl)) {
     return unexpected(ec);
   }
