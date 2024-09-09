@@ -542,16 +542,16 @@ CGUI_CALL_CONCEPT(width)
 CGUI_CALL_CONCEPT(height)
 CGUI_CALL_CONCEPT(top_left)
 CGUI_CALL_CONCEPT(bottom_right)
-template <typename T, typename... Ts>
+template <typename T, typename Ts>
 concept has_mut_top_left =
-    (sizeof...(Ts) == 1 && has_top_left<T> && (requires(bp::as_forward<T> t) {
+    has_top_left<T> && requires(bp::as_forward<T> t) {
        { _do_top_left::call(*t) } -> pixel_coord_mut<Ts>;
-     } && ...));
-template <typename T, typename... Ts>
+     };
+template <typename T, typename Ts>
 concept has_mut_bot_right =
-    (sizeof...(Ts) == 1 && has_top_left<T> && (requires(bp::as_forward<T> t) {
+    has_top_left<T> && requires(bp::as_forward<T> t) {
        { _do_bottom_right::call(*t) } -> pixel_coord_mut<Ts>;
-     } && ...));
+     };
 template <typename T, typename... Ts>
 concept has_any_tlx = has_tl_x<T, Ts...> || has_top_left<T, Ts...>;
 template <typename T, typename TVal>
