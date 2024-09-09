@@ -13,13 +13,6 @@ function(cgui_add_example NAME)
             SDL2::SDL2main
             ${CGUI_SDL_LINK}
     )
-    if (${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
-        target_compile_options(${NAME} PRIVATE
-                /fsanitize=address
-        )
-    else ()
-        message(WARNING "ASDA")
-    endif ()
 endfunction()
 
 cgui_add_example(hello-world)
