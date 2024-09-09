@@ -21,19 +21,19 @@ int main(int, char **) {
     auto full_area = main_window.area();
 
     auto text_library = cgui::ft_font_library::init().value();
-    auto dpi_info = main_window.dpi().value_or(cgui::sdl_display_dpi{72.f, 72.f, 72.f});
-    constexpr auto font_path = 
-    #if 1
-"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    #else
-"C:\\Windows\\Fonts\\arial.ttf"
-    #endif
-    ;
+    auto dpi_info =
+        main_window.dpi().value_or(cgui::sdl_display_dpi{72.f, 72.f, 72.f});
+    constexpr auto font_path =
+#if 1
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+#else
+        "C:\\Windows\\Fonts\\arial.ttf"
+#endif
+        ;
     auto text_font =
-        cgui::ft_font_face::init(text_library, 
-        
-        font_path,
-                                 static_cast<FT_UInt>(dpi_info.vert),
+        cgui::ft_font_face::init(text_library,
+
+                                 font_path, static_cast<FT_UInt>(dpi_info.vert),
                                  static_cast<FT_UInt>(dpi_info.hori))
             .value();
     auto hello_world_header =
@@ -45,11 +45,11 @@ int main(int, char **) {
         &full_area, std::min<int>(cgui::call::height(full_area), 128));
     cgui::unused(button_bar_area);
     auto lorum_ipsum =
-        cgui::text_box_widget(cgui::ft_font_face::init(
-                                  text_library, font_path,
-                                  static_cast<FT_UInt>(dpi_info.vert),
-                                  static_cast<FT_UInt>(dpi_info.hori))
-                                  .value())
+        cgui::text_box_widget(
+            cgui::ft_font_face::init(text_library, font_path,
+                                     static_cast<FT_UInt>(dpi_info.vert),
+                                     static_cast<FT_UInt>(dpi_info.hori))
+                .value())
             .area(full_area)
             .display(
                 "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed "

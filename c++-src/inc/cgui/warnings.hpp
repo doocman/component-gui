@@ -6,13 +6,12 @@
 #define CGUI_CGUI_WARNINGS_HPP
 
 namespace cgui {
-constexpr void unused(auto&&...) {}
+constexpr void unused(auto &&...) {}
 #ifndef NDEBUG
 #define CGUI_DEBUG_ONLY(...) __VA_ARGS__
 #else
 #define CGUI_DEBUG_ONLY(...)
 #endif
-}
+} // namespace cgui
 
 #endif
-

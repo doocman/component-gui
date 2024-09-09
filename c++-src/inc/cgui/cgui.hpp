@@ -35,7 +35,7 @@ template <canvas T, bounding_box TB> class sub_renderer {
   }
 
   static constexpr TB bound_area(TB a) {
-    if(!call::valid_box(a)) {
+    if (!call::valid_box(a)) {
       call::height(a, 0);
       call::width(a, 0);
       assert(call::valid_box(a));
@@ -61,14 +61,14 @@ public:
         *c_, absolute_dest,
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
          offset_x = offset_x, offset_y = offset_y](auto &&drawer) {
-          //std::invoke(
-              (*cb)(relative_dest,
-              [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
-               offset_x, offset_y](pixel_coord auto &&px, colour auto &&col) {
-                auto absolute_pos =
-                    call::nudge_right(call::nudge_down(px, offset_y), offset_x);
-                std::invoke(*d, absolute_pos, col);
-              });
+          // std::invoke(
+          (*cb)(relative_dest,
+                [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
+                 offset_x, offset_y](pixel_coord auto &&px, colour auto &&col) {
+                  auto absolute_pos = call::nudge_right(
+                      call::nudge_down(px, offset_y), offset_x);
+                  std::invoke(*d, absolute_pos, col);
+                });
         });
   }
 
@@ -84,17 +84,16 @@ public:
   constexpr sub_renderer sub(bounding_box auto &&b,
                              default_colour_t col) const {
     auto intersection = call::box_intersection<TB>(b, area_);
-    if(call::valid_box(intersection)) {
-      return {
-        *c_,
-        call::nudge_up(call::nudge_left(intersection,
-                                        call::tl_x(b)),
-                       call::tl_y(b)),
-        offset_x + call::tl_x(b), offset_y + call::tl_y(b), col};
+    if (call::valid_box(intersection)) {
+      return {*c_,
+              call::nudge_up(call::nudge_left(intersection, call::tl_x(b)),
+                             call::tl_y(b)),
+              offset_x + call::tl_x(b), offset_y + call::tl_y(b), col};
     } else {
       auto x = call::tl_x(area_);
       auto y = call::tl_y(area_);
-      return {*c_, call::box_from_xyxy<TB>(x,y,x,y), offset_x, offset_y, col};
+      return {*c_, call::box_from_xyxy<TB>(x, y, x, y), offset_x, offset_y,
+              col};
     }
   }
 
@@ -342,14 +341,14 @@ public:
             last_ws_length = current_line().length;
             last_ws_size = call::advance_x(*gexp);
           }
-          current_line().length +=  call::advance_x(*gexp);
+          current_line().length += call::advance_x(*gexp);
           tokens_.emplace_back(glyph_entry{std::move(*gexp)});
         }
       }
     }
   }
   constexpr void render(auto &&rorg, int w,
-                             int h) /*requires(glyph render...)*/ {
+                        int h) /*requires(glyph render...)*/ {
     // auto tl_y = (h - call::full_height(f_) * line_count_) / 2;
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
@@ -363,8 +362,8 @@ public:
     decltype(do_new_area(newline_entry{})) area;
     for (auto const &t : tokens_) {
       std::visit(
-          [r = rorg.with(colour_), &area, &do_new_area
-           CGUI_DEBUG_ONLY(, &_area_initialised)]<typename T>(
+          [r = rorg.with(colour_), &area,
+           &do_new_area CGUI_DEBUG_ONLY(, &_area_initialised)]<typename T>(
               T const &tok) {
             if constexpr (std::is_same_v<T, glyph_entry>) {
               assert(_area_initialised);
@@ -391,9 +390,9 @@ public:
 
 template <font_face Txt, bounding_box TArea = default_rect>
 constexpr widget<text_renderer<Txt>, TArea> text_box_widget(Txt t,
-                                                           TArea a = {}) {
+                                                            TArea a = {}) {
   return widget<text_renderer<Txt>, TArea>(text_renderer<Txt>(std::move(t)),
-                                          std::move(a));
+                                           std::move(a));
 }
 
 } // namespace cgui

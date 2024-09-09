@@ -135,7 +135,7 @@ class sdl_canvas {
   constexpr SDL_Texture *texture() const { return t_.first_value(); }
 
 public:
-  constexpr sdl_canvas(SDL_Renderer *r, default_rect const& a) : r_(r), a_(a) {}
+  constexpr sdl_canvas(SDL_Renderer *r, default_rect const &a) : r_(r), a_(a) {}
 
   void present() { SDL_RenderPresent(r_); }
 
@@ -183,8 +183,9 @@ public:
     auto raw_pixels = static_cast<default_colour_t *>(raw_pix_void);
     static_assert(sizeof(default_colour_t) == 4);
 
-    cb([raw_pixels, pitch = pitch_bytes / 4, &dest_sz, backstep = call::tl_x(dest_sz) + call::tl_y(dest_sz) * pitch_bytes / 4](pixel_coord auto &&coord,
-                                                 colour auto &&c) {
+    cb([raw_pixels, pitch = pitch_bytes / 4, &dest_sz,
+        backstep = call::tl_x(dest_sz) + call::tl_y(dest_sz) * pitch_bytes / 4](
+           pixel_coord auto &&coord, colour auto &&c) {
       auto x = call::x_of(coord);
       auto y = call::y_of(coord);
       unused(dest_sz);
@@ -198,8 +199,6 @@ public:
     if (auto ec =
             SDL_RenderCopy(r_, texture(), &zero_point_texture, &sdl_dest_rect);
         ec != 0) {
-      // if(auto ec = SDL_RenderCopy(r_, texture(), &zero_point_texture,
-      // &zero_point_texture); ec != 0) {
       return unexpected(SDL_GetError());
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -207,9 +206,7 @@ public:
     return {};
   }
 
-  default_rect area() const {
-    return a_;
-  }
+  default_rect area() const { return a_; }
 };
 
 struct sdl_display_dpi {

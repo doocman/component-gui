@@ -543,15 +543,13 @@ CGUI_CALL_CONCEPT(height)
 CGUI_CALL_CONCEPT(top_left)
 CGUI_CALL_CONCEPT(bottom_right)
 template <typename T, typename Ts>
-concept has_mut_top_left =
-    has_top_left<T> && requires(bp::as_forward<T> t) {
-       { _do_top_left::call(*t) } -> pixel_coord_mut<Ts>;
-     };
+concept has_mut_top_left = has_top_left<T> && requires(bp::as_forward<T> t) {
+  { _do_top_left::call(*t) } -> pixel_coord_mut<Ts>;
+};
 template <typename T, typename Ts>
-concept has_mut_bot_right =
-    has_top_left<T> && requires(bp::as_forward<T> t) {
-       { _do_bottom_right::call(*t) } -> pixel_coord_mut<Ts>;
-     };
+concept has_mut_bot_right = has_top_left<T> && requires(bp::as_forward<T> t) {
+  { _do_bottom_right::call(*t) } -> pixel_coord_mut<Ts>;
+};
 template <typename T, typename... Ts>
 concept has_any_tlx = has_tl_x<T, Ts...> || has_top_left<T, Ts...>;
 template <typename T, typename TVal>
@@ -899,13 +897,15 @@ inline constexpr impl::_do_draw_pixels draw_pixels;
 } // namespace call
 
 template <typename T, typename TArea = default_rect,
-          typename TDrawPixels = dummy_pixel_draw_callback, typename TColour = default_colour_t >
-concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb, TColour const& col) {
-  call::draw_pixels(t, a, pixel_cb);
-  t.sub(a);
-  t.sub(a, col);
-  t.with(col);
-};
+          typename TDrawPixels = dummy_pixel_draw_callback,
+          typename TColour = default_colour_t>
+concept renderer =
+    requires(T &t, TArea const &a, TDrawPixels &&pixel_cb, TColour const &col) {
+      call::draw_pixels(t, a, pixel_cb);
+      t.sub(a);
+      t.sub(a, col);
+      t.with(col);
+    };
 
 namespace call {
 namespace impl {
@@ -1500,11 +1500,9 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 
 } // namespace call
 
-
 template <typename T>
-concept canvas = requires(T const& tc)
-{
-  {call::area(tc)} -> bounding_box;
+concept canvas = requires(T const &tc) {
+  { call::area(tc) } -> bounding_box;
 };
 
 template <typename T, typename TR>
@@ -1518,10 +1516,13 @@ constexpr auto center(bounding_box auto const &b) {
 }
 
 struct dummy_renderer {
-  constexpr void draw_pixels(bounding_box auto const &, pixel_draw_callback auto &&) {}
-  constexpr dummy_renderer with(colour auto&&) const { return {}; }
-  constexpr dummy_renderer sub(bounding_box auto&&, colour auto&&) const { return {}; }
-  constexpr dummy_renderer sub(bounding_box auto&&) const { return {}; }
+  constexpr void draw_pixels(bounding_box auto const &,
+                             pixel_draw_callback auto &&) {}
+  constexpr dummy_renderer with(colour auto &&) const { return {}; }
+  constexpr dummy_renderer sub(bounding_box auto &&, colour auto &&) const {
+    return {};
+  }
+  constexpr dummy_renderer sub(bounding_box auto &&) const { return {}; }
 };
 static_assert(renderer<dummy_renderer>);
 
@@ -1684,10 +1685,10 @@ constexpr default_colour_t &&to_default_colour(default_colour_t &&c) {
   return std::move(c);
 }
 
-constexpr auto x_view(bounding_box auto&& b) {
+constexpr auto x_view(bounding_box auto &&b) {
   return std::views::iota(call::tl_x(b), call::br_x(b));
 }
-constexpr auto y_view(bounding_box auto&& b) {
+constexpr auto y_view(bounding_box auto &&b) {
   return std::views::iota(call::tl_y(b), call::br_y(b));
 }
 
