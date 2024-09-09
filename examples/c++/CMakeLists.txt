@@ -1,8 +1,8 @@
 
 if (CGUI_SDL_STATIC)
-    set (CGUI_SDL_LINK SDL2::SDL2-static)
+    set(CGUI_SDL_LINK SDL2::SDL2-static)
 else ()
-    set (CGUI_SDL_LINK SDL2::SDL2)
+    set(CGUI_SDL_LINK SDL2::SDL2)
 endif ()
 
 function(cgui_add_example NAME)
@@ -14,9 +14,9 @@ function(cgui_add_example NAME)
             ${CGUI_SDL_LINK}
     )
     if (${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
-    target_compile_options(${NAME} PRIVATE
-            /fsanitize=address
-    )
+        target_compile_options(${NAME} PRIVATE
+                /fsanitize=address
+        )
     else ()
         message(WARNING "ASDA")
     endif ()

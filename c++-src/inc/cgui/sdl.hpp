@@ -183,7 +183,8 @@ public:
     auto raw_pixels = static_cast<default_colour_t *>(raw_pix_void);
     static_assert(sizeof(default_colour_t) == 4);
 
-    std::fill_n(raw_pixels, call::width(dest_sz) *  call::height(dest_sz), default_colour_t{0, 0, 0, 255});
+    std::fill_n(raw_pixels, call::width(dest_sz) * call::height(dest_sz),
+                default_colour_t{0, 0, 0, 255});
 
     cb([raw_pixels, pitch = pitch_bytes / 4, &dest_sz,
         backstep = call::tl_x(dest_sz) + call::tl_y(dest_sz) * pitch_bytes / 4](
@@ -216,16 +217,13 @@ struct sdl_display_dpi {
 };
 
 class sdl_window {
-  static constexpr auto deleter = [](SDL_Window *w, SDL_Renderer *r) {
-    if (r != nullptr) {
-      SDL_DestroyRenderer(r);
-    }
+  static constexpr auto deleter = [](SDL_Window *w) {
     if (w != nullptr) {
       SDL_DestroyWindow(w);
     }
   };
   std::string s_;
-  cleanup_object_t<decltype(deleter), SDL_Window *, SDL_Renderer *> handle_;
+  cleanup_object_t<decltype(deleter), SDL_Window *> handle_;
 
   constexpr auto *handle() const {
     assert(handle_.has_value());
@@ -235,7 +233,7 @@ class sdl_window {
 
 public:
   sdl_window() = default;
-  explicit(false) sdl_window(SDL_Window *w, SDL_Renderer *r) : handle_(w, r) {}
+  explicit sdl_window(SDL_Window *w) : handle_(w) {}
 
   static constexpr sdl_window string_owner(std::string s) {
     auto res = sdl_window();
@@ -245,7 +243,7 @@ public:
 
   std::string const &ctor_string() const { return s_; }
   std::string &ctor_string_mut() { return s_; }
-  void take_ownership(SDL_Window *w, SDL_Renderer *r) { handle_.reset(w, r); }
+  void take_ownership(SDL_Window *w) { handle_.reset(w); }
 
   [[nodiscard]] SDL_Rect area() const {
     SDL_Rect r;
@@ -312,10 +310,10 @@ public:
                                   SDL_WINDOWPOS_CENTERED, w_, h_, flags_);
         w != nullptr) {
       if (auto r = SDL_GetRenderer(w); r != nullptr) {
-        return sdl_window(w, nullptr);
+        return sdl_window(w);
       }
       if (auto r = SDL_CreateRenderer(w, 0, 0); r != nullptr) {
-        return sdl_window(w, r);
+        return sdl_window(w);
       }
     }
     title_ = std::move(happy_res.ctor_string_mut());
