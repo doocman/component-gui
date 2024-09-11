@@ -23,6 +23,14 @@ function(cgui_add_example NAME)
     )
 endfunction()
 
+set(PRESET_ADDRSAN ON CACHE BOOL "" FORCE)
+if (${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
+    target_compile_options(freetype PRIVATE "/fsanitize=address")
+    cmake_path(GET CMAKE_CXX_COMPILER PARENT_PATH CGUI_ADDRSAN_PATH)
+    set(CGUI_ADDRSAN_PATH "${CGUI_ADDRSAN_PATH}/clang_rt.asan_dynamic-x86_64.dll")
+    file(COPY "${CGUI_ADDRSAN_PATH}" DESTINATION ".")
+endif ()
+
 cgui_add_example(hello-world)
 target_link_libraries(hello-world PRIVATE cgui_embedded::cgui_example_font)
 add_custom_command(TARGET hello-world POST_BUILD

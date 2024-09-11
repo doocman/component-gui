@@ -2,7 +2,7 @@
 fetchcontent_declare(
         freetype
         GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype.git
-        GIT_TAG 920c5502cc3ddda88f6c7d85ee834ac611bb11cc # 2.13.2
+        GIT_TAG 42608f77f20749dd6ddc9e0536788eaad70ea4b5 # 2.13.3
 )
 
 set(FT_DISABLE_HARFBUZZ ON)

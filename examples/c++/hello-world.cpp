@@ -33,7 +33,7 @@ int main(int, char **) {
         cgui::text_box_widget(std::move(text_font))
             .area(cgui::call::trim_from_above(
                 &full_area, std::min<int>(cgui::call::height(full_area), 128)))
-            .display("Hello i World!");
+            .display("b a");
     auto button_bar_area = cgui::call::trim_from_below(
         &full_area, std::min<int>(cgui::call::height(full_area), 128));
     cgui::unused(button_bar_area);
