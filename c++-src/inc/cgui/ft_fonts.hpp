@@ -19,6 +19,9 @@
 #include <cgui/cgui-types.hpp>
 #include <cgui/stl_extend.hpp>
 
+
+#define CGUI_USE_BM_GLYPH 1
+
 namespace cgui {
 template <> struct extend_api<FT_BBox> {
   static constexpr auto &&tl_x(bp::cvref_type<FT_BBox> auto &&b) noexcept {
@@ -107,8 +110,8 @@ public:
   friend inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face,
                                                         char v);
 
-#if 0
-  ft_font_glyph(FT_Face f) : g_(g), top_(top)
+#if CGUI_USE_BM_GLYPH
+  ft_font_glyph(FT_Glyph g, FT_Int top) : g_(g), top_(top)
   {
 
     auto &bitmap_gl = glyph();
@@ -143,7 +146,7 @@ public:
   constexpr auto base_to_top() const noexcept { return top_; }
 
   constexpr expected<void, FT_Error> render(renderer auto &&rend) const {
-#if 0
+#if CGUI_USE_BM_GLYPH
     if (!has_bitmap_glyph()) {
       return unexpected(0);
     }
@@ -159,7 +162,8 @@ public:
                                         {static_cast<int>(bitmap.width),
                                          static_cast<int>(bitmap.rows)}},
                            b));
-                       assert(bitmap.pitch <= bitmap.width);
+                       assert(bitmap.pitch >= 0);
+                       assert(static_cast<unsigned int>(bitmap.pitch) <= bitmap.width);
                        for (auto y : cgui::y_view(b)) {
                          for (auto x : cgui::x_view(b)) {
                            px_rend(default_pixel_coord{static_cast<int>(x),
@@ -183,7 +187,7 @@ public:
     return {};
   }
 
-#if 0
+#if CGUI_USE_BM_GLYPH
   constexpr auto advance_x() const { return g_->advance.x >> 16; }
   constexpr auto advance_y() const { return g_->advance.y >> 16; }
 #else
@@ -204,16 +208,6 @@ public:
   using point_t = font_point<std::ratio<1, 64>, FT_F26Dot6>;
 
 private:
-  struct glyph_to_render {
-    ft_font_glyph glyph;
-    FT_Int bitmap_top;
-
-    glyph_to_render(ft_font_glyph g, FT_Int top)
-        : glyph(std::move(g)), bitmap_top(top) {}
-  };
-  struct render_box {
-    FT_Int line_width;
-  };
   static constexpr auto cleanup_ = [](FT_Face &f) {
     if (f != nullptr) {
       FT_Done_Face(f);
@@ -221,10 +215,6 @@ private:
   };
 
   cleanup_object_t<decltype(cleanup_), FT_Face> v_{};
-  point_t pts_ = whole_point(12);
-  std::vector<std::variant<glyph_to_render, render_box>> string_;
-  FT_BBox bbox_{};
-  FT_Int line_count_{};
 
   constexpr ft_font_face() = default;
 
@@ -278,73 +268,6 @@ public:
 
   [[nodiscard]] constexpr FT_Face handle() const { return v_.first_value(); }
 
-  void set_text(readable_textc auto const &text, int width, int height) {
-    if constexpr (std::is_array_v<std::remove_cvref_t<decltype(text)>>) {
-      set_text(std::string_view(text), width, height);
-    } else {
-      string_.clear();
-      if (empty(text)) {
-        line_count_ = 0;
-        return;
-      }
-      string_.reserve(std::ranges::size(text) + 1);
-      string_.emplace(end(string_), std::in_place_type<render_box>);
-      line_count_ = 1;
-      auto bbox_index = std::make_signed_t<std::size_t>{};
-      unused(height);
-      auto string_length = 0;
-      auto len_at_ws = 0;
-      for (auto last_space = ssize(string_); auto c : text) {
-        if (auto gle = glyph(*this, c); gle.has_value()) {
-          FT_BBox glyph_bbox;
-          FT_Glyph_Get_CBox(gle->handle(), ft_glyph_bbox_pixels, &glyph_bbox);
-          auto gl_adv = gle->handle()->advance.x >> 16;
-          auto gl_w = std::max(gl_adv, call::width(glyph_bbox));
-          bool add_char = true;
-          if ((string_length + gl_w >= width) || c == '\n') {
-            decltype(begin(string_)) it;
-            decltype(len_at_ws) length_to_set;
-            if (c == ' ' || c == '\n' || last_space == 0) {
-              it =
-                  string_.emplace(end(string_), std::in_place_type<render_box>);
-              add_char = (c != ' ') && (c != '\n');
-              length_to_set = string_length;
-            } else {
-              it = begin(string_) + last_space;
-              *it = render_box{};
-              length_to_set = len_at_ws;
-            }
-            assert(bbox_index < ssize(string_));
-            assert(std::holds_alternative<render_box>(string_[bbox_index]));
-            auto &cur_bbox = std::get<render_box>(string_[bbox_index]);
-            cur_bbox.line_width = length_to_set;
-            assert(string_length >= length_to_set);
-            string_length -= length_to_set;
-            last_space = 0;
-            len_at_ws = 0;
-            ++line_count_;
-            bbox_index = std::distance(begin(string_), it);
-          }
-          if (add_char) {
-            bbox_ = call::box_union(bbox_, glyph_bbox);
-            if (c == ' ') {
-              len_at_ws = string_length;
-              last_space = ssize(string_);
-            }
-            string_length += gl_adv;
-            string_.emplace_back(std::in_place_type<glyph_to_render>,
-                                 std::move(*gle), handle()->glyph->bitmap_top);
-          }
-        }
-      }
-      assert(bbox_index < ssize(string_));
-      auto &last_rb = string_[bbox_index];
-      assert(std::holds_alternative<render_box>(last_rb));
-      std::get<render_box>(last_rb).line_width = string_length;
-      // bbox_ = compute_bbox();
-    }
-  }
-
   [[nodiscard]] constexpr int full_height() const noexcept {
     return (handle()->ascender + handle()->descender) >> 6;
   }
@@ -358,7 +281,7 @@ inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face, char v) {
       ec != 0) {
     return unexpected(ec);
   }
-#if 0
+#if CGUI_USE_BM_GLYPH
   FT_Glyph gl;
   if (auto ec = FT_Get_Glyph(face.handle()->glyph, &gl)) {
     return unexpected(ec);

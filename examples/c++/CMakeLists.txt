@@ -33,7 +33,12 @@ endif ()
 
 cgui_add_example(hello-world)
 target_link_libraries(hello-world PRIVATE cgui_embedded::cgui_example_font)
-add_custom_command(TARGET hello-world POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:SDL2> $<TARGET_FILE_DIR:hello-world>
-        COMMENT "Copied SDL2 shared library file to example output"
-)
+if (NOT CGUI_SDL_STATIC)
+    add_custom_target(cgui_examples_copy_sdl
+            COMMAND
+            "${CMAKE_COMMAND}" -E copy
+            "$<TARGET_FILE:SDL2>" "$<TARGET_FILE_DIR:hello-world>"
+            COMMENT "Copied SDL2 shared library file to example output"
+    )
+    add_dependencies(hello-world cgui_examples_copy_sdl)
+endif ()
