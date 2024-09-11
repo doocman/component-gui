@@ -5,6 +5,7 @@
 
 #include <SDL_main.h>
 
+#include <cgui/embedded/cgui_example_font.hpp>
 #include <cgui/cgui.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/sdl.hpp>
@@ -23,17 +24,9 @@ int main(int, char **) {
     auto text_library = cgui::ft_font_library::init().value();
     auto dpi_info =
         main_window.dpi().value_or(cgui::sdl_display_dpi{72.f, 72.f, 72.f});
-    constexpr auto font_path =
-#if defined(__WIN32__)
-        R"(C:\Windows\Fonts\arial.ttf)"
-#else
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-#endif
-        ;
     auto text_font =
         cgui::ft_font_face::init(text_library,
-
-                                 font_path, static_cast<FT_UInt>(dpi_info.vert),
+                                 cgui::embedded::cgui_example_font(), static_cast<FT_UInt>(dpi_info.vert),
                                  static_cast<FT_UInt>(dpi_info.hori))
             .value();
     auto hello_world_header =
@@ -46,7 +39,7 @@ int main(int, char **) {
     cgui::unused(button_bar_area);
     auto lorum_ipsum =
         cgui::text_box_widget(
-            cgui::ft_font_face::init(text_library, font_path,
+            cgui::ft_font_face::init(text_library, cgui::embedded::cgui_example_font(),
                                      static_cast<FT_UInt>(dpi_info.vert),
                                      static_cast<FT_UInt>(dpi_info.hori))
                 .value())

@@ -1,0 +1,11 @@
+
+#include <cgui/embedded/@NAME@.hpp>
+
+namespace cgui::embedded {
+std::span<unsigned char const> @NAME@() noexcept {
+  constexpr unsigned char data[] = {
+    @data_cpp@
+  };
+  return std::span(data);
+}
+}

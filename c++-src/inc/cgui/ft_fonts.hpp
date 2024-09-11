@@ -205,6 +205,27 @@ public:
     return f;
   }
   static expected<ft_font_face, FT_Error>
+  init(ft_font_library const &l, std::span<unsigned char const> data,
+       FT_UInt horz_res, FT_UInt vert_res, FT_Long index = 0) {
+    auto f = ft_font_face();
+    if (data.size() > static_cast<std::size_t>(
+                          std::numeric_limits<FT_Long>::max())) [[unlikely]] {
+      return unexpected(FT_Error{});
+    }
+    if (auto ec = FT_New_Memory_Face(l.handle(), data.data(),
+                                     static_cast<FT_Long>(data.size()), index,
+                                     &f.v_.first_value());
+        ec != FT_Error{}) {
+      return unexpected(ec);
+    }
+    if (auto ec = FT_Set_Char_Size(f.handle(), 0, 16 << 6, horz_res, vert_res);
+        ec != FT_Error()) {
+      return unexpected(ec);
+    }
+    return f;
+  }
+
+  static expected<ft_font_face, FT_Error>
   init(ft_font_library const &l, FT_Open_Args const &args, FT_Long index = 0) {
     auto f = ft_font_face();
     if (auto ec = FT_Open_Face(l.handle(), &args, index, &f.v_.first_value());
