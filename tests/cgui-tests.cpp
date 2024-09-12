@@ -1609,17 +1609,21 @@ TEST(TextRender, RefFace) // NOLINT
   EXPECT_THAT(face.faulty_glyphs, Eq(1));
 }
 struct mock_face {
-  MOCK_METHOD(dummy_glyph, glyph, (char), (const));
+  MOCK_METHOD((expected<dummy_glyph, bool>), glyph, (char), (const));
+  inline int full_height() const { return 1; }
+  inline int ascender() const { return 1; }
+  inline int descender() const { return 1; }
 };
 TEST(TextRender, CachedGlyphs) // NOLINT
 {
   auto mface = mock_face();
   EXPECT_CALL(mface, glyph(Eq('0'))).WillOnce([](auto &&...) {
-    return dummy_glyph(1, 1, 1, 1);
+    return dummy_font_face().glyph('0');
   });
+  EXPECT_CALL(mface, glyph(Not(Eq('0')))).Times(AnyNumber()).WillRepeatedly([] (auto&&...) { return dummy_font_face().glyph('0'); });
   auto face = cached_font(std::ref(mface));
   auto t2r = text_renderer(std::ref(face));
-  t2r.set_displayed("00", 5, 5);
+  t2r.set_displayed(5, 5, "00");
   dummy_renderer r;
   t2r.render(r, 1, 1);
 }

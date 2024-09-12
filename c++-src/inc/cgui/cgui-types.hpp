@@ -1318,7 +1318,7 @@ constexpr auto box_from_tlbr(TC &&tl, TC &&br, std::type_identity<T> = {}) {
 }
 template <typename T, typename TX>
 concept mut_box_pointer =
-    bp::pointer_type<T> && mutable_bounding_box<bp::pointer_reference_t<T>, TX>;
+    bp::pointer_type<T> && mutable_bounding_box<bp::dereferenced_t<T>, TX>;
 
 template <typename T, typename TV1, typename TV2>
 concept mut_box_pair =
@@ -1360,7 +1360,7 @@ constexpr auto move_tl_to(TB b, TC tl) {
 template <typename TX, mut_box_pointer<TX> T>
 constexpr auto split_x(T b, TX x) {
   assert(b != nullptr);
-  auto res = call::box_from_xyxy<bp::pointer_reference_t<T>>(
+  auto res = call::box_from_xyxy<bp::dereferenced_t<T>>(
       x, call::tl_y(*b), call::br_x(*b), call::br_y(*b));
   call::br_x(*b, x);
   return res;
@@ -1368,7 +1368,7 @@ constexpr auto split_x(T b, TX x) {
 template <typename TY, mut_box_pointer<TY> T>
 constexpr auto split_y(T b, TY y) {
   assert(b != nullptr);
-  auto res = call::box_from_xyxy<bp::pointer_reference_t<T>>(
+  auto res = call::box_from_xyxy<bp::dereferenced_t<T>>(
       call::tl_x(*b), y, call::br_x(*b), call::br_y(*b));
   call::br_y(*b, y);
   return res;
@@ -1382,7 +1382,7 @@ constexpr auto trim_from_left(T bptr, TV v) {
   auto org_lx = call::tl_x(b);
   auto split_x = static_cast<decltype(org_lx)>(org_lx + v);
   call::set_xx(&b, split_x, keep_current);
-  return call::box_from_xyxy<bp::pointer_reference_t<T>>(
+  return call::box_from_xyxy<bp::dereferenced_t<T>>(
       org_lx, call::tl_y(b), split_x, call::br_y(b));
 }
 template <typename TV, mut_box_pointer<TV> T>
@@ -1393,7 +1393,7 @@ constexpr auto trim_from_above(T bptr, TV v) {
   auto org_y = call::tl_y(b);
   auto split_y = static_cast<decltype(org_y)>(org_y + v);
   call::set_yy(&b, split_y, keep_current);
-  return call::box_from_xyxy<bp::pointer_reference_t<T>>(
+  return call::box_from_xyxy<bp::dereferenced_t<T>>(
       call::tl_x(b), org_y, call::br_x(b), split_y);
 }
 template <typename TV, mut_box_pointer<TV> T>
@@ -1402,7 +1402,7 @@ constexpr auto trim_from_right(T bptr, TV v) {
   auto &b = *bptr;
   assert(v <= call::width(b));
   call::width(b, call::width(b) - v);
-  return call::box_from_xywh<bp::pointer_reference_t<T>>(
+  return call::box_from_xywh<bp::dereferenced_t<T>>(
       call::br_x(b), call::tl_y(b), v, call::height(b));
 }
 template <typename TV, mut_box_pointer<TV> T>
@@ -1411,7 +1411,7 @@ constexpr auto trim_from_below(T bptr, TV v) {
   auto &b = *bptr;
   assert(v <= call::height(b));
   call::height(b, call::height(b) - v);
-  return call::box_from_xywh<bp::pointer_reference_t<T>>(
+  return call::box_from_xywh<bp::dereferenced_t<T>>(
       call::tl_x(b), call::br_y(b), call::width(b), v);
 }
 
@@ -1549,11 +1549,14 @@ concept font_glyph = requires(T const &ct, TRenderer &r) {
   call::advance_x(ct);
   call::advance_y(ct);
   call::render(ct, r);
+  call::pixel_area(ct);
 };
 template <typename T, typename TChar = char>
 concept font_face = requires(bp::as_forward<T> t, TChar c) {
   call::glyph(*t, c);
   { *call::glyph(*t, c) } -> font_glyph;
+  { call::full_height(*t) } -> std::convertible_to<long>;
+  { call::ascender(*t) } -> std::convertible_to<long>;
 };
 
 struct position {
