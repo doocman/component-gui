@@ -54,6 +54,9 @@ public:
 
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
+    if (empty_box(dest)) {
+      return decltype(call::draw_pixels(*c_, dest, [] (auto&&) {})){};
+    }
     auto relative_dest = call::box_intersection<TB2>(dest, area_);
     auto absolute_dest =
         call::nudge_right(call::nudge_down(relative_dest, offset_y), offset_x);
@@ -73,6 +76,9 @@ public:
   }
 
   void draw_alpha(bounding_box auto &&b, auto &&cb) {
+    if (empty_box(b)) {
+      return;
+    }
     draw_pixels(std::forward<decltype(b)>(b),
                 [this, &cb](auto &&bbox, auto &&drawer) {
                   cb(bbox, [this, &drawer](auto &&point, auto &&alpha) {

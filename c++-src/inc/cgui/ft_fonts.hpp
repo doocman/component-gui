@@ -19,7 +19,6 @@
 #include <cgui/cgui-types.hpp>
 #include <cgui/stl_extend.hpp>
 
-
 #define CGUI_USE_BM_GLYPH 1
 
 namespace cgui {
@@ -82,22 +81,27 @@ public:
 class ft_font_face;
 
 class ft_font_glyph {
+#if CGUI_USE_BM_GLYPH
   static constexpr auto cleanup = [](FT_Glyph g) {
     if (g != nullptr) {
-      //FT_Done_Glyph(g);
+      // FT_Done_Glyph(g);
     }
   };
   cleanup_object_t<decltype(cleanup), FT_Glyph> g_{};
-  FT_Int top_{};
+#else
   std::vector<std::uint_least8_t> bm_;
   int bm_w_{};
   int bm_h_{};
   int adv_x{};
   int adv_y{};
+#endif
+  FT_Int top_{};
+
   constexpr ft_font_glyph() = default;
+
+#if CGUI_USE_BM_GLYPH
   constexpr FT_Glyph &glyph() { return g_.first_value(); }
   constexpr FT_Glyph glyph() const { return g_.first_value(); }
-
   bool has_bitmap_glyph() const {
     return (glyph() != nullptr) && (glyph()->format == FT_GLYPH_FORMAT_BITMAP);
   }
@@ -105,14 +109,14 @@ class ft_font_glyph {
     assert(has_bitmap_glyph());
     return std::bit_cast<FT_BitmapGlyph>(glyph());
   }
+#endif
 
 public:
   friend inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face,
                                                         char v);
 
 #if CGUI_USE_BM_GLYPH
-  ft_font_glyph(FT_Glyph g, FT_Int top) : g_(g), top_(top)
-  {
+  ft_font_glyph(FT_Glyph g, FT_Int top) : g_(g), top_(top) {
 
     auto &bitmap_gl = glyph();
     assert(bitmap_gl != nullptr);
@@ -126,9 +130,9 @@ public:
   }
 #else
   explicit ft_font_glyph(FT_Face f) {
-    auto& bitmap = f->glyph->bitmap;
-    for(auto y = 0; y < bitmap.rows; ++y) {
-      for(auto x = 0; x < bitmap.width; ++x) {
+    auto &bitmap = f->glyph->bitmap;
+    for (auto y = 0; y < bitmap.rows; ++y) {
+      for (auto x = 0; x < bitmap.width; ++x) {
         bm_.emplace_back(bitmap.buffer[x + y * bitmap.pitch]);
       }
     }
@@ -138,8 +142,7 @@ public:
     adv_x = f->glyph->advance.x >> 6;
     adv_y = f->glyph->advance.y >> 6;
 
-
-    //f->glyph->bitmap.buffer
+    // f->glyph->bitmap.buffer
   }
 #endif
 
@@ -163,7 +166,8 @@ public:
                                          static_cast<int>(bitmap.rows)}},
                            b));
                        assert(bitmap.pitch >= 0);
-                       assert(static_cast<unsigned int>(bitmap.pitch) <= bitmap.width);
+                       assert(static_cast<unsigned int>(bitmap.pitch) <=
+                              bitmap.width);
                        for (auto y : cgui::y_view(b)) {
                          for (auto x : cgui::x_view(b)) {
                            px_rend(default_pixel_coord{static_cast<int>(x),
@@ -173,16 +177,18 @@ public:
                        }
                      });
 #else
-    call::draw_alpha(rend, default_rect{{},
-                                  {static_cast<int>(bm_w_),
-                                   static_cast<int>(bm_h_)}},
-                                   [&] (bounding_box auto const& b, auto&& px_rend) {
-                                     for(auto y : cgui::y_view(b)) {
-                                       for (auto x : cgui::x_view(b)) {
-                                         px_rend(default_pixel_coord{static_cast<int>(x), static_cast<int>(y)}, bm_[x + y * bm_w_]);
-                                       }
-                                     }
-                                   });
+    call::draw_alpha(
+        rend,
+        default_rect{{}, {static_cast<int>(bm_w_), static_cast<int>(bm_h_)}},
+        [&](bounding_box auto const &b, auto &&px_rend) {
+          for (auto y : cgui::y_view(b)) {
+            for (auto x : cgui::x_view(b)) {
+              px_rend(
+                  default_pixel_coord{static_cast<int>(x), static_cast<int>(y)},
+                  bm_[x + y * bm_w_]);
+            }
+          }
+        });
 #endif
     return {};
   }
@@ -190,18 +196,21 @@ public:
 #if CGUI_USE_BM_GLYPH
   constexpr auto advance_x() const { return g_->advance.x >> 16; }
   constexpr auto advance_y() const { return g_->advance.y >> 16; }
+  constexpr FT_Glyph handle() const noexcept { return glyph(); }
+
+  FT_BBox pixel_area() noexcept {
+    FT_BBox b;
+    FT_Glyph_Get_CBox(handle(), ft_glyph_bbox_pixels, &b);
+    return b;
+  }
 #else
   constexpr auto advance_x() const { return adv_x; }
   constexpr auto advance_y() const { return adv_y; }
+  default_rect pixel_area() noexcept {
+    return call::box_from_xywh<default_rect>(0, 0, bm_w_, bm_h_);
+  }
 #endif
-  constexpr FT_Glyph handle() const noexcept { return glyph(); }
 };
-
-inline FT_BBox pixel_area(ft_font_glyph const &g) noexcept {
-  FT_BBox b;
-  FT_Glyph_Get_CBox(g.handle(), ft_glyph_bbox_pixels, &b);
-  return b;
-}
 
 class ft_font_face {
 public:
@@ -288,7 +297,8 @@ inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face &face, char v) {
   }
   return ft_font_glyph(gl, face.handle()->glyph->bitmap_top);
 #else
-  if (auto ec = FT_Render_Glyph(face.handle()->glyph, FT_RENDER_MODE_NORMAL); ec != 0) {
+  if (auto ec = FT_Render_Glyph(face.handle()->glyph, FT_RENDER_MODE_NORMAL);
+      ec != 0) {
     return unexpected(ec);
   }
   return ft_font_glyph(face.handle());

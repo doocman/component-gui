@@ -12,14 +12,14 @@ set(_CGUI_SDL_STATIC_DEFAULT OFF)
 
 include(FetchContent)
 
-if (EXISTS local-cmake)
-    add_subdirectory(local-cmake)
-endif ()
-
 include(cmake/findSDL.cmake)
 include(cmake/findDoocNP.cmake)
 include(cmake/findFreeType.cmake)
 include(cmake/embeddBinary.cmake)
+
+if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/local-cmake")
+    add_subdirectory(local-cmake)
+endif ()
 
 function(CGUI_DOWNLOAD_GOOGLEFONTS)
     include("${CMAKE_SOURCE_DIR}/cmake/findGoogleFonts.cmake")
