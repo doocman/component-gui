@@ -55,7 +55,12 @@ public:
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
     if (empty_box(dest)) {
-      return decltype(call::draw_pixels(*c_, dest, [] (auto&&) {})){};
+      using return_type = decltype(call::draw_pixels(*c_, dest, [] (auto&&) {}));
+      if constexpr(std::is_void_v<return_type>) {
+        return;
+      } else {
+        return return_type{};
+      }
     }
     auto relative_dest = call::box_intersection<TB2>(dest, area_);
     auto absolute_dest =
