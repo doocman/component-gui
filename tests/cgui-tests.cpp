@@ -1620,12 +1620,18 @@ TEST(TextRender, CachedGlyphs) // NOLINT
   EXPECT_CALL(mface, glyph(Eq('0'))).WillOnce([](auto &&...) {
     return dummy_font_face().glyph('0');
   });
-  EXPECT_CALL(mface, glyph(Not(Eq('0')))).Times(AnyNumber()).WillRepeatedly([] (auto&&...) { return dummy_font_face().glyph('0'); });
+  EXPECT_CALL(mface, glyph(Not(Eq('0'))))
+      .Times(AnyNumber())
+      .WillRepeatedly([](auto &&...) { return dummy_font_face().glyph('0'); });
   auto face = cached_font(std::ref(mface));
   auto t2r = text_renderer(std::ref(face));
   t2r.set_displayed(5, 5, "00");
   dummy_renderer r;
   t2r.render(r, 1, 1);
+}
+TEST(VectorMap, Basics) // NOLINT
+{
+  FAIL() << "Not yet implemented...";
 }
 
 } // namespace cgui::tests
