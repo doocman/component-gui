@@ -1515,7 +1515,7 @@ constexpr auto center(bounding_box auto const &b) {
                              (y_of(br) - y_of(tl)) / 2};
 }
 
-constexpr bool empty_box(bounding_box auto const& b) {
+constexpr bool empty_box(bounding_box auto const &b) {
   return call::width(b) == 0 || call::height(b) == 0;
 }
 

@@ -141,8 +141,6 @@ public:
 
   constexpr expected<void, std::string>
   draw_pixels(bounding_box auto &&dest_sz, pixel_draw_callback auto &&cb) {
-    // SDL_RendererInfo* rif;
-    // rif->max_texture_height
     constexpr auto texture_format =
         SDL_PixelFormatEnum::SDL_PIXELFORMAT_ABGR8888;
     if (t_) {
@@ -168,7 +166,6 @@ public:
       }
     }
     void *raw_pix_void;
-    // decltype(auto) sdl_rect = to_sdl_rect(dest_sz);
     auto zero_point_texture =
         SDL_Rect(0, 0, call::width(dest_sz), call::height(dest_sz));
     int pitch_bytes;
@@ -227,7 +224,9 @@ class sdl_window {
     assert(handle_.has_value());
     return handle_.first_value();
   }
-  [[nodiscard]] SDL_Renderer *renderer() const { return SDL_GetRenderer(handle()); }
+  [[nodiscard]] SDL_Renderer *renderer() const {
+    return SDL_GetRenderer(handle());
+  }
 
 public:
   sdl_window() = default;
