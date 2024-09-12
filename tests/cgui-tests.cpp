@@ -1435,8 +1435,8 @@ TEST(TextRender, CenterAligned) // NOLINT
 
   auto r = test_renderer({0, 0, 6, 3});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()),
-                      call::height(r.area()), "1 0");
+  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
+                      "1 0");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
@@ -1463,8 +1463,8 @@ TEST(TextRender, TwoLinesSpace) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()),
-                      call::height(r.area()), "1 1");
+  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
+                      "1 1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
@@ -1489,8 +1489,8 @@ TEST(TextRender, TwoLinesDashDirect) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()),
-                      call::height(r.area()), "120");
+  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
+                      "120");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
@@ -1512,8 +1512,8 @@ TEST(TextRender, TwoLinesDashIndirect) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()),
-                      call::height(r.area()), "1001");
+  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
+                      "1001");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
@@ -1536,8 +1536,8 @@ TEST(TextRender, ManualNewLine) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()),
-                      call::height(r.area()), "1\n1");
+  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
+                      "1\n1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
@@ -1559,8 +1559,8 @@ TEST(TextRender, ThreeLines) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 3});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()),
-                      call::height(r.area()), "10011");
+  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
+                      "10011");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
@@ -1582,8 +1582,8 @@ TEST(TextRender,
 
   auto r = test_renderer({0, 0, 6, 5});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()),
-                      call::height(r.area()), "012");
+  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
+                      "012");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
   EXPECT_THAT(r.failed_calls, IsEmpty());
@@ -1598,6 +1598,30 @@ TEST(TextRender,
                             0, 0, 0, 0, 0, 0        //
                             ));
   EXPECT_THAT(ic.blue, Each(Eq(0)));
+}
+TEST(TextRender, RefFace) // NOLINT
+{
+  auto face = dummy_font_face();
+  auto t2r = text_renderer(std::ref(face));
+  t2r.set_displayed(1, 1, "?");
+  dummy_renderer r;
+  t2r.render(r, 1, 1);
+  EXPECT_THAT(face.faulty_glyphs, Eq(1));
+}
+struct mock_face {
+  MOCK_METHOD(dummy_glyph, glyph, (char), (const));
+};
+TEST(TextRender, CachedGlyphs) // NOLINT
+{
+  auto mface = mock_face();
+  EXPECT_CALL(mface, glyph(Eq('0'))).WillOnce([](auto &&...) {
+    return dummy_glyph(1, 1, 1, 1);
+  });
+  auto face = cached_font(std::ref(mface));
+  auto t2r = text_renderer(std::ref(face));
+  t2r.set_displayed("00", 5, 5);
+  dummy_renderer r;
+  t2r.render(r, 1, 1);
 }
 
 } // namespace cgui::tests

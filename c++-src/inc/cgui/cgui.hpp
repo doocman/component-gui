@@ -224,8 +224,12 @@ template <font_face TFont> class text_renderer {
   std::string text_;
 
 public:
-  constexpr explicit text_renderer(TFont &&f) : f_(std::move(f)) {}
-  constexpr explicit text_renderer(TFont const &f) : f_(f) {}
+  template <typename... TU>
+  requires(std::constructible_from<TFont, TU&&...>)
+  constexpr explicit text_renderer(TU&&... f) : f_(std::forward<TU>(f)...) {}
+  template <typename... TU>
+  requires(std::constructible_from<TFont, TU&&...>)
+  constexpr explicit text_renderer(std::in_place_type_t<TFont>, TU&&... f) : f_(std::forward<TU>(f)...) {}
 
   constexpr void set_displayed(int w, int, std::string_view t) {
     using iterator_t = decltype(tokens_.begin());
@@ -398,6 +402,9 @@ public:
     return std::forward<decltype(r)>(r).colour_;
   }
 };
+
+template <typename T>
+text_renderer(T&&) -> text_renderer<std::unwrap_ref_decay_t<T>>;
 
 template <font_face Txt, bounding_box TArea = default_rect>
 constexpr widget<text_renderer<Txt>, TArea> text_box_widget(Txt t,
