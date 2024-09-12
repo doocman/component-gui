@@ -1,0 +1,11 @@
+
+#ifndef CGUI_EMBEDDED@CGUI_GUARD@HPP_IN
+#define CGUI_EMBEDDED@CGUI_GUARD@HPP_IN
+
+#include <span>
+
+namespace cgui::embedded {
+std::span<unsigned char const> @NAME@() noexcept;
+}
+
+#endif

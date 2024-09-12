@@ -6,6 +6,7 @@
 #include <SDL_main.h>
 
 #include <cgui/cgui.hpp>
+#include <cgui/embedded/cgui_example_font.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/sdl.hpp>
 
@@ -23,30 +24,23 @@ int main(int, char **) {
     auto text_library = cgui::ft_font_library::init().value();
     auto dpi_info =
         main_window.dpi().value_or(cgui::sdl_display_dpi{72.f, 72.f, 72.f});
-    constexpr auto font_path =
-#if defined(__WIN32__)
-        R"(C:\Windows\Fonts\arial.ttf)"
-#else
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-#endif
-        ;
-    auto text_font =
-        cgui::ft_font_face::init(text_library,
-
-                                 font_path, static_cast<FT_UInt>(dpi_info.vert),
-                                 static_cast<FT_UInt>(dpi_info.hori))
-            .value();
+    auto text_font = cgui::ft_font_face::init(
+                         text_library, cgui::embedded::cgui_example_font(),
+                         static_cast<FT_UInt>(dpi_info.vert),
+                         static_cast<FT_UInt>(dpi_info.hori))
+                         .value();
     auto hello_world_header =
         cgui::text_box_widget(std::move(text_font))
             .area(cgui::call::trim_from_above(
                 &full_area, std::min<int>(cgui::call::height(full_area), 128)))
-            .display("Hello i World!");
+            .display("b a");
     auto button_bar_area = cgui::call::trim_from_below(
         &full_area, std::min<int>(cgui::call::height(full_area), 128));
     cgui::unused(button_bar_area);
     auto lorum_ipsum =
         cgui::text_box_widget(
-            cgui::ft_font_face::init(text_library, font_path,
+            cgui::ft_font_face::init(text_library,
+                                     cgui::embedded::cgui_example_font(),
                                      static_cast<FT_UInt>(dpi_info.vert),
                                      static_cast<FT_UInt>(dpi_info.hori))
                 .value())

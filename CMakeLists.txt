@@ -12,13 +12,18 @@ set(_CGUI_SDL_STATIC_DEFAULT OFF)
 
 include(FetchContent)
 
-if (EXISTS local-cmake)
-    add_subdirectory(local-cmake)
-endif ()
-
 include(cmake/findSDL.cmake)
 include(cmake/findDoocNP.cmake)
 include(cmake/findFreeType.cmake)
+include(cmake/embeddBinary.cmake)
+
+if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/local-cmake")
+    add_subdirectory(local-cmake)
+endif ()
+
+function(CGUI_DOWNLOAD_GOOGLEFONTS)
+    include("${CMAKE_SOURCE_DIR}/cmake/findGoogleFonts.cmake")
+endfunction()
 
 if (PROJECT_IS_TOP_LEVEL)
     set(_CGUI_SDL_STATIC_DEFAULT ON)
@@ -51,7 +56,10 @@ if (WIN32)
     set(_CGUI_SDL_STATIC_DEFAULT ON)
 endif ()
 
-set(CGUI_SDL_STATIC ${_CGUI_SDL_STATIC_DEFAULT} CACHE BOOL "")
+set(CGUI_SDL_STATIC
+        OFF
+        #${_CGUI_SDL_STATIC_DEFAULT}
+        CACHE BOOL "")
 set(CGUI_EXAMPLES ${_CGUI_DEFAULT_EXAMPLES} CACHE BOOL "")
 set(CGUI_DEVELOP ${_CGUI_DEVELOP_DEFAULT} CACHE BOOL "")
 

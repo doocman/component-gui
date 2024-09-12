@@ -141,8 +141,6 @@ public:
 
   constexpr expected<void, std::string>
   draw_pixels(bounding_box auto &&dest_sz, pixel_draw_callback auto &&cb) {
-    // SDL_RendererInfo* rif;
-    // rif->max_texture_height
     constexpr auto texture_format =
         SDL_PixelFormatEnum::SDL_PIXELFORMAT_ABGR8888;
     if (t_) {
@@ -168,7 +166,6 @@ public:
       }
     }
     void *raw_pix_void;
-    // decltype(auto) sdl_rect = to_sdl_rect(dest_sz);
     auto zero_point_texture =
         SDL_Rect(0, 0, call::width(dest_sz), call::height(dest_sz));
     int pitch_bytes;
@@ -182,11 +179,9 @@ public:
     }
     auto raw_pixels = static_cast<default_colour_t *>(raw_pix_void);
     static_assert(sizeof(default_colour_t) == 4);
+    auto pitch = pitch_bytes / 4;
 
-    std::fill_n(raw_pixels, call::width(dest_sz) * call::height(dest_sz),
-                default_colour_t{0, 0, 0, 255});
-
-    cb([raw_pixels, pitch = pitch_bytes / 4, &dest_sz,
+    cb([raw_pixels, pitch, &dest_sz,
         backstep = call::tl_x(dest_sz) + call::tl_y(dest_sz) * pitch_bytes / 4](
            pixel_coord auto &&coord, colour auto &&c) {
       auto x = call::x_of(coord);
@@ -209,7 +204,7 @@ public:
     return {};
   }
 
-  default_rect area() const { return a_; }
+  [[nodiscard]] default_rect area() const { return a_; }
 };
 
 struct sdl_display_dpi {
@@ -225,11 +220,13 @@ class sdl_window {
   std::string s_;
   cleanup_object_t<decltype(deleter), SDL_Window *> handle_;
 
-  constexpr auto *handle() const {
+  [[nodiscard]] constexpr auto *handle() const {
     assert(handle_.has_value());
     return handle_.first_value();
   }
-  SDL_Renderer *renderer() const { return SDL_GetRenderer(handle()); }
+  [[nodiscard]] SDL_Renderer *renderer() const {
+    return SDL_GetRenderer(handle());
+  }
 
 public:
   sdl_window() = default;
@@ -241,8 +238,8 @@ public:
     return res;
   }
 
-  std::string const &ctor_string() const { return s_; }
-  std::string &ctor_string_mut() { return s_; }
+  [[nodiscard]] std::string const &ctor_string() const { return s_; }
+  [[nodiscard]] std::string &ctor_string_mut() { return s_; }
   void take_ownership(SDL_Window *w) { handle_.reset(w); }
 
   [[nodiscard]] SDL_Rect area() const {
@@ -263,7 +260,7 @@ public:
 
   [[nodiscard]] expected<sdl_display_dpi, std::string> dpi() const {
     auto display_index = SDL_GetWindowDisplayIndex(handle());
-    sdl_display_dpi res;
+    sdl_display_dpi res; // NOLINT(*-pro-type-member-init)
     if (auto ec =
             SDL_GetDisplayDPI(display_index, &res.diag, &res.hori, &res.vert);
         ec != 0) {
@@ -312,7 +309,8 @@ public:
       if (auto r = SDL_GetRenderer(w); r != nullptr) {
         return sdl_window(w);
       }
-      if (auto r = SDL_CreateRenderer(w, 0, 0); r != nullptr) {
+      if (auto r = SDL_CreateRenderer(w, -1, SDL_RENDERER_TARGETTEXTURE);
+          r != nullptr) {
         return sdl_window(w);
       }
     }
