@@ -232,7 +232,7 @@ public:
   sdl_window() = default;
   explicit sdl_window(SDL_Window *w) : handle_(w) {}
 
-  static constexpr sdl_window string_owner(std::string s) {
+  static sdl_window string_owner(std::string s) {
     auto res = sdl_window();
     res.s_ = std::move(s);
     return res;
