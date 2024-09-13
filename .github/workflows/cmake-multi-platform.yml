@@ -37,9 +37,9 @@ jobs:
             preset: clang-debug
         exclude:
           - os: windows-latest
-            preset: gcc
+            cmake_presets: gcc
           - os: ubuntu-latest
-            preset: cl
+            cmake_presets: cl
 
     steps:
     - uses: actions/checkout@v4
