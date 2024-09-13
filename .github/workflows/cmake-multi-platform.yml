@@ -27,8 +27,9 @@ jobs:
         build_type: [debug]
         cmake_preset: [gcc, clang, msvc22]
         include:
-          - os: windows-latest
-            cmake_preset: msvc22
+          # Does not find cl...
+          #- os: windows-latest
+          #  cmake_preset: msvc22
           - os: windows-latest
             preset: clang
           - os: ubuntu-latest
@@ -43,6 +44,8 @@ jobs:
             # comes with a too old clang atm...
           - os: ubuntu-latest
             cmake_preset: clang
+          - os: windows-latest
+            cmake_preset: msvc22
 
     steps:
     - uses: actions/checkout@v4
