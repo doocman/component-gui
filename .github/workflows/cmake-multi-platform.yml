@@ -33,16 +33,16 @@ jobs:
             preset: clang
           - os: ubuntu-latest
             cmake_preset: gcc
-          - os: ubuntu-latest
-            cmake_preset: clang
+          #- os: ubuntu-latest
+          #  cmake_preset: clang
         exclude:
           - os: windows-latest
             cmake_preset: gcc
           - os: ubuntu-latest
             cmake_preset: msvc22
             # comes with a too old clang atm...
-          #- os: ubuntu-latest
-          #  cmake_presets: clang
+          - os: ubuntu-latest
+            cmake_presets: clang
 
     steps:
     - uses: actions/checkout@v4
@@ -62,9 +62,6 @@ jobs:
       with:
         # ninja version to download. Default: 1.10.0
         version: 1.10.0
-
-    - name: Set up Clang
-      uses: egor-tensin/setup-clang@v1.4
 
     - name: Add Ninja to PATH
       run: echo "${{ github.workspace }}/ninja_bin" >> $GITHUB_PATH
