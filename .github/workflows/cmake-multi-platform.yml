@@ -63,17 +63,17 @@ jobs:
         # ninja version to download. Default: 1.10.0
         version: 1.10.0
 
-    - name: Add Ninja to PATH
-      run: echo "${{ github.workspace }}/ninja_bin" >> $GITHUB_PATH
-
     - name: Set up Clang
       uses: egor-tensin/setup-clang@v1.4
+
+    - name: Add Ninja to PATH
+      run: echo "${{ github.workspace }}/ninja_bin" >> $GITHUB_PATH
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       run: >
-        cmake -S ${{ github.workspace }} --preset ${{ matrix.cmake_preset }}-${{ matrix.build_type }} -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_MAKE_PROGRAM=${{ github.workspace }}/ninja_bin/${{ matrix.ninja }}
+        cmake -S ${{ github.workspace }} --preset ${{ matrix.cmake_preset }}-${{ matrix.build_type }} -B ${{ steps.strings.outputs.build-output-dir }}
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
