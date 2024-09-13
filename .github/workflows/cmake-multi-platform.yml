@@ -24,7 +24,7 @@ jobs:
       # To add more build types (Release, Debug, RelWithDebInfo, etc.) customize the build_type list.
       matrix:
         os: [ubuntu-latest, windows-latest]
-        build_type: [Release]
+        build_type: [debug]
         cmake_presets: [gcc, clang, msvc]
         include:
           - os: windows-latest
@@ -42,6 +42,11 @@ jobs:
             cmake_presets: cl
 
     steps:
+    - name: Setup Ninja
+      uses: ashutoshvarma/setup-ninja@master
+      with:
+        # ninja version to download. Default: 1.10.0
+        version: 1.10.0
     - uses: actions/checkout@v4
       with:
         submodules: recursive
