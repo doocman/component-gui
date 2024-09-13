@@ -42,7 +42,7 @@ jobs:
             cmake_preset: msvc22
             # comes with a too old clang atm...
           - os: ubuntu-latest
-            cmake_presets: clang
+            cmake_preset: clang
 
     steps:
     - uses: actions/checkout@v4
