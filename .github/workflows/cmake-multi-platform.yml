@@ -56,7 +56,8 @@ jobs:
       with:
         # ninja version to download. Default: 1.10.0
         version: 1.10.0
-    - run: ls ${{ github.workspace }}
+    - run: ls ${{ github.workspace }}/ninja_bin
+    - run: ${{ github.workspace }}/ninja_bin/${{ matrix.ninja }}
     - uses: actions/checkout@v4
       with:
         submodules: recursive
