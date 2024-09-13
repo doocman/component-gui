@@ -408,10 +408,10 @@ public:
 template <typename T>
 text_renderer(T &&) -> text_renderer<std::unwrap_ref_decay_t<T>>;
 
-template <font_face Txt, bounding_box TArea = default_rect>
+template <typename Txt, bounding_box TArea = default_rect>
 constexpr auto text_box_widget(Txt t, TArea a = {})
     -> widget<decltype(text_renderer(std::move(t))), TArea> {
-  return {text_renderer<Txt>(std::move(t)), std::move(a)};
+  return {text_renderer(std::move(t)), std::move(a)};
 }
 
 namespace details {

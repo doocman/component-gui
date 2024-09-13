@@ -198,15 +198,15 @@ public:
   constexpr auto advance_y() const { return g_->advance.y >> 16; }
   constexpr FT_Glyph handle() const noexcept { return glyph(); }
 
-  FT_BBox pixel_area() noexcept {
+  [[nodiscard]] FT_BBox pixel_area() const noexcept {
     FT_BBox b;
     FT_Glyph_Get_CBox(handle(), ft_glyph_bbox_pixels, &b);
     return b;
   }
 #else
-  constexpr auto advance_x() const { return adv_x; }
-  constexpr auto advance_y() const { return adv_y; }
-  default_rect pixel_area() noexcept {
+  [[nodiscard]] constexpr auto advance_x() const { return adv_x; }
+  [[nodiscard]] constexpr auto advance_y() const { return adv_y; }
+  [[nodiscard]] constexpr default_rect pixel_area() const noexcept {
     return call::box_from_xywh<default_rect>(0, 0, bm_w_, bm_h_);
   }
 #endif
