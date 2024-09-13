@@ -885,6 +885,10 @@ struct dummy_alpha_drawer {
 };
 static_assert(single_alpha_draw<dummy_alpha_drawer>);
 
+template <typename T, typename TCB = dummy_pixel_drawer>
+concept canvas_pixel_callback =
+    single_pixel_draw<TCB> && std::invocable<T, TCB>;
+
 template <typename T, typename TRect = default_rect,
           typename TCB = dummy_pixel_drawer>
 concept pixel_draw_callback = bounding_box<TRect> && single_pixel_draw<TCB> &&

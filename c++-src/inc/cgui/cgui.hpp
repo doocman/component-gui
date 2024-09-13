@@ -56,7 +56,7 @@ public:
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
     if (empty_box(dest)) {
       using return_type =
-          decltype(call::draw_pixels(*c_, dest, [](auto &&) {}));
+          decltype(call::draw_pixels(*c_, dest, [](auto &&...) {}));
       if constexpr (std::is_void_v<return_type>) {
         return;
       } else {
@@ -365,7 +365,7 @@ public:
     }
   }
   constexpr void render(auto &&rorg, int w, int h)
-    requires(font_glyph<glyph_t, decltype(rorg)>)
+    requires(has_render<glyph_t, decltype(rorg)>)
   {
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
@@ -409,10 +409,9 @@ template <typename T>
 text_renderer(T &&) -> text_renderer<std::unwrap_ref_decay_t<T>>;
 
 template <font_face Txt, bounding_box TArea = default_rect>
-constexpr widget<text_renderer<Txt>, TArea> text_box_widget(Txt t,
-                                                            TArea a = {}) {
-  return widget<text_renderer<Txt>, TArea>(text_renderer<Txt>(std::move(t)),
-                                           std::move(a));
+constexpr auto text_box_widget(Txt t, TArea a = {})
+    -> widget<decltype(text_renderer(std::move(t))), TArea> {
+  return {text_renderer<Txt>(std::move(t)), std::move(a)};
 }
 
 namespace details {
