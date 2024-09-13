@@ -47,6 +47,8 @@ jobs:
       with:
         # ninja version to download. Default: 1.10.0
         version: 1.10.0
+    - name: debug-find-ninja
+      run: ls ninja_bin
     - uses: actions/checkout@v4
       with:
         submodules: recursive
