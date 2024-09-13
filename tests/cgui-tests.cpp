@@ -1649,4 +1649,8 @@ TEST(TextRender, CachedGlyphs4) // NOLINT
   EXPECT_THAT(ic.green, Each(Eq(0)));
 }
 
+TEST(Button, Behaviour) // NOLINT
+{
+  FAIL() << "Not yet implemented";
+}
 } // namespace cgui::tests
