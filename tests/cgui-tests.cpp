@@ -1629,9 +1629,24 @@ TEST(TextRender, CachedGlyphs) // NOLINT
   dummy_renderer r;
   t2r.render(r, 1, 1);
 }
-TEST(VectorMap, Basics) // NOLINT
+TEST(TextRender, CachedGlyphs4) // NOLINT
 {
-  FAIL() << "Not yet implemented...";
+  using font_t = cached_font<dummy_font_face &>;
+  auto dummy_face = dummy_font_face();
+  auto t2r = text_renderer(font_t(dummy_face));
+  call::set_displayed(t2r, 7, 1, "1 02");
+  auto r = test_renderer({0, 0, 7, 1});
+  auto sr = sub_renderer(r);
+  call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
+  call::render(t2r, sr, 7, 1);
+  EXPECT_THAT(r.failed_calls, IsEmpty());
+  EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
+  EXPECT_THAT(dummy_face.faulty_glyphs, Eq(0));
+  auto ic = r.individual_colours();
+  EXPECT_THAT(ic.red, ElementsAre(255, 255, 255, 255, 255, 255, 255));
+  EXPECT_THAT(ic.alpha, ElementsAre(127, 127, 0, 255, 3, 3, 3));
+  EXPECT_THAT(ic.blue, Each(Eq(0)));
+  EXPECT_THAT(ic.green, Each(Eq(0)));
 }
 
 } // namespace cgui::tests

@@ -1382,8 +1382,8 @@ constexpr auto trim_from_left(T bptr, TV v) {
   auto org_lx = call::tl_x(b);
   auto split_x = static_cast<decltype(org_lx)>(org_lx + v);
   call::set_xx(&b, split_x, keep_current);
-  return call::box_from_xyxy<bp::dereferenced_t<T>>(
-      org_lx, call::tl_y(b), split_x, call::br_y(b));
+  return call::box_from_xyxy<bp::dereferenced_t<T>>(org_lx, call::tl_y(b),
+                                                    split_x, call::br_y(b));
 }
 template <typename TV, mut_box_pointer<TV> T>
 constexpr auto trim_from_above(T bptr, TV v) {
@@ -1393,8 +1393,8 @@ constexpr auto trim_from_above(T bptr, TV v) {
   auto org_y = call::tl_y(b);
   auto split_y = static_cast<decltype(org_y)>(org_y + v);
   call::set_yy(&b, split_y, keep_current);
-  return call::box_from_xyxy<bp::dereferenced_t<T>>(
-      call::tl_x(b), org_y, call::br_x(b), split_y);
+  return call::box_from_xyxy<bp::dereferenced_t<T>>(call::tl_x(b), org_y,
+                                                    call::br_x(b), split_y);
 }
 template <typename TV, mut_box_pointer<TV> T>
 constexpr auto trim_from_right(T bptr, TV v) {

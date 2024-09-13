@@ -186,14 +186,17 @@ public:
   widget<TDisplay, TArea2> area(TArea2 const &a) && {
     return {std::move(display_), a};
   }
-  widget display(auto &&...vs) && requires(requires() {
-    call::set_displayed(display_, call::width(area()), call::height(area()),
-                        std::forward<decltype(vs)>(vs)...);
-  }) {
+  widget display(auto &&...vs) &&
+    requires(requires() {
+      call::set_displayed(display_, call::width(area()), call::height(area()),
+                          std::forward<decltype(vs)>(vs)...);
+    })
+  {
     call::set_displayed(display_, call::width(area()), call::height(area()),
                         std::forward<decltype(vs)>(vs)...);
     return std::move(*this);
-  } void render(renderer auto &&r) {
+  }
+  void render(renderer auto &&r) {
     // display_.render(std::forward<decltype(r)>(r));
     call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
                  call::height(area()));
@@ -440,8 +443,8 @@ template <font_face TF> class cached_font {
   using error_t = decltype(details::get_error(call::glyph(f_, char{})));
 
   struct glyph_ref_t {
-    glyph_t const*g_;
-    constexpr explicit glyph_ref_t(glyph_t const&g) : g_(std::addressof(g)) {}
+    glyph_t const *g_;
+    constexpr explicit glyph_ref_t(glyph_t const &g) : g_(std::addressof(g)) {}
     constexpr decltype(auto) base_to_top() const {
       return call::base_to_top(*g_);
     }
@@ -454,7 +457,7 @@ template <font_face TF> class cached_font {
       return call::pixel_area(*g_);
     }
   };
-  std::vector<exp_glyph_t> mutable glyphs_;
+  std::vector<std::unique_ptr<exp_glyph_t>> mutable glyphs_;
   std::vector<char> mutable chars_;
   auto map_begin() const noexcept { return begin(chars_); }
   auto map_end() const noexcept { return end(chars_); }
@@ -465,28 +468,26 @@ public:
     constexpr auto transformer = [](auto &g) { return glyph_ref_t(g); };
     auto gdist = std::distance(map_begin(), pos);
     if (pos == map_end() || *pos != c) {
-      auto gpos = glyphs_.emplace(begin(glyphs_) + gdist, call::glyph(f_, c));
+      auto gpos = glyphs_.emplace(begin(glyphs_) + gdist,
+                                  new exp_glyph_t(call::glyph(f_, c)));
       chars_.emplace(pos, c);
-      return gpos->transform(transformer);
+      return (*gpos)->transform(transformer);
     }
-    return glyphs_[gdist].transform(transformer);
+    return glyphs_[gdist]->transform(transformer);
   }
 
   template <typename... Ts>
-    requires(std::constructible_from<TF, Ts...> &&
-             !(sizeof...(Ts) == 1 && (std::is_same_v<TF, Ts> && ...)))
+    requires(std::constructible_from<TF, Ts && ...> &&
+             !(sizeof...(Ts) == 1 &&
+               (std::is_same_v<cached_font, std::remove_cvref_t<Ts>> && ...)))
   constexpr explicit(sizeof...(Ts) > 1) cached_font(Ts &&...args)
       : f_(std::forward<Ts>(args)...) {}
 
-  constexpr decltype(auto) full_height() const {
-    return call::full_height(f_);
-  }
-  constexpr decltype(auto) ascender() const {
-    return call::ascender(f_);
-  }
+  constexpr decltype(auto) full_height() const { return call::full_height(f_); }
+  constexpr decltype(auto) ascender() const { return call::ascender(f_); }
 };
 template <typename T>
-cached_font(T&&) -> cached_font<std::unwrap_ref_decay_t<T>>;
+cached_font(T &&) -> cached_font<std::unwrap_ref_decay_t<T>>;
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_HPP
