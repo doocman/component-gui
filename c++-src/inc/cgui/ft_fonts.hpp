@@ -8,6 +8,7 @@
 #include <bit>
 #include <cassert>
 #include <ranges>
+#include <span>
 #include <utility>
 #include <variant>
 #include <vector>
