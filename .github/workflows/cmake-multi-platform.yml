@@ -25,10 +25,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [debug]
-        cmake_preset: [gcc, clang, msvc]
+        cmake_preset: [gcc, clang, msvc22]
         include:
           - os: windows-latest
-            cmake_preset: msvc
+            cmake_preset: msvc22
           - os: windows-latest
             preset: clang
           - os: ubuntu-latest
@@ -39,7 +39,7 @@ jobs:
           - os: windows-latest
             cmake_preset: gcc
           - os: ubuntu-latest
-            cmake_preset: msvc
+            cmake_preset: msvc22
             # comes with a too old clang atm...
           #- os: ubuntu-latest
           #  cmake_presets: clang
