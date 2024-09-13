@@ -37,9 +37,9 @@ jobs:
             cmake_preset: clang
         exclude:
           - os: windows-latest
-            cmake_presets: gcc
+            cmake_preset: gcc
           - os: ubuntu-latest
-            cmake_presets: msvc
+            cmake_preset: msvc
             # comes with a too old clang atm...
           #- os: ubuntu-latest
           #  cmake_presets: clang
