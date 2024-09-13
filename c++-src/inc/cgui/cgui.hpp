@@ -55,8 +55,9 @@ public:
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
     if (empty_box(dest)) {
-      using return_type = decltype(call::draw_pixels(*c_, dest, [] (auto&&) {}));
-      if constexpr(std::is_void_v<return_type>) {
+      using return_type =
+          decltype(call::draw_pixels(*c_, dest, [](auto &&...) {}));
+      if constexpr (std::is_void_v<return_type>) {
         return;
       } else {
         return return_type{};
@@ -224,8 +225,13 @@ template <font_face TFont> class text_renderer {
   std::string text_;
 
 public:
-  constexpr explicit text_renderer(TFont &&f) : f_(std::move(f)) {}
-  constexpr explicit text_renderer(TFont const &f) : f_(f) {}
+  template <typename... TU>
+    requires(std::constructible_from<TFont, TU && ...>)
+  constexpr explicit text_renderer(TU &&...f) : f_(std::forward<TU>(f)...) {}
+  template <typename... TU>
+    requires(std::constructible_from<TFont, TU && ...>)
+  constexpr explicit text_renderer(std::in_place_type_t<TFont>, TU &&...f)
+      : f_(std::forward<TU>(f)...) {}
 
   constexpr void set_displayed(int w, int, std::string_view t) {
     using iterator_t = decltype(tokens_.begin());
@@ -358,9 +364,9 @@ public:
       }
     }
   }
-  constexpr void render(auto &&rorg, int w,
-                        int h) /*requires(glyph render...)*/ {
-    // auto tl_y = (h - call::full_height(f_) * line_count_) / 2;
+  constexpr void render(auto &&rorg, int w, int h)
+    requires(has_render<glyph_t, decltype(rorg)>)
+  {
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
     auto do_new_area = [w, base_y2 = h + 2 * call::ascender(f_), fh,
@@ -399,13 +405,88 @@ public:
   }
 };
 
-template <font_face Txt, bounding_box TArea = default_rect>
-constexpr widget<text_renderer<Txt>, TArea> text_box_widget(Txt t,
-                                                            TArea a = {}) {
-  return widget<text_renderer<Txt>, TArea>(text_renderer<Txt>(std::move(t)),
-                                           std::move(a));
+template <typename T>
+text_renderer(T &&) -> text_renderer<std::unwrap_ref_decay_t<T>>;
+
+template <typename Txt, bounding_box TArea = default_rect>
+constexpr auto text_box_widget(Txt t, TArea a = {})
+    -> widget<decltype(text_renderer(std::move(t))), TArea> {
+  return {text_renderer(std::move(t)), std::move(a)};
 }
 
+namespace details {
+template <typename T> constexpr auto get_error(T &&t) {
+  if constexpr (requires() { t.error(); }) {
+    return std::forward<T>(t).error();
+  } else {
+    return false;
+  }
+}
+template <typename T> constexpr bool is_error(T const &t) {
+  if constexpr (requires() { t.has_value(); }) {
+    return !t.has_value();
+  } else if constexpr (std::constructible_from<bool, T const &>) {
+    return static_cast<bool>(t);
+  } else {
+    // assume has value;
+    unused(t);
+    return true;
+  }
+}
+} // namespace details
+
+template <font_face TF> class cached_font {
+  TF f_;
+  using exp_glyph_t = std::remove_cvref_t<decltype(call::glyph(f_, char{}))>;
+  using glyph_t = std::remove_cvref_t<bp::dereferenced_t<exp_glyph_t>>;
+  using error_t = decltype(details::get_error(call::glyph(f_, char{})));
+
+  struct glyph_ref_t {
+    glyph_t const *g_;
+    constexpr explicit glyph_ref_t(glyph_t const &g) : g_(std::addressof(g)) {}
+    constexpr decltype(auto) base_to_top() const {
+      return call::base_to_top(*g_);
+    }
+    constexpr decltype(auto) advance_x() const { return call::advance_x(*g_); }
+    constexpr decltype(auto) advance_y() const { return call::advance_y(*g_); }
+    constexpr decltype(auto) render(auto &&r) const {
+      return call::render(*g_, std::forward<decltype(r)>(r));
+    }
+    constexpr decltype(auto) pixel_area() const {
+      return call::pixel_area(*g_);
+    }
+  };
+  std::vector<std::unique_ptr<exp_glyph_t>> mutable glyphs_;
+  std::vector<char> mutable chars_;
+  auto map_begin() const noexcept { return begin(chars_); }
+  auto map_end() const noexcept { return end(chars_); }
+
+public:
+  constexpr expected<glyph_ref_t, error_t> glyph(char c) const {
+    auto pos = std::lower_bound(map_begin(), map_end(), c);
+    constexpr auto transformer = [](auto &g) { return glyph_ref_t(g); };
+    auto gdist = std::distance(map_begin(), pos);
+    if (pos == map_end() || *pos != c) {
+      auto gpos = glyphs_.emplace(begin(glyphs_) + gdist,
+                                  new exp_glyph_t(call::glyph(f_, c)));
+      chars_.emplace(pos, c);
+      return (*gpos)->transform(transformer);
+    }
+    return glyphs_[gdist]->transform(transformer);
+  }
+
+  template <typename... Ts>
+    requires(std::constructible_from<TF, Ts && ...> &&
+             !(sizeof...(Ts) == 1 &&
+               (std::is_same_v<cached_font, std::remove_cvref_t<Ts>> && ...)))
+  constexpr explicit(sizeof...(Ts) > 1) cached_font(Ts &&...args)
+      : f_(std::forward<Ts>(args)...) {}
+
+  constexpr decltype(auto) full_height() const { return call::full_height(f_); }
+  constexpr decltype(auto) ascender() const { return call::ascender(f_); }
+};
+template <typename T>
+cached_font(T &&) -> cached_font<std::unwrap_ref_decay_t<T>>;
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_HPP

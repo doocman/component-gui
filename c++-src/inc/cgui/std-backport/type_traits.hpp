@@ -9,7 +9,7 @@
 
 namespace cgui::bp {
 template <typename T>
-using pointer_reference_t = decltype(*std::declval<T &&>());
+using dereferenced_t = decltype(*std::declval<T &&>());
 }
 
 #endif // COMPONENT_GUI_TYPE_TRAITS_HPP

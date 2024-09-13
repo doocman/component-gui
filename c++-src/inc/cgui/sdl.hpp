@@ -140,7 +140,7 @@ public:
   void present() { SDL_RenderPresent(r_); }
 
   constexpr expected<void, std::string>
-  draw_pixels(bounding_box auto &&dest_sz, pixel_draw_callback auto &&cb) {
+  draw_pixels(bounding_box auto &&dest_sz, canvas_pixel_callback auto &&cb) {
     constexpr auto texture_format =
         SDL_PixelFormatEnum::SDL_PIXELFORMAT_ABGR8888;
     if (t_) {

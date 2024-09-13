@@ -29,8 +29,9 @@ int main(int, char **) {
                          static_cast<FT_UInt>(dpi_info.vert),
                          static_cast<FT_UInt>(dpi_info.hori))
                          .value();
+    auto cached_font = cgui::cached_font(std::move(text_font));
     auto hello_world_header =
-        cgui::text_box_widget(std::move(text_font))
+        cgui::text_box_widget(std::ref(cached_font))
             .area(cgui::call::trim_from_above(
                 &full_area, std::min<int>(cgui::call::height(full_area), 128)))
             .display("b a");
@@ -38,12 +39,7 @@ int main(int, char **) {
         &full_area, std::min<int>(cgui::call::height(full_area), 128));
     cgui::unused(button_bar_area);
     auto lorum_ipsum =
-        cgui::text_box_widget(
-            cgui::ft_font_face::init(text_library,
-                                     cgui::embedded::cgui_example_font(),
-                                     static_cast<FT_UInt>(dpi_info.vert),
-                                     static_cast<FT_UInt>(dpi_info.hori))
-                .value())
+        cgui::text_box_widget(std::ref(cached_font))
             .area(full_area)
             .display(
                 "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed "

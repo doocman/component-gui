@@ -743,6 +743,7 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
   return val;
 }
 
+CGUI_CALL_CONCEPT(draw_pixels)
 CGUI_CALL_CONCEPT(draw_alpha);
 CGUI_CALL_CONCEPT(advance_x);
 CGUI_CALL_CONCEPT(advance_y);
@@ -774,6 +775,7 @@ inline constexpr impl::height_t height;
 inline constexpr impl::top_left_t top_left;
 inline constexpr impl::bottom_right_t bottom_right;
 
+inline constexpr impl::_do_draw_pixels draw_pixels;
 inline constexpr impl::_do_draw_alpha draw_alpha;
 inline constexpr impl::_do_advance_x advance_x;
 inline constexpr impl::_do_advance_y advance_y;
@@ -865,47 +867,60 @@ concept mutable_bounding_box =
 
 static_assert(bounding_box<default_rect>);
 
-template <typename T>
-concept pixel_drawer =
-    std::invocable<T &&, default_pixel_coord, default_colour_t>;
-struct dummy_pixel_drawer {
-  constexpr void operator()(pixel_coord auto &&, colour auto &&) {}
-};
-static_assert(pixel_drawer<dummy_pixel_drawer>);
-
 template <typename T, typename TCoord = default_pixel_coord,
           typename TColour = default_colour_t>
 concept single_pixel_draw = pixel_coord<TCoord> && colour<TColour> &&
                             std::invocable<T, TCoord, TColour>;
+template <typename T, typename TCoord = default_pixel_coord>
+concept single_alpha_draw =
+    pixel_coord<TCoord> && std::invocable<T, TCoord, std::uint_least8_t>;
+struct dummy_pixel_drawer {
+  constexpr void operator()(pixel_coord auto &&, colour auto &&) {}
+};
+static_assert(single_pixel_draw<dummy_pixel_drawer>);
+struct dummy_alpha_drawer {
+  constexpr void
+  operator()(pixel_coord auto &&,
+             std::convertible_to<std::uint_least8_t> auto &&) const {}
+};
+static_assert(single_alpha_draw<dummy_alpha_drawer>);
 
-template <typename>
-concept pixel_draw_callback = true;
+template <typename T, typename TCB = dummy_pixel_drawer>
+concept canvas_pixel_callback =
+    single_pixel_draw<TCB> && std::invocable<T, TCB>;
+
+template <typename T, typename TRect = default_rect,
+          typename TCB = dummy_pixel_drawer>
+concept pixel_draw_callback = bounding_box<TRect> && single_pixel_draw<TCB> &&
+                              std::invocable<T, TRect, TCB>;
+template <typename T, typename TRect = default_rect,
+          typename TCB = dummy_alpha_drawer>
+concept alpha_draw_callback = bounding_box<TRect> && single_alpha_draw<TCB> &&
+                              std::invocable<T, TRect, TCB>;
 
 struct dummy_pixel_draw_callback {
-  constexpr void operator()(
-      bounding_box auto &&,
-      single_pixel_draw<default_pixel_coord, default_colour_t> auto &&) const {}
+  constexpr void operator()(bounding_box auto &&,
+                            single_pixel_draw auto &&) const {}
 };
 static_assert(pixel_draw_callback<dummy_pixel_draw_callback>);
-
-namespace call {
-namespace impl {
-CGUI_CALL_CONCEPT(draw_pixels)
-
-}
-inline constexpr impl::_do_draw_pixels draw_pixels;
-} // namespace call
+struct dummy_alpha_draw_callback {
+  constexpr void operator()(bounding_box auto &&,
+                            single_alpha_draw auto &&) const {}
+};
+static_assert(alpha_draw_callback<dummy_alpha_draw_callback>);
 
 template <typename T, typename TArea = default_rect,
           typename TDrawPixels = dummy_pixel_draw_callback,
+          typename TDrawAlpha = dummy_alpha_draw_callback,
           typename TColour = default_colour_t>
-concept renderer =
-    requires(T &t, TArea const &a, TDrawPixels &&pixel_cb, TColour const &col) {
-      call::draw_pixels(t, a, pixel_cb);
-      t.sub(a);
-      t.sub(a, col);
-      t.with(col);
-    };
+concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb,
+                            TDrawAlpha &&alpha_cb, TColour const &col) {
+  call::draw_pixels(t, a, pixel_cb);
+  call::draw_alpha(t, a, alpha_cb);
+  t.sub(a);
+  t.sub(a, col);
+  t.with(col);
+};
 
 namespace call {
 namespace impl {
@@ -1307,7 +1322,7 @@ constexpr auto box_from_tlbr(TC &&tl, TC &&br, std::type_identity<T> = {}) {
 }
 template <typename T, typename TX>
 concept mut_box_pointer =
-    bp::pointer_type<T> && mutable_bounding_box<bp::pointer_reference_t<T>, TX>;
+    bp::pointer_type<T> && mutable_bounding_box<bp::dereferenced_t<T>, TX>;
 
 template <typename T, typename TV1, typename TV2>
 concept mut_box_pair =
@@ -1349,7 +1364,7 @@ constexpr auto move_tl_to(TB b, TC tl) {
 template <typename TX, mut_box_pointer<TX> T>
 constexpr auto split_x(T b, TX x) {
   assert(b != nullptr);
-  auto res = call::box_from_xyxy<bp::pointer_reference_t<T>>(
+  auto res = call::box_from_xyxy<bp::dereferenced_t<T>>(
       x, call::tl_y(*b), call::br_x(*b), call::br_y(*b));
   call::br_x(*b, x);
   return res;
@@ -1357,7 +1372,7 @@ constexpr auto split_x(T b, TX x) {
 template <typename TY, mut_box_pointer<TY> T>
 constexpr auto split_y(T b, TY y) {
   assert(b != nullptr);
-  auto res = call::box_from_xyxy<bp::pointer_reference_t<T>>(
+  auto res = call::box_from_xyxy<bp::dereferenced_t<T>>(
       call::tl_x(*b), y, call::br_x(*b), call::br_y(*b));
   call::br_y(*b, y);
   return res;
@@ -1371,8 +1386,8 @@ constexpr auto trim_from_left(T bptr, TV v) {
   auto org_lx = call::tl_x(b);
   auto split_x = static_cast<decltype(org_lx)>(org_lx + v);
   call::set_xx(&b, split_x, keep_current);
-  return call::box_from_xyxy<bp::pointer_reference_t<T>>(
-      org_lx, call::tl_y(b), split_x, call::br_y(b));
+  return call::box_from_xyxy<bp::dereferenced_t<T>>(org_lx, call::tl_y(b),
+                                                    split_x, call::br_y(b));
 }
 template <typename TV, mut_box_pointer<TV> T>
 constexpr auto trim_from_above(T bptr, TV v) {
@@ -1382,8 +1397,8 @@ constexpr auto trim_from_above(T bptr, TV v) {
   auto org_y = call::tl_y(b);
   auto split_y = static_cast<decltype(org_y)>(org_y + v);
   call::set_yy(&b, split_y, keep_current);
-  return call::box_from_xyxy<bp::pointer_reference_t<T>>(
-      call::tl_x(b), org_y, call::br_x(b), split_y);
+  return call::box_from_xyxy<bp::dereferenced_t<T>>(call::tl_x(b), org_y,
+                                                    call::br_x(b), split_y);
 }
 template <typename TV, mut_box_pointer<TV> T>
 constexpr auto trim_from_right(T bptr, TV v) {
@@ -1391,7 +1406,7 @@ constexpr auto trim_from_right(T bptr, TV v) {
   auto &b = *bptr;
   assert(v <= call::width(b));
   call::width(b, call::width(b) - v);
-  return call::box_from_xywh<bp::pointer_reference_t<T>>(
+  return call::box_from_xywh<bp::dereferenced_t<T>>(
       call::br_x(b), call::tl_y(b), v, call::height(b));
 }
 template <typename TV, mut_box_pointer<TV> T>
@@ -1400,7 +1415,7 @@ constexpr auto trim_from_below(T bptr, TV v) {
   auto &b = *bptr;
   assert(v <= call::height(b));
   call::height(b, call::height(b) - v);
-  return call::box_from_xywh<bp::pointer_reference_t<T>>(
+  return call::box_from_xywh<bp::dereferenced_t<T>>(
       call::tl_x(b), call::br_y(b), call::width(b), v);
 }
 
@@ -1522,6 +1537,8 @@ constexpr bool empty_box(bounding_box auto const &b) {
 struct dummy_renderer {
   constexpr void draw_pixels(bounding_box auto const &,
                              pixel_draw_callback auto &&) {}
+  constexpr void draw_alpha(bounding_box auto const &,
+                            alpha_draw_callback auto &&) {}
   constexpr dummy_renderer with(colour auto &&) const { return {}; }
   constexpr dummy_renderer sub(bounding_box auto &&, colour auto &&) const {
     return {};
@@ -1536,9 +1553,15 @@ concept font_glyph = requires(T const &ct, TRenderer &r) {
   call::advance_x(ct);
   call::advance_y(ct);
   call::render(ct, r);
+  call::pixel_area(ct);
 };
-template <typename>
-concept font_face = true;
+template <typename T, typename TChar = char>
+concept font_face = requires(bp::as_forward<T> t, TChar c) {
+  call::glyph(*t, c);
+  { *call::glyph(*t, c) } -> font_glyph;
+  { call::full_height(*t) } -> std::convertible_to<long>;
+  { call::ascender(*t) } -> std::convertible_to<long>;
+};
 
 struct position {
   long x;
