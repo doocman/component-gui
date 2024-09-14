@@ -1649,8 +1649,20 @@ TEST(TextRender, CachedGlyphs4) // NOLINT
   EXPECT_THAT(ic.green, Each(Eq(0)));
 }
 
-TEST(Button, Behaviour) // NOLINT
+TEST(SystemToInputEvent, Click) // NOLINT
 {
-  FAIL() << "Not yet implemented";
+
 }
+
+/*
+TEST(Button, Click) // NOLINT
+{
+  auto f = MockFunction<void()>{};
+  auto checkpoint = MockFunction<void()>{};
+  InSequence s;
+  EXPECT_CALL(checkpoint, Call()).Times(1);
+  EXPECT_CALL(f, Call()).Times(1);
+  auto b = image_button({}, [&f] { f.Call(); });
+
+}*/
 } // namespace cgui::tests
