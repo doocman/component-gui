@@ -922,6 +922,20 @@ concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb,
   t.with(col);
 };
 
+enum class ui_events { system, mouse_move, mouse_button_down, mouse_button_up };
+
+struct dummy_mouse_down_event {
+  default_pixel_coord pos;
+  int button_id;
+};
+struct dummy_mouse_up_event {
+  default_pixel_coord pos;
+  int button_id;
+};
+struct dummy_mouse_move_event {
+  default_pixel_coord pos;
+};
+
 namespace call {
 namespace impl {
 // Namespace poisons to not look in call-namespace for these functions

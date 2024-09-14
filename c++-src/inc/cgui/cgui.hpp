@@ -487,6 +487,11 @@ public:
 };
 template <typename T>
 cached_font(T &&) -> cached_font<std::unwrap_ref_decay_t<T>>;
+
+template <bounding_box TB = default_rect> class buttonlike_trigger {
+public:
+};
+
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_HPP
