@@ -1681,10 +1681,11 @@ TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
   EXPECT_CALL(callback, do_on_button_click());
   EXPECT_CALL(callback, do_on_button_exit());
   constexpr auto dummy_area = default_rect{{0,0 }, {4, 4}};
-  trig.handle(dummy_area, dummy_mouse_move_event{{1,1}});
-  trig.handle(dummy_area, dummy_mouse_down_event{{1,1}, 0});
-  trig.handle(dummy_area, dummy_mouse_up_event{{1, 1}, 0});
-  trig.handle(dummy_area, dummy_mouse_move_event{{-1, 1}});
+  trig.handle(dummy_area, dummy_mouse_move_event{{1,1}}, callback);
+  trig.handle(dummy_area, dummy_mouse_down_event{{1,1}, 0}, callback);
+  checkpoint.Call();
+  trig.handle(dummy_area, dummy_mouse_up_event{{1, 1}, 0}, callback);
+  trig.handle(dummy_area, dummy_mouse_move_event{{-1, 1}}, callback);
 }
 
 /*

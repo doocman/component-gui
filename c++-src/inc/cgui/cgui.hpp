@@ -186,17 +186,14 @@ public:
   widget<TDisplay, TArea2> area(TArea2 const &a) && {
     return {std::move(display_), a};
   }
-  widget display(auto &&...vs) &&
-    requires(requires() {
-      call::set_displayed(display_, call::width(area()), call::height(area()),
-                          std::forward<decltype(vs)>(vs)...);
-    })
-  {
+  widget display(auto &&...vs) && requires(requires() {
+    call::set_displayed(display_, call::width(area()), call::height(area()),
+                        std::forward<decltype(vs)>(vs)...);
+  }) {
     call::set_displayed(display_, call::width(area()), call::height(area()),
                         std::forward<decltype(vs)>(vs)...);
     return std::move(*this);
-  }
-  void render(renderer auto &&r) {
+  } void render(renderer auto &&r) {
     // display_.render(std::forward<decltype(r)>(r));
     call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
                  call::height(area()));
@@ -488,8 +485,65 @@ public:
 template <typename T>
 cached_font(T &&) -> cached_font<std::unwrap_ref_decay_t<T>>;
 
-template <bounding_box TB = default_rect> class buttonlike_trigger {
+class buttonlike_trigger {
+  bool mouse_inside_{};
+  bool mouse_down_{};
+
 public:
+  void handle(
+      bounding_box auto &&area,
+      event_types<ui_events::mouse_move, ui_events::mouse_button_down,
+                  ui_events::mouse_button_up, ui_events::mouse_exit> auto &&evt,
+      auto &&...responsees) {
+    using enum ui_events;
+    using evt_t = decltype(evt);
+    if constexpr (can_be_event<mouse_exit, evt_t>()) {
+      if (is_event<mouse_exit>(evt) && mouse_inside_) {
+        invoke_if_applicable{call::on_button_exit}(
+            std::forward<decltype(responsees)>(responsees)...);
+        mouse_inside_ = false;
+      }
+    }
+    if constexpr (can_be_event<mouse_move, evt_t>()) {
+      if (is_event<mouse_move>(evt)) {
+        // do_stuff;
+        auto is_now_inside = call::hit_box(area, call::position(evt));
+        if (is_now_inside != mouse_inside_) {
+          if (mouse_inside_) {
+            invoke_if_applicable{call::on_button_exit}(
+                std::forward<decltype(responsees)>(responsees)...);
+          } else {
+            invoke_if_applicable{call::on_button_hover}(
+                std::forward<decltype(responsees)>(responsees)...);
+          }
+          mouse_inside_ = is_now_inside;
+        }
+        return;
+      }
+    }
+    if constexpr (can_be_event<mouse_button_down, evt_t>()) {
+      if (is_event<mouse_button_down>(evt) &&
+          call::is_mouse_button(evt, mouse_button::primary)) {
+        if (!mouse_down_ && call::hit_box(area, call::position(evt))) {
+          invoke_if_applicable{call::on_button_hold}(
+              std::forward<decltype(responsees)>(responsees)...);
+        }
+        mouse_down_ = true;
+        return;
+      }
+    }
+    if constexpr (can_be_event<mouse_button_up, evt_t>()) {
+      if (is_event<mouse_button_up>(evt) &&
+          call::is_mouse_button(evt, mouse_button::primary)) {
+        if (call::hit_box(area, call::position(evt))) {
+          invoke_if_applicable{call::on_button_click}(
+              std::forward<decltype(responsees)>(responsees)...);
+        }
+        mouse_down_ = false;
+        return;
+      }
+    }
+  }
 };
 
 } // namespace cgui
