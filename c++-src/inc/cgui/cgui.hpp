@@ -186,14 +186,17 @@ public:
   widget<TDisplay, TArea2> area(TArea2 const &a) && {
     return {std::move(display_), a};
   }
-  widget display(auto &&...vs) && requires(requires() {
-    call::set_displayed(display_, call::width(area()), call::height(area()),
-                        std::forward<decltype(vs)>(vs)...);
-  }) {
+  widget display(auto &&...vs) &&
+    requires(requires() {
+      call::set_displayed(display_, call::width(area()), call::height(area()),
+                          std::forward<decltype(vs)>(vs)...);
+    })
+  {
     call::set_displayed(display_, call::width(area()), call::height(area()),
                         std::forward<decltype(vs)>(vs)...);
     return std::move(*this);
-  } void render(renderer auto &&r) {
+  }
+  void render(renderer auto &&r) {
     // display_.render(std::forward<decltype(r)>(r));
     call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
                  call::height(area()));
@@ -523,7 +526,7 @@ public:
     }
     if constexpr (can_be_event<mouse_button_down, evt_t>()) {
       if (is_event<mouse_button_down>(evt) &&
-          call::is_mouse_button(evt, mouse_button::primary)) {
+          call::mouse_button(evt) == mouse_buttons::primary) {
         if (!mouse_down_ && call::hit_box(area, call::position(evt))) {
           invoke_if_applicable{call::on_button_hold}(
               std::forward<decltype(responsees)>(responsees)...);
@@ -534,7 +537,7 @@ public:
     }
     if constexpr (can_be_event<mouse_button_up, evt_t>()) {
       if (is_event<mouse_button_up>(evt) &&
-          call::is_mouse_button(evt, mouse_button::primary)) {
+          call::mouse_button(evt) == mouse_buttons::primary) {
         if (call::hit_box(area, call::position(evt))) {
           invoke_if_applicable{call::on_button_click}(
               std::forward<decltype(responsees)>(responsees)...);

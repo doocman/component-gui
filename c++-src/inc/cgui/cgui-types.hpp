@@ -41,28 +41,27 @@
   template <typename T, typename... Ts>                                        \
   concept has_##NAME = member_##NAME<T, Ts...> || static_##NAME<T, Ts...> ||   \
                        extend_##NAME<T, Ts...> || free_##NAME<T, Ts...>;       \
-  struct _do_##NAME{                                                           \
+  struct _do_##NAME {                                                          \
                                                                                \
-      template <typename... Ts, has_##NAME<Ts...> T>                           \
-      static constexpr decltype(auto) call(T && torg, Ts && ...args){          \
-          auto t = bp::as_forward<T>(torg);                                    \
-  if constexpr (member_##NAME<T, Ts...>) {                                     \
-    return (*t).NAME(std::forward<Ts>(args)...);                               \
-  } else if constexpr (static_##NAME<T, Ts...>) {                              \
-    return std::remove_cvref_t<T>::NAME(*t, std::forward<Ts>(args)...);        \
-  } else if constexpr (extend_##NAME<T, Ts...>) {                              \
-    return extend_api_t<T>::NAME(*t, std::forward<Ts>(args)...);               \
-  } else {                                                                     \
-    static_assert(free_##NAME<T, Ts...>);                                      \
-    return NAME(*t, std::forward<Ts>(args)...);                                \
-  }                                                                            \
-  }                                                                            \
-  template <typename... Ts, has_##NAME<Ts...> T>                               \
-  constexpr decltype(auto) operator()(T &&t, Ts &&...args) const {             \
-    return call(std::forward<T>(t), std::forward<Ts>(args)...);                \
-  }                                                                            \
-  }                                                                            \
-  ;
+    template <typename... Ts, has_##NAME<Ts...> T>                             \
+    static constexpr decltype(auto) call(T &&torg, Ts &&...args) {             \
+      auto t = bp::as_forward<T>(torg);                                        \
+      if constexpr (member_##NAME<T, Ts...>) {                                 \
+        return (*t).NAME(std::forward<Ts>(args)...);                           \
+      } else if constexpr (static_##NAME<T, Ts...>) {                          \
+        return std::remove_cvref_t<T>::NAME(*t, std::forward<Ts>(args)...);    \
+      } else if constexpr (extend_##NAME<T, Ts...>) {                          \
+        return extend_api_t<T>::NAME(*t, std::forward<Ts>(args)...);           \
+      } else {                                                                 \
+        static_assert(free_##NAME<T, Ts...>);                                  \
+        return NAME(*t, std::forward<Ts>(args)...);                            \
+      }                                                                        \
+    }                                                                          \
+    template <typename... Ts, has_##NAME<Ts...> T>                             \
+    constexpr decltype(auto) operator()(T && t, Ts &&...args) const {          \
+      return call(std::forward<T>(t), std::forward<Ts>(args)...);              \
+    }                                                                          \
+  };
 
 #define CGUI_CALL_BBOX_MEMBER(NAME, CONCEPT, MUTCONCEPT)                       \
   static constexpr decltype(auto) _fallback(auto const &b);                    \
@@ -103,25 +102,28 @@ template <typename T, typename... Ts> struct invoke_if_applicable {
   [[no_unique_address]] T t_;
   std::tuple<Ts...> args_;
 
-  constexpr explicit invoke_if_applicable(T t, Ts&&... args) : t_(std::move(t)), args_(std::forward<Ts>(args)...) {}
+  constexpr explicit invoke_if_applicable(T t, Ts &&...args)
+      : t_(std::move(t)), args_(std::forward<Ts>(args)...) {}
 
   // disable copy/move semantics, because this class should not be "saved".
-  invoke_if_applicable(invoke_if_applicable const&) = delete;
-  invoke_if_applicable& operator=(invoke_if_applicable const&) = delete;
+  invoke_if_applicable(invoke_if_applicable const &) = delete;
+  invoke_if_applicable &operator=(invoke_if_applicable const &) = delete;
 
-  constexpr void operator()(auto&& cur_sub, auto&&... subjects)&& {
-    if constexpr(std::invocable<T, decltype(cur_sub), std::remove_reference_t<Ts>&...>) {
-      std::apply([this, &cur_sub] (auto&&... args) {
-        std::invoke(t_, std::forward<decltype(cur_sub)>(cur_sub), args...);
-      }, args_);
+  constexpr void operator()(auto &&cur_sub, auto &&...subjects) && {
+    if constexpr (std::invocable<T, decltype(cur_sub),
+                                 std::remove_reference_t<Ts> &...>) {
+      std::apply(
+          [this, &cur_sub](auto &&...args) {
+            std::invoke(t_, std::forward<decltype(cur_sub)>(cur_sub), args...);
+          },
+          args_);
     }
-    if constexpr(sizeof...(subjects) > 0) {
-      std::move(*this)(std::forward<decltype(subjects)>(subjects)...);
+    if constexpr (sizeof...(subjects) > 0) {
+      std::move (*this)(std::forward<decltype(subjects)>(subjects)...);
     }
   }
-
 };
-}
+} // namespace
 
 template <typename T> class not_null {
 public:
@@ -241,8 +243,8 @@ namespace extend {
     }                                                                          \
   }                                                                            \
   }                                                                            \
-  constexpr auto NAME(auto &&t) -> decltype(ns_lookup::do_##NAME(              \
-                                    std::forward<decltype(t)>(t)))             \
+  constexpr auto NAME(auto &&t)                                                \
+      -> decltype(ns_lookup::do_##NAME(std::forward<decltype(t)>(t)))          \
     requires(                                                                  \
         requires() { ns_lookup::do_##NAME(std::forward<decltype(t)>(t)); })    \
   {                                                                            \
@@ -537,6 +539,13 @@ public:
 
 inline constexpr keep_current_t keep_current;
 
+enum class mouse_buttons {
+  primary = 1,
+  middle = 2,
+  secondary = 3,
+  // any other is backend defined here.
+};
+
 namespace call {
 template <typename T, typename TOp, typename TVal>
 concept has_assignable_get =
@@ -782,6 +791,7 @@ CGUI_CALL_CONCEPT(on_button_hover);
 CGUI_CALL_CONCEPT(on_button_hold);
 CGUI_CALL_CONCEPT(on_button_click);
 CGUI_CALL_CONCEPT(on_button_exit);
+CGUI_CALL_CONCEPT(mouse_button);
 
 [[maybe_unused]] inline void bitmap_top() {}
 
@@ -793,6 +803,16 @@ struct do_bitmap_top {
     })
   {
     return bitmap_top(std::forward<TFont>(f), std::forward<TGlyph>(g));
+  }
+};
+
+struct do_mouse_button {
+  constexpr std::convertible_to<mouse_buttons> auto
+  operator()(auto &&operand) const
+    requires(std::is_invocable_r_v<mouse_buttons, _do_mouse_button,
+                                   decltype(operand)>)
+  {
+    return _do_mouse_button{}(std::forward<decltype(operand)>(operand));
   }
 };
 
@@ -821,6 +841,7 @@ inline constexpr impl::_do_on_button_hold on_button_hold;
 inline constexpr impl::_do_on_button_click on_button_click;
 inline constexpr impl::_do_on_button_exit on_button_exit;
 inline constexpr impl::_do_position position;
+inline constexpr impl::do_mouse_button mouse_button;
 } // namespace call
 
 constexpr auto multiply_alpha(colour auto c, std::uint_least8_t alpha) {
@@ -959,32 +980,39 @@ concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb,
   t.with(col);
 };
 
-enum class ui_events { system, mouse_move, mouse_button_down, mouse_button_up, mouse_exit };
+enum class ui_events {
+  system,
+  mouse_move,
+  mouse_button_down,
+  mouse_button_up,
+  mouse_exit
+};
 
 template <ui_events tEvt> struct ui_event_identity {
   static constexpr ui_events value = tEvt;
 };
 
 template <ui_events> struct ui_event_constraints {
-  template <typename>
-  static constexpr bool type_passes = true;
+  template <typename> static constexpr bool type_passes = true;
 };
 template <> struct ui_event_constraints<ui_events::mouse_button_down> {
   template <typename T>
-  static constexpr bool type_passes = requires(T const& t) {
-    {call::position(t)} -> pixel_coord;
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::position(t) } -> pixel_coord;
+    call::mouse_button(t);
   };
 };
 template <> struct ui_event_constraints<ui_events::mouse_button_up> {
   template <typename T>
-  static constexpr bool type_passes = requires(T const& t) {
-    {call::position(t)} -> pixel_coord;
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::position(t) } -> pixel_coord;
+    call::mouse_button(t);
   };
 };
 template <> struct ui_event_constraints<ui_events::mouse_move> {
   template <typename T>
-  static constexpr bool type_passes = requires(T const& t) {
-    {call::position(t)} -> pixel_coord;
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::position(t) } -> pixel_coord;
   };
 };
 
@@ -1026,7 +1054,9 @@ template <ui_events evt> struct subset_ui_events<evt> {
 };
 
 template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> && requires() {
+concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
+  requires()
+{
   {
     std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
   } -> std::convertible_to<bool>;
@@ -1061,17 +1091,15 @@ inline constexpr impl::do_event_type event_type;
 } // namespace call
 
 template <typename T>
-concept has_event_type = requires(bp::as_forward<T> t) {
-  call::event_type(*t);
-};
+concept has_event_type =
+    requires(bp::as_forward<T> t) { call::event_type(*t); };
 
-template <ui_events tEvt, has_event_type T>
-consteval bool can_be_event() {
-  using subset_t = std::remove_cvref_t<decltype(call::event_type(std::declval<T&&>()))>;
+template <ui_events tEvt, has_event_type T> consteval bool can_be_event() {
+  using subset_t =
+      std::remove_cvref_t<decltype(call::event_type(std::declval<T &&>()))>;
   return subset_t::can_be_event(ui_event_identity<tEvt>{});
 }
-template <ui_events tEvt, has_event_type T>
-constexpr bool is_event(T&& evt) {
+template <ui_events tEvt, has_event_type T> constexpr bool is_event(T &&evt) {
   return static_cast<ui_events>(call::event_type(evt)) == tEvt;
 }
 
@@ -1080,33 +1108,27 @@ concept event_types = (can_be_event<tEvents, T>() || ...);
 
 #undef CGUI_EVENT_TYPE_GEN
 
-template <ui_events>
-struct dummy_event;
+template <ui_events> struct dummy_event;
 
 template <ui_events tEvt>
-constexpr subset_ui_events<tEvt> event_type(dummy_event<tEvt> const&) {
+constexpr subset_ui_events<tEvt> event_type(dummy_event<tEvt> const &) {
   return {};
 }
 
-template <>
-struct dummy_event<ui_events::system> {};
-template <>
-struct dummy_event<ui_events::mouse_move> {
+template <> struct dummy_event<ui_events::system> {};
+template <> struct dummy_event<ui_events::mouse_move> {
   default_pixel_coord pos;
 };
-template <>
-struct dummy_event<ui_events::mouse_button_down> {
+template <> struct dummy_event<ui_events::mouse_button_down> {
   default_pixel_coord pos;
-  int button_id;
+  mouse_buttons button_id;
 };
-template <>
-struct dummy_event<ui_events::mouse_button_up> {
+template <> struct dummy_event<ui_events::mouse_button_up> {
   default_pixel_coord pos;
-  int button_id;
+  mouse_buttons button_id;
 };
 
-template <typename>
-constexpr bool is_dummy_event_v = false;
+template <typename> constexpr bool is_dummy_event_v = false;
 template <ui_events tEvt>
 constexpr bool is_dummy_event_v<dummy_event<tEvt>> = true;
 
@@ -1114,15 +1136,23 @@ template <typename T>
 concept is_dummy_event_c = is_dummy_event_v<T>;
 
 template <is_dummy_event_c T>
- requires(requires(T const& t) { t.pos; })
-constexpr auto position(T const& t) { return t.pos; }
+  requires(requires(T const &t) { t.pos; })
+constexpr auto position(T const &t) {
+  return t.pos;
+}
+
+template <is_dummy_event_c T>
+  requires(requires(T const &t) { t.button_id; })
+constexpr mouse_buttons mouse_button(T const &t) {
+  return t.button_id;
+}
 
 using dummy_mouse_move_event = dummy_event<ui_events::mouse_move>;
 using dummy_mouse_down_event = dummy_event<ui_events::mouse_button_down>;
 using dummy_mouse_up_event = dummy_event<ui_events::mouse_button_up>;
 
 struct cgui_mouse_exit_event {
-  static constexpr subset_ui_events<ui_events::mouse_exit> event_type(auto&&) {
+  static constexpr subset_ui_events<ui_events::mouse_exit> event_type(auto &&) {
     return {};
   }
 };
@@ -1193,7 +1223,7 @@ concept has_set_displayed =
 
 struct do_set_displayed {
   template <typename... Ts, has_set_displayed<Ts...> T>
-  constexpr decltype(auto) operator()(T &&torg, Ts &&...vals) const {
+  constexpr decltype(auto) operator()(T && torg, Ts &&...vals) const {
     auto t = bp::as_forward(std::forward<T>(torg));
     if constexpr (member_set_displayed<T, Ts...>) {
       return (*t).set_displayed(std::forward<Ts>(vals)...);
@@ -1368,7 +1398,7 @@ concept has_area = member_area<T, Ts...> || static_area<T, Ts...> ||
 
 struct do_area {
   template <typename... Ts, has_area<Ts...> T>
-  constexpr decltype(auto) operator()(T &&torg, Ts &&...args) const {
+  constexpr decltype(auto) operator()(T && torg, Ts &&...args) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_area<T, Ts...>) {
       return (*t).area(std::forward<Ts>(args)...);
@@ -1396,7 +1426,7 @@ concept has_glyph = member_glyph<T, TChar> || free_glyph<T, TChar>;
 
 struct do_glyph {
   template <typename TChar, has_glyph<TChar> T>
-  constexpr decltype(auto) operator()(T &&torg, TChar c) const {
+  constexpr decltype(auto) operator()(T && torg, TChar c) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_glyph<T, TChar>) {
       return (*t).glyph(c);
@@ -1449,7 +1479,7 @@ struct do_text_colour : private do_text_colour_get {
   template <typename T, colour TC>
     requires(has_text_colour<T, TC> ||
              has_assignable_get<T, do_text_colour_get, TC>)
-  constexpr decltype(auto) operator()(T &&torg, TC &&vorg) const {
+  constexpr decltype(auto) operator()(T && torg, TC && vorg) const {
     auto t = bp::as_forward<T>(torg);
     auto v = bp::as_forward<TC>(vorg);
     if constexpr (member_text_colour<T, TC>) {
@@ -1531,8 +1561,8 @@ concept mut_box_pointer =
 
 template <typename T, typename TV1, typename TV2>
 concept mut_box_pair =
-    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>) &&
-    (mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
+    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>)&&(
+        mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
 
 template <typename TV1, typename TV2, mut_box_pair<TV1, TV2> T, typename TTL,
           typename TBR>
