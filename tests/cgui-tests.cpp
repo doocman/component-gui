@@ -1688,6 +1688,15 @@ TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
   trig.handle(dummy_area, dummy_mouse_move_event{{-1, 1}}, callback);
 }
 
+struct mock_button_state {
+
+};
+
+TEST(ButtonCallbackMaker, MomentaryButton) // NOLINT
+{
+
+}
+
 /*
 TEST(Button, Click) // NOLINT
 {
