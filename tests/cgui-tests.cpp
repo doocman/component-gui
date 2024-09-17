@@ -1652,7 +1652,7 @@ TEST(TextRender, CachedGlyphs4) // NOLINT
 struct mock_button_callback {
   MOCK_METHOD(void, do_on_button_hover, ());
   MOCK_METHOD(void, do_on_button_hold, ());
-  MOCK_METHOD(void, do_on_button_click, ());
+  MOCK_METHOD(void, do_on_button_click, (mouse_buttons b));
   MOCK_METHOD(void, do_on_button_exit, ());
 
   void on_button_hover(auto&&...) {
@@ -1661,8 +1661,8 @@ struct mock_button_callback {
   void on_button_hold(auto&&...) {
     do_on_button_hold();
   }
-  void on_button_click(auto&&...) {
-    do_on_button_click();
+  void on_button_click(mouse_buttons b, auto&&...) {
+    do_on_button_click(b);
   }
   void on_button_exit(auto&&...) {
     do_on_button_exit();
@@ -1678,7 +1678,7 @@ TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
   EXPECT_CALL(callback, do_on_button_hover());
   EXPECT_CALL(callback, do_on_button_hold());
   EXPECT_CALL(checkpoint, Call());
-  EXPECT_CALL(callback, do_on_button_click());
+  EXPECT_CALL(callback, do_on_button_click(Eq(mouse_buttons::primary)));
   EXPECT_CALL(callback, do_on_button_exit());
   constexpr auto dummy_area = default_rect{{0,0 }, {4, 4}};
   trig.handle(dummy_area, dummy_mouse_move_event{{1,1}}, callback);

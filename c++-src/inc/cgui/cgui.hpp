@@ -525,8 +525,7 @@ public:
       }
     }
     if constexpr (can_be_event<mouse_button_down, evt_t>()) {
-      if (is_event<mouse_button_down>(evt) &&
-          call::mouse_button(evt) == mouse_buttons::primary) {
+      if (is_event<mouse_button_down>(evt)) {
         if (!mouse_down_ && call::hit_box(area, call::position(evt))) {
           invoke_if_applicable{call::on_button_hold}(
               std::forward<decltype(responsees)>(responsees)...);
@@ -539,8 +538,11 @@ public:
       if (is_event<mouse_button_up>(evt) &&
           call::mouse_button(evt) == mouse_buttons::primary) {
         if (call::hit_box(area, call::position(evt))) {
-          invoke_if_applicable{call::on_button_click}(
-              std::forward<decltype(responsees)>(responsees)...);
+          invoke_if_applicable{
+              [mb = call::mouse_button(evt)](auto r)
+                requires(requires() { call::on_button_click(*r, mb); })
+              { call::on_button_click(*r, mb); }}(bp::as_forward(
+              std::forward<decltype(responsees)>(responsees))...);
         }
         mouse_down_ = false;
         return;
