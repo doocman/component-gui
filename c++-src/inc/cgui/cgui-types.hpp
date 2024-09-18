@@ -1157,6 +1157,18 @@ struct cgui_mouse_exit_event {
   }
 };
 
+template <std::equality_comparable T, T... tstates>
+struct widget_states_t {
+  static constexpr std::size_t state_count = sizeof...(tstates);
+  /*static constexpr std::size_t state_index(T const& in) {
+    if constexpr(std::constructible_from<long long, T>) {
+      if constexpr()
+    }
+  }*/
+};
+template <std::equality_comparable T, T... tStates>
+inline constexpr widget_states_t<T, tStates...> widget_states;
+
 namespace call {
 namespace impl {
 // Namespace poisons to not look in call-namespace for these functions

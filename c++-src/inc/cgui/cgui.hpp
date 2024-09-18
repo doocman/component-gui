@@ -203,6 +203,22 @@ public:
   }
 };
 
+class widget_builder {
+public:
+  widget_builder state(auto&&)&& {
+    return std::move(*this);
+  }
+  widget_builder display(auto&&...)&& {
+    return std::move(*this);
+  }
+  widget_builder build()&& {
+    return {};
+  }
+  widget_builder event(auto&&...)&& {
+    return std::move(*this);
+  }
+};
+
 template <font_face TFont> class text_renderer {
   TFont f_;
   using glyph_t = std::remove_cvref_t<
@@ -400,7 +416,7 @@ public:
   }
   constexpr auto const &font() const { return f_; }
   static constexpr auto &&
-  text_colour(bp::cvref_type<text_renderer<TFont>> auto &&r) {
+  text_colour(bp::cvref_type<text_renderer> auto &&r) {
     return std::forward<decltype(r)>(r).colour_;
   }
 };

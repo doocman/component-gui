@@ -1694,6 +1694,33 @@ struct mock_button_state {
 
 TEST(ButtonCallbackMaker, MomentaryButton) // NOLINT
 {
+  FAIL() << "Not yet implemented";
+}
+
+struct mock_state_aware_renderer {
+  static constexpr bool state_aware = true;
+};
+struct mock_state_unaware_renderer_impl {
+};
+struct mock_state_unaware_renderer_ref {
+  mock_state_unaware_renderer_impl& impl;
+  int my_index{};
+
+  explicit mock_state_unaware_renderer_ref(mock_state_unaware_renderer_impl& in) : impl(in) {}
+
+  mock_state_unaware_renderer_ref(mock_state_unaware_renderer_ref const& in)
+    :impl(in.impl), my_index(in.my_index + 1) {}
+  mock_state_unaware_renderer_ref(mock_state_unaware_renderer_ref && in) noexcept = default;
+};
+
+struct int_as_event_handler{};
+
+TEST(WidgetBuilder, BuildWithState) // NOLINT
+{
+  auto state_aware_rend = mock_state_aware_renderer{};
+  auto state_unaware_rend_impl = mock_state_unaware_renderer_impl{};
+  auto w = widget_builder().state(widget_states<int, 0, 1>).event(int_as_event_handler{}).display(std::ref(state_aware_rend), mock_state_unaware_renderer_ref{state_unaware_rend_impl}).build();
+  MockFunction<void()> checkpoint{};
 
 }
 
