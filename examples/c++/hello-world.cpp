@@ -34,9 +34,19 @@ int main(int, char **) {
         cgui::text_box_widget(std::ref(cached_font))
             .area(cgui::call::trim_from_above(
                 &full_area, std::min<int>(cgui::call::height(full_area), 128)))
-            .display("b a");
+            .display("b a").colour(cgui::choice::text = {255, 255, 255, 255});
     auto button_bar_area = cgui::call::trim_from_below(
         &full_area, std::min<int>(cgui::call::height(full_area), 128));
+    // template <momentary_button::states s> using state = cgui::choice::state<momentary_button::states, s>;
+    // using enum momentary_button::states;
+    // button.state_colour(
+    //               state<button_off>(text = {255, 255, 255, 255}, background = {128, 128, 128, 128})
+    //               state<button_hover>(text = {255, 255, 255, 255}, background = {128, 128, 128, 128})
+    //               state<button_clicked>(text = {255, 255, 255, 255}, background = {128, 128, 128, 128})
+    //               state<button_down>(text = {255, 255, 255, 255}, background = {128, 128, 128, 128}))
+    // OR
+    // auto brc = button_render_configuration();
+    // brc.state(button_off, text = {...}, background = {...});
     cgui::unused(button_bar_area);
     auto lorum_ipsum =
         cgui::text_box_widget(std::ref(cached_font))
