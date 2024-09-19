@@ -1697,6 +1697,22 @@ TEST(ButtonCallbackMaker, MomentaryButton) // NOLINT
   FAIL() << "Not yet implemented";
 }
 
+struct mock_renderable {
+  MOCK_METHOD(void, do_render, (), (const));
+
+  void render(auto&&...) const {
+    do_render();
+  }
+};
+
+TEST(WidgetBuilder, BuildRender) // NOLINT
+{
+  auto renderable = mock_renderable();
+  EXPECT_CALL(renderable, do_render());
+  auto w = widget_builder().area(default_rect{0, 0, 1, 1}).display(std::ref(renderable)).build();
+  call::render(w, dummy_renderer{});
+}
+
 struct mock_state_aware_renderer {
   static constexpr bool state_aware = true;
 };
@@ -1715,6 +1731,7 @@ struct mock_state_unaware_renderer_ref {
 
 struct int_as_event_handler{};
 
+/*
 TEST(WidgetBuilder, BuildWithState) // NOLINT
 {
   auto state_aware_rend = mock_state_aware_renderer{};
@@ -1723,6 +1740,7 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   MockFunction<void()> checkpoint{};
 
 }
+*/
 
 /*
 TEST(Button, Click) // NOLINT

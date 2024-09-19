@@ -168,56 +168,98 @@ public:
 
 template <typename T> gui_context(T &) -> gui_context<std::remove_cvref_t<T>>;
 
-template <typename TDisplay = void, bounding_box TArea = cgui::default_rect>
+template <bounding_box TArea = cgui::default_rect, typename... TDisplay>
 class widget {
-  TDisplay display_;
   TArea area_{};
+  std::tuple<TDisplay...> display_;
 
 public:
   constexpr widget()
-    requires(std::is_default_constructible_v<TDisplay>)
+    requires(std::is_default_constructible_v<TDisplay> && ...)
   = default;
-  constexpr explicit widget(TDisplay d) : display_(std::move(d)) {}
-  constexpr widget(TDisplay d, TArea const &a)
-      : display_(std::move(d)), area_(a) {}
+  constexpr explicit widget(TDisplay... d) : display_(std::move(d)...) {}
+  template <typename... Ts> requires(std::constructible_from<TDisplay, Ts&&> && ...)
+  constexpr widget(TArea const &a, Ts&&... d)
+      : area_(a), display_(std::forward<Ts>(d)...) {}
 
   [[nodiscard]] TArea const &area() const { return area_; }
   template <bounding_box TArea2>
-  widget<TDisplay, TArea2> area(TArea2 const &a) && {
+  widget<TArea2, TDisplay...> area(TArea2 const &a) && {
     return {std::move(display_), a};
   }
   widget display(auto &&...vs) &&
-    requires(requires() {
-      call::set_displayed(display_, call::width(area()), call::height(area()),
-                          std::forward<decltype(vs)>(vs)...);
-    })
-  {
+  /*requires(requires() {
     call::set_displayed(display_, call::width(area()), call::height(area()),
                         std::forward<decltype(vs)>(vs)...);
+  })*/
+  {
+    /*call::set_displayed(display_, call::width(area()), call::height(area()),
+                        std::forward<decltype(vs)>(vs)...);*/
     return std::move(*this);
   }
   void render(renderer auto &&r) {
     // display_.render(std::forward<decltype(r)>(r));
-    call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
-                 call::height(area()));
+    //call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
+    //             call::height(area()));
+    tuple_for_each([&r, w = call::width(area_), h = call::height(area_)] (auto& v) {
+      call::render(v, r, w, h);
+    }, display_);
   }
 };
 
-class widget_builder {
+template <typename TArea = std::nullptr_t, typename... TDisplays>
+class widget_builder_impl {
+  TArea area_;
+  std::tuple<TDisplays...> displays_;
+
 public:
-  widget_builder state(auto&&)&& {
-    return std::move(*this);
+  static constexpr bool contract_fulfilled = bounding_box<TArea>;
+
+  constexpr widget_builder_impl() = default;
+  template <typename... TUs>
+  constexpr explicit widget_builder_impl(TArea const &a, TUs &&...displ)
+      : area_(a), displays_(std::forward<TUs>(displ)...) {}
+  template <typename... TD1, typename... TUs>
+  constexpr explicit widget_builder_impl(TArea const &a,
+                                         std::tuple<TD1...> &&displ1,
+                                         TUs &&...displ)
+      : area_(a),
+        displays_(std::tuple_cat(std::move(displ1),
+                                 std::tuple(std::forward<TUs>(displ)...))) {}
+
+  widget_builder_impl state(auto &&) && { return std::move(*this); }
+
+  template <typename... TD2,
+            typename TRes = widget_builder_impl<
+                TArea, TDisplays..., std::unwrap_ref_decay_t<TD2>...>>
+  TRes display(TD2 &&...d2) && {
+    return TRes(std::move(area_), std::move(displays_),
+                std::forward<decltype(d2)>(d2)...);
   }
-  widget_builder display(auto&&...)&& {
-    return std::move(*this);
+
+  auto build() &&
+    requires(contract_fulfilled)
+  {
+    static_assert(bounding_box<TArea>,
+                  "You must set an area to the widget before constructing it!");
+    static_assert(contract_fulfilled);
+    return std::apply(
+        [this]<typename... Ts>(Ts &&...vals) {
+          return widget<TArea, TDisplays...>(
+              std::move(area_), std::forward<Ts>(vals)...);
+        },
+        displays_);
   }
-  widget_builder build()&& {
-    return {};
-  }
-  widget_builder event(auto&&...)&& {
-    return std::move(*this);
+  widget_builder_impl event(auto &&...) && { return std::move(*this); }
+
+  template <bounding_box TA,
+            typename TRes = widget_builder_impl<TA, TDisplays...>>
+  TRes area(TA const &a) && {
+    return TRes(a);
   }
 };
+
+constexpr widget_builder_impl<> widget_builder() { return {}; }
 
 template <font_face TFont> class text_renderer {
   TFont f_;
@@ -415,8 +457,7 @@ public:
     }
   }
   constexpr auto const &font() const { return f_; }
-  static constexpr auto &&
-  text_colour(bp::cvref_type<text_renderer> auto &&r) {
+  static constexpr auto &&text_colour(bp::cvref_type<text_renderer> auto &&r) {
     return std::forward<decltype(r)>(r).colour_;
   }
 };
