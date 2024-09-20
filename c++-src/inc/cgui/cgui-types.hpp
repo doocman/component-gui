@@ -1762,6 +1762,39 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 
 } // namespace call
 
+namespace display_choice {
+
+template <typename T>
+concept single_arg_assignable = colour<T>;
+
+template <typename TTag, typename... TVal>
+struct basic_choice_t{
+  std::tuple<TVal...> value;
+};
+
+template <typename TTag>
+struct empty_choice {
+
+  template <single_arg_assignable T>
+  constexpr basic_choice_t<TTag, T&&> operator=(T&& t) const {
+    return {{std::forward<T>(t)}};
+  }
+  template <typename... Ts>
+  constexpr basic_choice_t<TTag, Ts&&...> operator=(std::tuple<Ts&&...> const v) const {
+    return {{v}};
+  }
+};
+
+#define CGUI_ADD_DISPLAY_CHOICE(NAME) struct NAME##_t {}; inline constexpr auto NAME = empty_choice<NAME##_t>{}
+
+CGUI_ADD_DISPLAY_CHOICE(text);
+CGUI_ADD_DISPLAY_CHOICE(fill);
+
+#undef CGUI_ADD_DISPLAY_CHOICE
+
+
+}
+
 template <typename T>
 concept canvas = requires(T const &tc) {
   { call::area(tc) } -> bounding_box;

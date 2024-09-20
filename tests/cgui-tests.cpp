@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <tuple>
+#include <source_location>
 
 #include <gmock/gmock.h>
 
@@ -1711,6 +1712,38 @@ TEST(WidgetBuilder, BuildRender) // NOLINT
   EXPECT_CALL(renderable, do_render());
   auto w = widget_builder().area(default_rect{0, 0, 1, 1}).display(std::ref(renderable)).build();
   call::render(w, dummy_renderer{});
+}
+
+template <typename TChoiceType>
+struct mock_colourable {
+  using choice_type = TChoiceType;
+  void render(auto&&...) const {}
+  MOCK_METHOD(void, colour, (default_colour_t const&), ());
+};
+
+inline auto expect_colour_eq(cgui::colour auto const& val, cgui::colour auto const& expected, std::source_location s = std::source_location::current()) {
+  auto [vr, vg, vb, va] = val;
+  auto [er, eg, eb, ea] = expected;
+  EXPECT_THAT(std::array(vr,vg, vb, va), ElementsAre(Eq(er), Eq(eg), Eq(eb), Eq(ea))) << "Called at line " << s.line();
+}
+
+TEST(WidgetBuilder, SetColour) // NOLINT
+{
+  auto m1 = mock_colourable<cgui::display_choice::text_t>{};
+  auto m2 = mock_colourable<cgui::display_choice::fill_t>{};
+  InSequence s;
+  default_colour_t m1c{}, m2c{};
+  EXPECT_CALL(m1, colour(_)).WillOnce([&] (default_colour_t const& c) { m1c = c; });
+  EXPECT_CALL(m2, colour(_)).WillOnce([&] (default_colour_t const& c) { m2c = c; });
+  auto w = widget_builder().area(default_rect{}).display(std::ref(m1), std::ref(m2)).build();
+  auto constexpr exp_m1c = default_colour_t{255, 0, 0, 255};
+  auto constexpr exp_m2c = default_colour_t{0, 255, 0, 255};
+  w.colour(cgui::display_choice::text = exp_m1c, cgui::display_choice::fill = exp_m2c);
+  auto [r1, g1, b1, a1] = m1c;
+  auto [r2, g2, b2, a2] = m2c;
+  //EXPECT_THAT(std::array{r1, g1, b1, a1}, ElementsAre())
+  expect_colour_eq(m1c, exp_m1c);
+  expect_colour_eq(m1c, exp_m1c);
 }
 
 struct mock_state_aware_renderer {
