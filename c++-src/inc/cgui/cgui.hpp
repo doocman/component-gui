@@ -8,6 +8,11 @@
 #include <variant>
 #include <vector>
 
+#if __has_include("dooc/named_args_tuple.hpp")
+#include <dooc/named_args_tuple.hpp>
+#define CGUI_HAS_NAMED_ARGS 1
+#endif
+
 #include <cgui/cgui-types.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/stl_extend.hpp>
@@ -127,13 +132,7 @@ template <typename T>
 sub_renderer(T &t)
     -> sub_renderer<T, std::remove_cvref_t<decltype(call::area(t))>>;
 
-template <typename T, typename TRender>
-concept widget_display = has_render<T, TRender>;
-
-template <typename T>
-concept widgety = widget_display<T, dummy_renderer>;
-
-template <canvas T, widgety... TWidgets> class gui_context {
+template <canvas T, widget_display... TWidgets> class gui_context {
   std::tuple<TWidgets...> widgets_;
 
 public:
@@ -145,14 +144,14 @@ public:
 
   [[nodiscard]] default_rect area() const { return {}; }
 
-  template <widgety... TW2>
+  template <widget_display... TW2>
   [[nodiscard]] constexpr gui_context<T, TWidgets..., TW2...>
   with(TW2 &&...ws) && {
     unused(ws...);
     return gui_context<T, TWidgets..., TW2...>(std::tuple_cat(
         std::move(widgets_), std::tuple<TW2...>(std::forward<TW2>(ws)...)));
   }
-  template <widgety... TW2>
+  template <widget_display... TW2>
   [[nodiscard]] constexpr gui_context<T, TWidgets..., TW2...>
   with(TW2 &&...ws) const & {
     unused(ws...);
@@ -207,16 +206,17 @@ public:
   }
 };
 
-template <typename TArea = std::nullptr_t, typename... TDisplays>
+template <typename TArea = std::nullptr_t, typename TDisplay = std::tuple<>>
 class widget_builder_impl {
   TArea area_;
-  std::tuple<TDisplays...> displays_;
+  TDisplay displays_;
 
 public:
   static constexpr bool contract_fulfilled = bounding_box<TArea>;
 
   constexpr widget_builder_impl() = default;
   template <typename... TUs>
+    requires(std::constructible_from<TDisplay, TUs&&...>)
   constexpr explicit widget_builder_impl(TArea const &a, TUs &&...displ)
       : area_(a), displays_(std::forward<TUs>(displ)...) {}
   template <typename... TD1, typename... TUs>

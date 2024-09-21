@@ -5,13 +5,14 @@
 #include <cgui/std-backport/expected.hpp>
 #include <cgui/stl_extend.hpp>
 
+#include <array>
 #include <optional>
-#include <tuple>
 #include <source_location>
+#include <tuple>
 
 #include <gmock/gmock.h>
 
-#include <dooc/
+#include <dooc/named_args_tuple.hpp>
 
 #include <cgui/std-backport/concepts.hpp>
 
@@ -1658,18 +1659,10 @@ struct mock_button_callback {
   MOCK_METHOD(void, do_on_button_click, (mouse_buttons b));
   MOCK_METHOD(void, do_on_button_exit, ());
 
-  void on_button_hover(auto&&...) {
-    do_on_button_hover();
-  }
-  void on_button_hold(auto&&...) {
-    do_on_button_hold();
-  }
-  void on_button_click(mouse_buttons b, auto&&...) {
-    do_on_button_click(b);
-  }
-  void on_button_exit(auto&&...) {
-    do_on_button_exit();
-  }
+  void on_button_hover(auto &&...) { do_on_button_hover(); }
+  void on_button_hold(auto &&...) { do_on_button_hold(); }
+  void on_button_click(mouse_buttons b, auto &&...) { do_on_button_click(b); }
+  void on_button_exit(auto &&...) { do_on_button_exit(); }
 };
 
 TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
@@ -1683,17 +1676,17 @@ TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
   EXPECT_CALL(checkpoint, Call());
   EXPECT_CALL(callback, do_on_button_click(Eq(mouse_buttons::primary)));
   EXPECT_CALL(callback, do_on_button_exit());
-  constexpr auto dummy_area = default_rect{{0,0 }, {4, 4}};
-  trig.handle(dummy_area, dummy_mouse_move_event{{1,1}}, callback);
-  trig.handle(dummy_area, dummy_mouse_down_event{{1,1}, mouse_buttons::primary}, callback);
+  constexpr auto dummy_area = default_rect{{0, 0}, {4, 4}};
+  trig.handle(dummy_area, dummy_mouse_move_event{{1, 1}}, callback);
+  trig.handle(dummy_area,
+              dummy_mouse_down_event{{1, 1}, mouse_buttons::primary}, callback);
   checkpoint.Call();
-  trig.handle(dummy_area, dummy_mouse_up_event{{1, 1}, mouse_buttons::primary}, callback);
+  trig.handle(dummy_area, dummy_mouse_up_event{{1, 1}, mouse_buttons::primary},
+              callback);
   trig.handle(dummy_area, dummy_mouse_move_event{{-1, 1}}, callback);
 }
 
-struct mock_button_state {
-
-};
+struct mock_button_state {};
 
 TEST(ButtonCallbackMaker, MomentaryButton) // NOLINT
 {
@@ -1703,30 +1696,35 @@ TEST(ButtonCallbackMaker, MomentaryButton) // NOLINT
 struct mock_renderable {
   MOCK_METHOD(void, do_render, (), (const));
 
-  void render(auto&&...) const {
-    do_render();
-  }
+  void render(auto &&...) const { do_render(); }
 };
 
 TEST(WidgetBuilder, BuildRender) // NOLINT
 {
   auto renderable = mock_renderable();
   EXPECT_CALL(renderable, do_render());
-  auto w = widget_builder().area(default_rect{0, 0, 1, 1}).display(std::ref(renderable)).build();
+  auto w = widget_builder()
+               .area(default_rect{0, 0, 1, 1})
+               .display(std::ref(renderable))
+               .build();
   call::render(w, dummy_renderer{});
 }
 
-template <typename TChoiceType>
-struct mock_colourable {
+template <typename TChoiceType> struct mock_colourable {
   using choice_type = TChoiceType;
-  void render(auto&&...) const {}
-  MOCK_METHOD(void, colour, (default_colour_t const&), ());
+  void render(auto &&...) const {}
+  MOCK_METHOD(void, colour, (default_colour_t const &), ());
 };
 
-inline auto expect_colour_eq(cgui::colour auto const& val, cgui::colour auto const& expected, std::source_location s = std::source_location::current()) {
+inline auto
+expect_colour_eq(cgui::colour auto const &val,
+                 cgui::colour auto const &expected,
+                 std::source_location s = std::source_location::current()) {
   auto [vr, vg, vb, va] = val;
   auto [er, eg, eb, ea] = expected;
-  EXPECT_THAT(std::array(vr,vg, vb, va), ElementsAre(Eq(er), Eq(eg), Eq(eb), Eq(ea))) << "Called at line " << s.line();
+  EXPECT_THAT((std::array{vr, vg, vb, va}),
+              ElementsAre(Eq(er), Eq(eg), Eq(eb), Eq(ea)))
+      << "Called at line " << s.line();
 }
 
 TEST(WidgetBuilder, SetColour) // NOLINT
@@ -1735,13 +1733,23 @@ TEST(WidgetBuilder, SetColour) // NOLINT
   auto m2 = mock_colourable<cgui::display_choice::fill_t>{};
   InSequence s;
   default_colour_t m1c{}, m2c{};
-  EXPECT_CALL(m1, colour(_)).WillOnce([&] (default_colour_t const& c) { m1c = c; });
-  EXPECT_CALL(m2, colour(_)).WillOnce([&] (default_colour_t const& c) { m2c = c; });
-  //auto w = widget_builder().area(default_rect{}).display(std::ref(m1), std::ref(m2)).build();
-  auto w = widget_builder().area(default_rect{}).display("text"_na = std::ref(m1), "fill"_na = std::ref(m2)).build();
+  EXPECT_CALL(m1, colour(_)).WillOnce([&](default_colour_t const &c) {
+    m1c = c;
+  });
+  EXPECT_CALL(m2, colour(_)).WillOnce([&](default_colour_t const &c) {
+    m2c = c;
+  });
+  // auto w = widget_builder().area(default_rect{}).display(std::ref(m1),
+  // std::ref(m2)).build();
+  using namespace dooc::tuple_literals;
+  auto w = widget_builder()
+               .area(default_rect{})
+               .display("text"_na = std::ref(m1), "fill"_na = std::ref(m2))
+               .build();
   auto constexpr exp_m1c = default_colour_t{255, 0, 0, 255};
   auto constexpr exp_m2c = default_colour_t{0, 255, 0, 255};
-  //w.colour(cgui::display_choice::text = exp_m1c, cgui::display_choice::fill = exp_m2c);
+  // w.colour(cgui::display_choice::text = exp_m1c, cgui::display_choice::fill =
+  // exp_m2c);
   w.colour("text"_na = exp_m1c, "fill"_na = exp_m2c);
   expect_colour_eq(m1c, exp_m1c);
   expect_colour_eq(m2c, exp_m2c);
@@ -1750,27 +1758,30 @@ TEST(WidgetBuilder, SetColour) // NOLINT
 struct mock_state_aware_renderer {
   static constexpr bool state_aware = true;
 };
-struct mock_state_unaware_renderer_impl {
-};
+struct mock_state_unaware_renderer_impl {};
 struct mock_state_unaware_renderer_ref {
-  mock_state_unaware_renderer_impl& impl;
+  mock_state_unaware_renderer_impl &impl;
   int my_index{};
 
-  explicit mock_state_unaware_renderer_ref(mock_state_unaware_renderer_impl& in) : impl(in) {}
+  explicit mock_state_unaware_renderer_ref(mock_state_unaware_renderer_impl &in)
+      : impl(in) {}
 
-  mock_state_unaware_renderer_ref(mock_state_unaware_renderer_ref const& in)
-    :impl(in.impl), my_index(in.my_index + 1) {}
-  mock_state_unaware_renderer_ref(mock_state_unaware_renderer_ref && in) noexcept = default;
+  mock_state_unaware_renderer_ref(mock_state_unaware_renderer_ref const &in)
+      : impl(in.impl), my_index(in.my_index + 1) {}
+  mock_state_unaware_renderer_ref(
+      mock_state_unaware_renderer_ref &&in) noexcept = default;
 };
 
-struct int_as_event_handler{};
+struct int_as_event_handler {};
 
 /*
 TEST(WidgetBuilder, BuildWithState) // NOLINT
 {
   auto state_aware_rend = mock_state_aware_renderer{};
   auto state_unaware_rend_impl = mock_state_unaware_renderer_impl{};
-  auto w = widget_builder().state(widget_states<int, 0, 1>).event(int_as_event_handler{}).display(std::ref(state_aware_rend), mock_state_unaware_renderer_ref{state_unaware_rend_impl}).build();
+  auto w = widget_builder().state(widget_states<int, 0,
+1>).event(int_as_event_handler{}).display(std::ref(state_aware_rend),
+mock_state_unaware_renderer_ref{state_unaware_rend_impl}).build();
   MockFunction<void()> checkpoint{};
 
 }

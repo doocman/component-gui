@@ -7,6 +7,8 @@
 
 #include <utility>
 
+#include <cgui/warnings.hpp>
+
 namespace cgui::bp {
 
 [[noreturn]] inline void unreachable() {
@@ -40,6 +42,14 @@ public:
   deferred(deferred &&) = delete;
   deferred &operator=(deferred &&) = delete;
 };
+
+constexpr void run_for_each(auto&& cb, auto&&... vals) requires(std::invocable<decltype(cb), decltype(vals)> && ...) {
+  auto cb_return = [&cb] <typename T> (T&& v) {
+    cb(std::forward<T>(v));
+    return 0;
+  };
+  unused((... + cb_return(std::forward<decltype(vals)>(vals))));
+}
 
 } // namespace cgui::bp
 

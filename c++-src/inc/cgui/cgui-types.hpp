@@ -2,6 +2,7 @@
 #ifndef COMPONENT_GUI_CGUI_TYPES_HPP
 #define COMPONENT_GUI_CGUI_TYPES_HPP
 
+#include <algorithm>
 #include <cassert>
 #include <concepts>
 #include <optional>
@@ -10,6 +11,7 @@
 #include <tuple>
 #include <utility>
 
+#include <cgui/std-backport/functional.hpp>
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/type_traits.hpp>
 #include <cgui/std-backport/utility.hpp>
@@ -97,6 +99,8 @@
   }
 
 namespace cgui {
+template <typename> struct extend_api;
+template <typename T> using extend_api_t = extend_api<std::remove_cvref_t<T>>;
 inline namespace {
 template <typename T, typename... Ts> struct invoke_if_applicable {
   [[no_unique_address]] T t_;
@@ -124,6 +128,49 @@ template <typename T, typename... Ts> struct invoke_if_applicable {
   }
 };
 } // namespace
+
+namespace call {
+namespace impl {
+CGUI_CALL_CONCEPT(apply);
+CGUI_CALL_CONCEPT(for_each);
+
+struct do_apply {
+  template <typename T, typename TCB>
+    requires(has_apply<T, TCB> || requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
+      std::apply(*cb, *t);
+    })
+  constexpr decltype(auto) operator()(T&& t, TCB&& cb) const {
+    auto tf = bp::as_forward<T>(t);
+    auto cf = bp::as_forward<TCB>(cb);
+    if constexpr(has_apply<T, TCB>) {
+      return _do_apply{}(*tf, *cf);
+    } else {
+      return std::apply(*cf, *tf);
+    }
+  }
+};
+
+struct do_for_each {
+  template <typename T, typename TCB>
+  requires(has_for_each<T , TCB> || std::ranges::input_range<T> || requires(bp::as_forward<T> t) { do_apply{}(bp::no_op, *t); })
+  constexpr void operator()(T&& t, TCB&& cb) const {
+    auto tf = bp::as_forward<T>(t);
+    auto cbf = bp::as_forward<TCB>(cb);
+    if constexpr(has_for_each<T, TCB>) {
+      _do_for_each{}(*tf, *cbf);
+    } else if constexpr (std::ranges::input_range<T>) {
+      std::ranges::for_each(*tf, *cbf);
+    } else {
+      do_apply{}(*tf, [&cbf] (auto&&... vals) {
+        bp::run_for_each(*cbf, std::forward<decltype(vals)>(vals)...);
+      });
+    }
+  }
+};
+}
+inline constexpr impl::do_apply apply;
+inline constexpr impl::do_for_each for_each;
+}
 
 template <typename T> class not_null {
 public:
@@ -170,8 +217,6 @@ static_assert(std::convertible_to<int *, not_null<int *>>);
 static_assert(!std::convertible_to<std::nullptr_t, not_null<int *>>);
 
 template <typename> struct pixel_type;
-template <typename> struct extend_api;
-template <typename T> using extend_api_t = extend_api<std::remove_cvref_t<T>>;
 
 template <typename T>
 concept pixel_coord_value_t = std::integral<T> || std::floating_point<T>;
@@ -1762,46 +1807,13 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 
 } // namespace call
 
-namespace display_choice {
-
-template <typename T>
-concept single_arg_assignable = colour<T>;
-
-template <typename TTag, typename... TVal>
-struct basic_choice_t{
-  std::tuple<TVal...> value;
-};
-
-template <typename TTag>
-struct empty_choice {
-
-  template <single_arg_assignable T>
-  constexpr basic_choice_t<TTag, T&&> operator=(T&& t) const {
-    return {{std::forward<T>(t)}};
-  }
-  template <typename... Ts>
-  constexpr basic_choice_t<TTag, Ts&&...> operator=(std::tuple<Ts&&...> const v) const {
-    return {{v}};
-  }
-};
-
-#define CGUI_ADD_DISPLAY_CHOICE(NAME) struct NAME##_t {}; inline constexpr auto NAME = empty_choice<NAME##_t>{}
-
-CGUI_ADD_DISPLAY_CHOICE(text);
-CGUI_ADD_DISPLAY_CHOICE(fill);
-
-#undef CGUI_ADD_DISPLAY_CHOICE
-
-
-}
-
 template <typename T>
 concept canvas = requires(T const &tc) {
   { call::area(tc) } -> bounding_box;
 };
 
-template <typename T, typename TR>
-concept has_render = call::impl::has_render<T, TR>;
+template <typename T, typename TR, typename... Ts>
+concept has_render = call::impl::has_render<T, TR, Ts...>;
 
 constexpr auto center(bounding_box auto const &b) {
   auto tl = call::top_left(b);
@@ -1826,6 +1838,11 @@ struct dummy_renderer {
   constexpr dummy_renderer sub(bounding_box auto &&) const { return {}; }
 };
 static_assert(renderer<dummy_renderer>);
+
+template <typename T, typename TRender = dummy_renderer>
+concept widget_display = has_render<T, TRender>;
+template <typename T, typename TRender = dummy_renderer>
+concept display_component = has_render<T, TRender, int, int>;
 
 template <typename T, typename TRenderer = dummy_renderer>
 concept font_glyph = requires(T const &ct, TRenderer &r) {
