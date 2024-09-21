@@ -11,6 +11,8 @@
 
 #include <gmock/gmock.h>
 
+#include <dooc/
+
 #include <cgui/std-backport/concepts.hpp>
 
 namespace cgui::tests {
@@ -1735,15 +1737,14 @@ TEST(WidgetBuilder, SetColour) // NOLINT
   default_colour_t m1c{}, m2c{};
   EXPECT_CALL(m1, colour(_)).WillOnce([&] (default_colour_t const& c) { m1c = c; });
   EXPECT_CALL(m2, colour(_)).WillOnce([&] (default_colour_t const& c) { m2c = c; });
-  auto w = widget_builder().area(default_rect{}).display(std::ref(m1), std::ref(m2)).build();
+  //auto w = widget_builder().area(default_rect{}).display(std::ref(m1), std::ref(m2)).build();
+  auto w = widget_builder().area(default_rect{}).display("text"_na = std::ref(m1), "fill"_na = std::ref(m2)).build();
   auto constexpr exp_m1c = default_colour_t{255, 0, 0, 255};
   auto constexpr exp_m2c = default_colour_t{0, 255, 0, 255};
-  w.colour(cgui::display_choice::text = exp_m1c, cgui::display_choice::fill = exp_m2c);
-  auto [r1, g1, b1, a1] = m1c;
-  auto [r2, g2, b2, a2] = m2c;
-  //EXPECT_THAT(std::array{r1, g1, b1, a1}, ElementsAre())
+  //w.colour(cgui::display_choice::text = exp_m1c, cgui::display_choice::fill = exp_m2c);
+  w.colour("text"_na = exp_m1c, "fill"_na = exp_m2c);
   expect_colour_eq(m1c, exp_m1c);
-  expect_colour_eq(m1c, exp_m1c);
+  expect_colour_eq(m2c, exp_m2c);
 }
 
 struct mock_state_aware_renderer {
