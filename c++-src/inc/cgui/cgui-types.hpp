@@ -11,6 +11,11 @@
 #include <tuple>
 #include <utility>
 
+#if __has_include("dooc/named_args_tuple.hpp")
+#include <dooc/named_args_tuple.hpp>
+#define CGUI_HAS_NAMED_ARGS 1
+#endif
+
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/functional.hpp>
 #include <cgui/std-backport/type_traits.hpp>
@@ -136,27 +141,38 @@ namespace impl {
 CGUI_CALL_CONCEPT(apply_to);
 CGUI_CALL_CONCEPT(for_each);
 
-struct do_apply {
+template <typename T>
+concept is_tuple_like_hack = bp::has_tuple_size<T> && (std::tuple_size_v<std::remove_cvref_t<T>> == 0 || requires(T&& t){
+                               std::get<0>(t);
+                             });
+
+struct do_apply_to {
   template <typename T, typename TCB>
-    requires(bp::has_tuple_size<T> && (has_apply<TCB, T> ||
+    requires(has_apply_to<T, TCB> || (is_tuple_like_hack<T> &&
              requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
                std::apply(*cb, *t);
              }))
-  constexpr decltype(auto) operator()(TCB &&cb, T &&t) const {
+  constexpr decltype(auto) operator()(T &&t, TCB &&cb) const {
     auto tf = bp::as_forward<T>(t);
     auto cf = bp::as_forward<TCB>(cb);
-    if constexpr (has_apply<T, TCB>) {
-      return _do_apply{}(*cf, *tf);
+    if constexpr (has_apply_to<T, TCB>) {
+      return _do_apply_to{}(*tf, *cf);
     } else {
       return std::apply(*cf, *tf);
     }
   }
 };
 
+static_assert(requires(std::tuple<int> t) { do_apply_to{}(t, bp::no_op); });
+
 struct do_for_each {
   template <typename T, typename TCB>
     requires(has_for_each<T, TCB> || std::ranges::input_range<T> ||
-             requires(bp::as_forward<T> t) { do_apply{}(bp::no_op, *t); })
+             requires(bp::as_forward<T> t) { do_apply_to{}(*t, bp::no_op); }
+#if defined(CGUI_HAS_NAMED_ARGS)
+      || dooc::named_tuple_like<T>
+#endif
+             )
   constexpr void operator()(T &&t, TCB &&cb) const {
     auto tf = bp::as_forward<T>(t);
     auto cbf = bp::as_forward<TCB>(cb);
@@ -164,15 +180,22 @@ struct do_for_each {
       _do_for_each{}(*tf, *cbf);
     } else if constexpr (std::ranges::input_range<T>) {
       std::ranges::for_each(*tf, *cbf);
+      // TODO: See if we can get rid of this ifdef...
+#ifdef CGUI_HAS_NAMED_ARGS
+    } else if constexpr (dooc::named_tuple_like<T>) {
+      dooc::tuple_for_each([&cb] (auto&&, auto&& v) {
+        cb(std::forward<decltype(v)>(v));
+      }, std::forward<T>(t));
+#endif
     } else {
-      do_apply{}([&cbf](auto &&...vals) {
+      do_apply_to{}(*tf, [&cbf](auto &&...vals) {
         bp::run_for_each(*cbf, std::forward<decltype(vals)>(vals)...);
-      }, *tf);
+      });
     }
   }
 };
 } // namespace impl
-inline constexpr impl::do_apply apply;
+inline constexpr impl::do_apply_to apply_to;
 inline constexpr impl::do_for_each for_each;
 } // namespace call
 

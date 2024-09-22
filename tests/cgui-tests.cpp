@@ -1711,7 +1711,9 @@ TEST(WidgetBuilder, BuildRender) // NOLINT
 }
 
 struct mock_colourable {
-  void render(auto &&...) const {}
+  MOCK_METHOD(void, do_render, (), (const));
+
+  void render(auto &&...) const { do_render(); }
   MOCK_METHOD(void, colour, (default_colour_t const &), ());
 };
 
@@ -1738,8 +1740,8 @@ TEST(WidgetBuilder, SetColour) // NOLINT
   EXPECT_CALL(m2, colour(_)).WillOnce([&](default_colour_t const &c) {
     m2c = c;
   });
-  // auto w = widget_builder().area(default_rect{}).display(std::ref(m1),
-  // std::ref(m2)).build();
+  EXPECT_CALL(m1, do_render()).Times(1);
+  EXPECT_CALL(m2, do_render()).Times(1);
   using namespace dooc::tuple_literals;
   auto w = widget_builder()
                .area(default_rect{})
@@ -1747,13 +1749,11 @@ TEST(WidgetBuilder, SetColour) // NOLINT
                .build();
   auto constexpr exp_m1c = default_colour_t{255, 0, 0, 255};
   auto constexpr exp_m2c = default_colour_t{0, 255, 0, 255};
-  // w.colour(cgui::display_choice::text = exp_m1c, cgui::display_choice::fill =
-  // exp_m2c);
-  //w.colour("text"_na = exp_m1c, "fill"_na = exp_m2c);
   "text"_from(w.displays()).colour(exp_m1c);
   "fill"_from(w.displays()).colour(exp_m2c);
   expect_colour_eq(m1c, exp_m1c);
   expect_colour_eq(m2c, exp_m2c);
+  w.render(dummy_renderer{});
 }
 
 struct mock_state_aware_renderer {

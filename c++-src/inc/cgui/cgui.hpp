@@ -8,11 +8,6 @@
 #include <variant>
 #include <vector>
 
-#if __has_include("dooc/named_args_tuple.hpp")
-#include <dooc/named_args_tuple.hpp>
-#define CGUI_HAS_NAMED_ARGS 1
-#endif
-
 #include <cgui/cgui-types.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/stl_extend.hpp>
@@ -238,7 +233,7 @@ public:
 
   template <typename... TD2,
             typename TRes = widget_builder_impl<
-                TArea, std::tuple<TD2...>>>
+                TArea, std::tuple<std::unwrap_ref_decay_t<TD2>...>>>
     requires ((display_component<TD2> || display_component<std::unwrap_ref_decay_t<TD2>>) && ...)
   TRes display(TD2 &&...d2) && {
     return TRes(std::move(area_),
@@ -265,13 +260,6 @@ public:
     static_assert(bounding_box<TArea>,
                   "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
-    /*
-    return std::apply(
-        [this]<typename... Ts>(Ts &&...vals) {
-          return widget<TArea, TDisplay>(
-              std::move(area_), std::forward<Ts>(vals)...);
-        },
-        displays_);*/
     return widget<TArea, TDisplay>(std::move(area_), std::move(displays_));
   }
   widget_builder_impl event(auto &&...) && { return std::move(*this); }
