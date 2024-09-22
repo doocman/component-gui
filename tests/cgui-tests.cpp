@@ -1710,8 +1710,7 @@ TEST(WidgetBuilder, BuildRender) // NOLINT
   call::render(w, dummy_renderer{});
 }
 
-template <typename TChoiceType> struct mock_colourable {
-  using choice_type = TChoiceType;
+struct mock_colourable {
   void render(auto &&...) const {}
   MOCK_METHOD(void, colour, (default_colour_t const &), ());
 };
@@ -1729,8 +1728,8 @@ expect_colour_eq(cgui::colour auto const &val,
 
 TEST(WidgetBuilder, SetColour) // NOLINT
 {
-  auto m1 = mock_colourable<cgui::display_choice::text_t>{};
-  auto m2 = mock_colourable<cgui::display_choice::fill_t>{};
+  auto m1 = mock_colourable{};
+  auto m2 = mock_colourable{};
   InSequence s;
   default_colour_t m1c{}, m2c{};
   EXPECT_CALL(m1, colour(_)).WillOnce([&](default_colour_t const &c) {
@@ -1750,7 +1749,9 @@ TEST(WidgetBuilder, SetColour) // NOLINT
   auto constexpr exp_m2c = default_colour_t{0, 255, 0, 255};
   // w.colour(cgui::display_choice::text = exp_m1c, cgui::display_choice::fill =
   // exp_m2c);
-  w.colour("text"_na = exp_m1c, "fill"_na = exp_m2c);
+  //w.colour("text"_na = exp_m1c, "fill"_na = exp_m2c);
+  "text"_from(w.displays()).colour(exp_m1c);
+  "fill"_from(w.displays()).colour(exp_m2c);
   expect_colour_eq(m1c, exp_m1c);
   expect_colour_eq(m2c, exp_m2c);
 }

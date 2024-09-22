@@ -167,24 +167,34 @@ public:
 
 template <typename T> gui_context(T &) -> gui_context<std::remove_cvref_t<T>>;
 
-template <bounding_box TArea = cgui::default_rect, typename... TDisplay>
+template <bounding_box TArea = cgui::default_rect, typename TDisplay = std::tuple<>>
 class widget {
   TArea area_{};
-  std::tuple<TDisplay...> display_;
+  TDisplay display_;
 
 public:
   constexpr widget()
-    requires(std::is_default_constructible_v<TDisplay> && ...)
+    requires(std::is_default_constructible_v<TDisplay>)
   = default;
-  constexpr explicit widget(TDisplay... d) : display_(std::move(d)...) {}
+
+  template <typename... Ts>
+  requires(std::constructible_from<TDisplay, Ts&&...>)
+  constexpr explicit widget(Ts&&... d) : display_(std::forward<Ts>(d)...) {}
   template <typename... Ts> requires(std::constructible_from<TDisplay, Ts&&> && ...)
   constexpr widget(TArea const &a, Ts&&... d)
       : area_(a), display_(std::forward<Ts>(d)...) {}
 
   [[nodiscard]] TArea const &area() const { return area_; }
-  template <bounding_box TArea2>
-  widget<TArea2, TDisplay...> area(TArea2 const &a) && {
-    return {std::move(display_), a};
+
+  widget& area(TArea const &a) {
+    area_ = a;
+    return *this;
+  }
+  constexpr TDisplay& displays() noexcept {
+    return display_;
+  }
+  constexpr TDisplay const& displays() const noexcept {
+    return display_;
   }
   widget display(auto &&...vs) &&
   /*requires(requires() {
@@ -200,9 +210,13 @@ public:
     // display_.render(std::forward<decltype(r)>(r));
     //call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
     //             call::height(area()));
-    tuple_for_each([&r, w = call::width(area_), h = call::height(area_)] (auto& v) {
+    call::for_each(
+        display_,
+        bp::trailing_curried(call::render, std::ref(r), call::width(area_), call::height(area_))
+        /*[&r, w = call::width(area_), h = call::height(area_)] (auto& v) {
       call::render(v, r, w, h);
-    }, display_);
+    }, display_*/
+        );
   }
 };
 
@@ -219,23 +233,31 @@ public:
     requires(std::constructible_from<TDisplay, TUs&&...>)
   constexpr explicit widget_builder_impl(TArea const &a, TUs &&...displ)
       : area_(a), displays_(std::forward<TUs>(displ)...) {}
-  template <typename... TD1, typename... TUs>
-  constexpr explicit widget_builder_impl(TArea const &a,
-                                         std::tuple<TD1...> &&displ1,
-                                         TUs &&...displ)
-      : area_(a),
-        displays_(std::tuple_cat(std::move(displ1),
-                                 std::tuple(std::forward<TUs>(displ)...))) {}
 
   widget_builder_impl state(auto &&) && { return std::move(*this); }
 
   template <typename... TD2,
             typename TRes = widget_builder_impl<
-                TArea, TDisplays..., std::unwrap_ref_decay_t<TD2>...>>
+                TArea, std::tuple<TD2...>>>
+    requires ((display_component<TD2> || display_component<std::unwrap_ref_decay_t<TD2>>) && ...)
   TRes display(TD2 &&...d2) && {
-    return TRes(std::move(area_), std::move(displays_),
+    return TRes(std::move(area_),
                 std::forward<decltype(d2)>(d2)...);
   }
+  template <display_component_range TTupleLike, typename TRes = widget_builder_impl<TArea, std::unwrap_reference_t<std::remove_cvref_t<TTupleLike>>>>
+  TRes display(TTupleLike&& displays) && {
+    return TRes(std::move(area_), std::forward<TTupleLike>(displays));
+  }
+
+#if CGUI_HAS_NAMED_ARGS
+  template <dooc::arg_with_any_name... TArgs>
+    requires(display_component<typename dooc::named_arg_properties<TArgs>::type> && ...)
+  constexpr auto display(TArgs&&... args) && {
+    return widget_builder_impl<TArea, dooc::named_tuple<std::remove_cvref_t<TArgs>...>>(
+        std::move(area_), std::forward<TArgs>(args)...
+        );
+  }
+#endif
 
   auto build() &&
     requires(contract_fulfilled)
@@ -243,17 +265,19 @@ public:
     static_assert(bounding_box<TArea>,
                   "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
+    /*
     return std::apply(
         [this]<typename... Ts>(Ts &&...vals) {
-          return widget<TArea, TDisplays...>(
+          return widget<TArea, TDisplay>(
               std::move(area_), std::forward<Ts>(vals)...);
         },
-        displays_);
+        displays_);*/
+    return widget<TArea, TDisplay>(std::move(area_), std::move(displays_));
   }
   widget_builder_impl event(auto &&...) && { return std::move(*this); }
 
   template <bounding_box TA,
-            typename TRes = widget_builder_impl<TA, TDisplays...>>
+            typename TRes = widget_builder_impl<TA, TDisplay>>
   TRes area(TA const &a) && {
     return TRes(a);
   }
