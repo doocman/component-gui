@@ -1710,9 +1710,9 @@ TEST(WidgetBuilder, BuildRender) // NOLINT
 
 struct mock_colourable {
   MOCK_METHOD(void, do_render, (), (const));
+  MOCK_METHOD(void, colour, (default_colour_t const &), ());
 
   void render(auto &&...) const { do_render(); }
-  MOCK_METHOD(void, colour, (default_colour_t const &), ());
 };
 
 inline auto
@@ -1755,36 +1755,26 @@ TEST(WidgetBuilder, SetColour) // NOLINT
 }
 
 struct mock_state_aware_renderer {
-  static constexpr bool state_aware = true;
-};
-struct mock_state_unaware_renderer_impl {};
-struct mock_state_unaware_renderer_ref {
-  mock_state_unaware_renderer_impl &impl;
-  int my_index{};
+  MOCK_METHOD(void, do_render, (), (const));
 
-  explicit mock_state_unaware_renderer_ref(mock_state_unaware_renderer_impl &in)
-      : impl(in) {}
-
-  mock_state_unaware_renderer_ref(mock_state_unaware_renderer_ref const &in)
-      : impl(in.impl), my_index(in.my_index + 1) {}
-  mock_state_unaware_renderer_ref(
-      mock_state_unaware_renderer_ref &&in) noexcept = default;
+  void render(auto &&...) const { do_render(); }
 };
 
 struct int_as_event_handler {};
 
-/*
 TEST(WidgetBuilder, BuildWithState) // NOLINT
 {
   auto state_aware_rend = mock_state_aware_renderer{};
-  auto state_unaware_rend_impl = mock_state_unaware_renderer_impl{};
-  auto w = widget_builder().state(widget_states<int, 0,
-1>).event(int_as_event_handler{}).display(std::ref(state_aware_rend),
-mock_state_unaware_renderer_ref{state_unaware_rend_impl}).build();
+  auto w = widget_builder()
+               .area(default_rect{0, 0, 1, 1})
+               .state(widget_states<int, 0, 1>)
+               .event(int_as_event_handler{})
+               .display(std::ref(state_aware_rend))
+               .build();
   MockFunction<void()> checkpoint{};
-
+  FAIL() << "Not yet completed";
+  w.handle(0);
 }
-*/
 
 /*
 TEST(Button, Click) // NOLINT
