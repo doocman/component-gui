@@ -162,10 +162,74 @@ public:
 
 template <typename T> gui_context(T &) -> gui_context<std::remove_cvref_t<T>>;
 
-template <bounding_box TArea = cgui::default_rect, typename TDisplay = std::tuple<>>
-class widget {
+struct widget_mono_state {
+  constexpr void operator()(renderer auto&& r, display_component<decltype(r)> auto& display, auto w, auto h) const {
+    call::render(display, w, h);
+  }
+};
+
+struct widget_no_event_handler {};
+
+namespace impl {
+template <typename... Ts>
+struct widget_empty_structs_optimiser;
+template <>
+struct widget_empty_structs_optimiser<> {
+  static constexpr void get() {}
+};
+template <typename T, typename... Ts>
+requires(std::is_empty_v<T>)
+struct widget_empty_structs_optimiser<T, Ts...> : widget_empty_structs_optimiser<Ts...> {
+  using _base_t = widget_empty_structs_optimiser<Ts...>;
+  static constexpr T get(auto&&, std::type_identity<T>) {
+    return T{};
+  }
+  using _base_t::get;
+  /*template <bp::cvref_type<widget_empty_structs_optimiser> TSelf, typename T2>
+  static constexpr auto get(TSelf&& self, std::type_identity<T2> ti) -> decltype(_base_t::get(std::forward<TSelf>(self), ti)) {
+    return _base_t::get(std::forward<TSelf>(self), ti);
+  }*/
+};
+template <typename T, typename... Ts>
+requires(!std::is_empty_v<T>)
+struct widget_empty_structs_optimiser<T, Ts...> : widget_empty_structs_optimiser<Ts...> {
+  using _base_t = widget_empty_structs_optimiser<Ts...>;
+  T val_;
+  static constexpr auto&& get(auto&& self, std::type_identity<T>) {
+    return std::forward<decltype(self)>(self);
+  }
+  using _base_t::get;
+};
+}
+
+template <bounding_box TArea = cgui::default_rect, typename TDisplay = std::tuple<>, typename TState = widget_mono_state, typename TEventHandler = widget_no_event_handler>
+class widget : impl::widget_empty_structs_optimiser<TState, TEventHandler> {
   TArea area_{};
   TDisplay display_;
+  using base_t = impl::widget_empty_structs_optimiser<TState, TEventHandler>;
+  static constexpr auto&& state(auto&& self) noexcept {
+    return base_t::get(std::forward<decltype(self)>, std::type_identity<TState>{});
+  }
+  static constexpr auto&& event_handler(auto&& self) noexcept {
+    return base_t::get(std::forward<decltype(self)>, std::type_identity<TEventHandler>{});
+  }
+
+
+  constexpr auto set_state_callback() {
+    // At this point, the state handler can change its state and propagate the state change to all affected display aspects.
+    return bp::no_op;
+#if 0 // disabled until we have tests in place.
+    auto each_display_callback = [this] (auto const& state) {
+      auto display_cb = [&state] (auto& display)
+      {
+        if constexpr(has_set_state<decltype(display), decltype(state)>) {
+          call::set_state(display, state);
+        }
+      };
+      call::for_each(display_, display_cb);
+    };
+#endif
+  }
 
 public:
   constexpr widget()
@@ -191,27 +255,20 @@ public:
   constexpr TDisplay const& displays() const noexcept {
     return display_;
   }
-  widget display(auto &&...vs) &&
-  /*requires(requires() {
-    call::set_displayed(display_, call::width(area()), call::height(area()),
-                        std::forward<decltype(vs)>(vs)...);
-  })*/
-  {
-    /*call::set_displayed(display_, call::width(area()), call::height(area()),
-                        std::forward<decltype(vs)>(vs)...);*/
-    return std::move(*this);
-  }
-  void render(renderer auto &&r) {
-    // display_.render(std::forward<decltype(r)>(r));
-    //call::render(display_, std::forward<decltype(r)>(r), call::width(area()),
-    //             call::height(area()));
+
+  constexpr void render(renderer auto&& r) const {
     call::for_each(
         display_,
-        bp::trailing_curried(call::render, std::ref(r), call::width(area_), call::height(area_))
-        /*[&r, w = call::width(area_), h = call::height(area_)] (auto& v) {
-      call::render(v, r, w, h);
-    }, display_*/
+        bp::trailing_curried(state(), std::ref(r), call::width(area_), call::height(area_))
         );
+  }
+  constexpr void handle(auto&& evt) requires(has_handle<TEventHandler, decltype(evt)>)
+  {
+    // First level: we call the event handler that takes input events and translates it to a component state change.
+    call::handle(event_handler(), std::forward<decltype(evt)>(evt), [this] (auto&& state_event) {
+      // Second level: event handler has taken the event input and now translates it to a behaviour event that the state aspect can read.
+      call::handle(state(), std::forward<decltype(state_event)>(state_event), set_state_callback());
+    });
   }
 };
 

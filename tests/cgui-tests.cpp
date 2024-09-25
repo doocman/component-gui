@@ -1755,9 +1755,9 @@ TEST(WidgetBuilder, SetColour) // NOLINT
 }
 
 struct mock_state_aware_renderer {
-  MOCK_METHOD(void, do_render, (), (const));
+  MOCK_METHOD(void, do_render, (int), (const));
 
-  void render(auto &&...) const { do_render(); }
+  void render(auto &&, auto&&, auto&&, int state) const { do_render(state); }
 };
 
 struct int_as_event_handler {};
@@ -1765,15 +1765,21 @@ struct int_as_event_handler {};
 TEST(WidgetBuilder, BuildWithState) // NOLINT
 {
   auto state_aware_rend = mock_state_aware_renderer{};
+  MockFunction<void()> checkpoint{};
+  InSequence s;
+  EXPECT_CALL(state_aware_rend, do_render(0));
+  EXPECT_CALL(checkpoint, Call());
+  EXPECT_CALL(state_aware_rend, do_render(1));
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
                .state(widget_states<int, 0, 1>)
                .event(int_as_event_handler{})
                .display(std::ref(state_aware_rend))
                .build();
-  MockFunction<void()> checkpoint{};
-  FAIL() << "Not yet completed";
-  w.handle(0);
+  w.render(dummy_renderer{});
+  w.handle(1);
+  checkpoint.Call();
+  w.render(dummy_renderer{});
 }
 
 /*
