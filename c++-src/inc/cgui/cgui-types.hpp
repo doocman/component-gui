@@ -864,6 +864,9 @@ CGUI_CALL_CONCEPT(ascender);
 CGUI_CALL_CONCEPT(base_to_top);
 CGUI_CALL_CONCEPT(position);
 
+CGUI_CALL_CONCEPT(handle);
+CGUI_CALL_CONCEPT(set_state);
+
 CGUI_CALL_CONCEPT(on_button_hover);
 CGUI_CALL_CONCEPT(on_button_hold);
 CGUI_CALL_CONCEPT(on_button_click);
@@ -912,6 +915,8 @@ inline constexpr impl::_do_full_height full_height;
 inline constexpr impl::_do_ascender ascender;
 inline constexpr impl::_do_base_to_top base_to_top;
 inline constexpr impl::do_bitmap_top bitmap_top;
+inline constexpr impl::_do_set_state set_state;
+inline constexpr impl::_do_handle handle;
 
 inline constexpr impl::_do_on_button_hover on_button_hover;
 inline constexpr impl::_do_on_button_hold on_button_hold;
@@ -920,6 +925,17 @@ inline constexpr impl::_do_on_button_exit on_button_exit;
 inline constexpr impl::_do_position position;
 inline constexpr impl::do_mouse_button mouse_button;
 } // namespace call
+
+template <typename T, typename... TArgs>
+concept has_handle = requires(bp::as_forward<T> t, bp::as_forward<TArgs>... args)
+{
+  call::handle(*t, *args...);
+};
+template <typename T, typename... TArgs>
+concept has_set_state = requires(bp::as_forward<T> t, bp::as_forward<TArgs>... args)
+{
+  call::set_state(*t, *args...);
+};
 
 constexpr auto multiply_alpha(colour auto c, std::uint_least8_t alpha) {
   extend::alpha(
@@ -1836,6 +1852,33 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 
 } // namespace call
 
+
+struct no_state_t {};
+template <typename T, T... values> class widget_state_marker {};
+template <> class widget_state_marker<void> {
+public:
+  static constexpr no_state_t current_state() noexcept { return no_state_t{}; }
+};
+template <typename TWH = int, typename TState = widget_state_marker<void>>
+class widget_render_args : TState {
+  TWH w_;
+  TWH h_;
+
+public:
+  template <typename... Ts>
+    requires(std::constructible_from<TState, Ts && ...>)
+  constexpr widget_render_args(TWH w, TWH h, Ts &&...state_args)
+      : TState(std::forward<Ts>(state_args)...), w_(w), h_(h) {}
+
+  constexpr TWH width() const noexcept { return w_; }
+  constexpr TWH height() const noexcept { return h_; }
+  constexpr auto const &widget_state() const { return TState::current_state(); }
+};
+template <typename TWH, typename TState>
+widget_render_args(TWH, TWH, TState&&) -> widget_render_args<TWH, std::remove_cvref_t<TState>>;
+template <typename TWH>
+widget_render_args(TWH, TWH) -> widget_render_args<TWH>;
+
 template <typename T>
 concept canvas = requires(T const &tc) {
   { call::area(tc) } -> bounding_box;
@@ -1870,11 +1913,11 @@ static_assert(renderer<dummy_renderer>);
 
 template <typename T, typename TRender = dummy_renderer>
 concept widget_display = has_render<T, TRender>;
-template <typename T, typename TRender = dummy_renderer>
-concept display_component = has_render<T, TRender, int, int>;
-template <typename T, typename TRender = dummy_renderer>
+template <typename T, typename TRender = dummy_renderer, typename TArgs = widget_render_args<>>
+concept display_component = has_render<T, TRender, TArgs>;
+template <typename T, typename TRender = dummy_renderer, typename TArgs = widget_render_args<>>
 concept display_component_range = has_for_each<
-    T, bp::trailing_curried<decltype(call::render), TRender, int, int>>;
+    T, bp::trailing_curried<decltype(call::render), TRender, TArgs>>;
 
 template <typename T, typename TRenderer = dummy_renderer>
 concept font_glyph = requires(T const &ct, TRenderer &r) {

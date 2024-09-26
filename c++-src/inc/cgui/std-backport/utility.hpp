@@ -19,6 +19,32 @@ namespace cgui::bp {
 #endif
 }
 
+template <typename... Ts>
+struct empty_structs_optimiser;
+template <>
+struct empty_structs_optimiser<> {
+  static constexpr void get() {}
+};
+template <typename T, typename... Ts>
+requires(std::is_empty_v<T>)
+struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
+  using _base_t = empty_structs_optimiser<Ts...>;
+  static constexpr T get(auto&&, std::type_identity<T>) {
+    return T{};
+  }
+  using _base_t::get;
+};
+template <typename T, typename... Ts>
+requires(!std::is_empty_v<T>)
+struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
+  using _base_t = empty_structs_optimiser<Ts...>;
+  T val_;
+  static constexpr auto&& get(auto&& self, std::type_identity<T>) {
+    return std::forward<decltype(self)>(self);
+  }
+  using _base_t::get;
+};
+
 template <typename T> struct as_forward {
   T &&val_;
 

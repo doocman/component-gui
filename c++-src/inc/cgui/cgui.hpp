@@ -163,60 +163,41 @@ public:
 template <typename T> gui_context(T &) -> gui_context<std::remove_cvref_t<T>>;
 
 struct widget_mono_state {
-  constexpr void operator()(renderer auto&& r, display_component<decltype(r)> auto& display, auto w, auto h) const {
-    call::render(display, w, h);
+  template <typename TWH> using arg_t = widget_render_args<TWH>;
+
+  template <renderer TR, display_component<TR> TD, typename TWH>
+  constexpr void operator()(TD &display, TR &&r, TWH w, TWH h) const {
+    call::render(display, std::forward<TR>(r), arg_t<TWH>(w, h));
+  }
+  template <renderer TR, typename TWH>
+  constexpr auto operator()(TR &&r, TWH w, TWH h) const {
+    return
+        [&r, arg = arg_t<TWH>(w, h)]<display_component<TR, arg_t<TWH>> TD>(
+            TD &&display) { call::render(display, std::forward<TR>(r), arg); };
   }
 };
 
 struct widget_no_event_handler {};
 
-namespace impl {
-template <typename... Ts>
-struct widget_empty_structs_optimiser;
-template <>
-struct widget_empty_structs_optimiser<> {
-  static constexpr void get() {}
-};
-template <typename T, typename... Ts>
-requires(std::is_empty_v<T>)
-struct widget_empty_structs_optimiser<T, Ts...> : widget_empty_structs_optimiser<Ts...> {
-  using _base_t = widget_empty_structs_optimiser<Ts...>;
-  static constexpr T get(auto&&, std::type_identity<T>) {
-    return T{};
-  }
-  using _base_t::get;
-  /*template <bp::cvref_type<widget_empty_structs_optimiser> TSelf, typename T2>
-  static constexpr auto get(TSelf&& self, std::type_identity<T2> ti) -> decltype(_base_t::get(std::forward<TSelf>(self), ti)) {
-    return _base_t::get(std::forward<TSelf>(self), ti);
-  }*/
-};
-template <typename T, typename... Ts>
-requires(!std::is_empty_v<T>)
-struct widget_empty_structs_optimiser<T, Ts...> : widget_empty_structs_optimiser<Ts...> {
-  using _base_t = widget_empty_structs_optimiser<Ts...>;
-  T val_;
-  static constexpr auto&& get(auto&& self, std::type_identity<T>) {
-    return std::forward<decltype(self)>(self);
-  }
-  using _base_t::get;
-};
-}
-
-template <bounding_box TArea = cgui::default_rect, typename TDisplay = std::tuple<>, typename TState = widget_mono_state, typename TEventHandler = widget_no_event_handler>
-class widget : impl::widget_empty_structs_optimiser<TState, TEventHandler> {
+template <bounding_box TArea = cgui::default_rect,
+          typename TDisplay = std::tuple<>, typename TState = widget_mono_state,
+          typename TEventHandler = widget_no_event_handler>
+class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
   TArea area_{};
   TDisplay display_;
-  using base_t = impl::widget_empty_structs_optimiser<TState, TEventHandler>;
-  static constexpr auto&& state(auto&& self) noexcept {
-    return base_t::get(std::forward<decltype(self)>, std::type_identity<TState>{});
+  using base_t = bp::empty_structs_optimiser<TState, TEventHandler>;
+  static constexpr decltype(auto) state(auto &&self) noexcept {
+    return base_t::get(std::forward<decltype(self)>(self),
+                       std::type_identity<TState>{});
   }
-  static constexpr auto&& event_handler(auto&& self) noexcept {
-    return base_t::get(std::forward<decltype(self)>, std::type_identity<TEventHandler>{});
+  static constexpr decltype(auto) event_handler(auto &&self) noexcept {
+    return base_t::get(std::forward<decltype(self)>(self),
+                       std::type_identity<TEventHandler>{});
   }
-
 
   constexpr auto set_state_callback() {
-    // At this point, the state handler can change its state and propagate the state change to all affected display aspects.
+    // At this point, the state handler can change its state and propagate the
+    // state change to all affected display aspects.
     return bp::no_op;
 #if 0 // disabled until we have tests in place.
     auto each_display_callback = [this] (auto const& state) {
@@ -237,42 +218,48 @@ public:
   = default;
 
   template <typename... Ts>
-  requires(std::constructible_from<TDisplay, Ts&&...>)
-  constexpr explicit widget(Ts&&... d) : display_(std::forward<Ts>(d)...) {}
-  template <typename... Ts> requires(std::constructible_from<TDisplay, Ts&&> && ...)
-  constexpr widget(TArea const &a, Ts&&... d)
+    requires(std::constructible_from<TDisplay, Ts && ...>)
+  constexpr explicit widget(Ts &&...d) : display_(std::forward<Ts>(d)...) {}
+  template <typename... Ts>
+    requires(std::constructible_from<TDisplay, Ts &&> && ...)
+  constexpr widget(TArea const &a, Ts &&...d)
       : area_(a), display_(std::forward<Ts>(d)...) {}
 
   [[nodiscard]] TArea const &area() const { return area_; }
 
-  widget& area(TArea const &a) {
+  widget &area(TArea const &a) {
     area_ = a;
     return *this;
   }
-  constexpr TDisplay& displays() noexcept {
-    return display_;
-  }
-  constexpr TDisplay const& displays() const noexcept {
-    return display_;
-  }
+  constexpr TDisplay &displays() noexcept { return display_; }
+  constexpr TDisplay const &displays() const noexcept { return display_; }
 
-  constexpr void render(renderer auto&& r) const {
-    call::for_each(
-        display_,
-        bp::trailing_curried(state(), std::ref(r), call::width(area_), call::height(area_))
-        );
+  constexpr void render(renderer auto &&r) const {
+    call::for_each(display_,
+                   state(*this)(r, call::width(area_), call::height(area_)));
   }
-  constexpr void handle(auto&& evt) requires(has_handle<TEventHandler, decltype(evt)>)
+  constexpr void handle(auto &&evt)
+    requires(has_handle<TEventHandler, decltype(evt),
+                        decltype(set_state_callback())>)
   {
-    // First level: we call the event handler that takes input events and translates it to a component state change.
-    call::handle(event_handler(), std::forward<decltype(evt)>(evt), [this] (auto&& state_event) {
-      // Second level: event handler has taken the event input and now translates it to a behaviour event that the state aspect can read.
-      call::handle(state(), std::forward<decltype(state_event)>(state_event), set_state_callback());
-    });
+    // First level: we call the event handler that takes input events and
+    // translates it to a component state change.
+    call::handle(event_handler(), std::forward<decltype(evt)>(evt),
+                 [this](auto &&state_event) {
+                   // Second level: event handler has taken the event input and
+                   // now translates it to a behaviour event that the state
+                   // aspect can read.
+                   call::handle(
+                       state(),
+                       std::forward<decltype(state_event)>(state_event),
+                       set_state_callback());
+                 });
   }
 };
 
-template <typename TArea = std::nullptr_t, typename TDisplay = std::tuple<>>
+template <typename TArea, typename TDisplay,
+          typename TState,
+          typename TEventHandler>
 class widget_builder_impl {
   TArea area_;
   TDisplay displays_;
@@ -282,32 +269,49 @@ public:
 
   constexpr widget_builder_impl() = default;
   template <typename... TUs>
-    requires(std::constructible_from<TDisplay, TUs&&...>)
+    requires(std::constructible_from<TDisplay, TUs && ...>)
   constexpr explicit widget_builder_impl(TArea const &a, TUs &&...displ)
       : area_(a), displays_(std::forward<TUs>(displ)...) {}
 
-  widget_builder_impl state(auto &&) && { return std::move(*this); }
+  template <typename TS2,
+            typename TRes = widget_builder_impl<TArea, TDisplay, TS2, TEventHandler>>
+  TRes state(TS2 const &) && {
+    return TRes(std::move(area_), std::move(displays_));
+  }
 
   template <typename... TD2,
             typename TRes = widget_builder_impl<
-                TArea, std::tuple<std::unwrap_ref_decay_t<TD2>...>>>
-    requires ((display_component<TD2> || display_component<std::unwrap_ref_decay_t<TD2>>) && ...)
+                TArea, std::tuple<std::unwrap_ref_decay_t<TD2>...>, TState, TEventHandler>>
+    requires((display_component<TD2, dummy_renderer,
+                                typename TState::template arg_t<int>> ||
+              display_component<std::unwrap_ref_decay_t<TD2>, dummy_renderer,
+                                typename TState::template arg_t<int>>) &&
+             ...)
+  // requires ((TState::template renderable<TD2> || TState::template
+  // renderable<std::unwrap_ref_decay_t<TD2>>) && ...)
   TRes display(TD2 &&...d2) && {
-    return TRes(std::move(area_),
-                std::forward<decltype(d2)>(d2)...);
+    return TRes(std::move(area_), std::forward<decltype(d2)>(d2)...);
   }
-  template <display_component_range TTupleLike, typename TRes = widget_builder_impl<TArea, std::unwrap_reference_t<std::remove_cvref_t<TTupleLike>>>>
-  TRes display(TTupleLike&& displays) && {
+  template <
+      display_component_range<dummy_renderer,
+                              typename TState::template arg_t<int>>
+          TTupleLike,
+      typename TRes = widget_builder_impl<
+          TArea, std::unwrap_reference_t<std::remove_cvref_t<TTupleLike>>, TState, TEventHandler>>
+  TRes display(TTupleLike &&displays) && {
     return TRes(std::move(area_), std::forward<TTupleLike>(displays));
   }
 
 #if CGUI_HAS_NAMED_ARGS
   template <dooc::arg_with_any_name... TArgs>
-    requires(display_component<typename dooc::named_arg_properties<TArgs>::type> && ...)
-  constexpr auto display(TArgs&&... args) && {
-    return widget_builder_impl<TArea, dooc::named_tuple<std::remove_cvref_t<TArgs>...>>(
-        std::move(area_), std::forward<TArgs>(args)...
-        );
+    requires(display_component<typename dooc::named_arg_properties<TArgs>::type,
+                               dummy_renderer,
+                               typename TState::template arg_t<int>> &&
+             ...)
+  constexpr auto display(TArgs &&...args) && {
+    return widget_builder_impl<
+        TArea, dooc::named_tuple<std::remove_cvref_t<TArgs>...>, TState, TEventHandler>(
+        std::move(area_), std::forward<TArgs>(args)...);
   }
 #endif
 
@@ -317,18 +321,21 @@ public:
     static_assert(bounding_box<TArea>,
                   "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
-    return widget<TArea, TDisplay>(std::move(area_), std::move(displays_));
+    return widget<TArea, TDisplay, TState, TEventHandler>(std::move(area_),
+                                                          std::move(displays_));
   }
-  widget_builder_impl event(auto &&...) && { return std::move(*this); }
+  template <typename TE2,
+            typename TRes = widget_builder_impl<TArea, TDisplay, TState, TE2>>
+  TRes event(TE2 const&) && {
+    return TRes(std::move(area_), std::move(displays_));}
 
-  template <bounding_box TA,
-            typename TRes = widget_builder_impl<TA, TDisplay>>
+  template <bounding_box TA, typename TRes = widget_builder_impl<TA, TDisplay, TState, TEventHandler>>
   TRes area(TA const &a) && {
     return TRes(a);
   }
 };
 
-constexpr widget_builder_impl<> widget_builder() { return {}; }
+constexpr widget_builder_impl<std::nullptr_t, std::tuple<>, widget_mono_state, widget_no_event_handler> widget_builder() { return {}; }
 
 template <font_face TFont> class text_renderer {
   TFont f_;
