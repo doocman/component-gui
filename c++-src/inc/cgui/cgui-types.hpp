@@ -18,9 +18,9 @@
 
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/functional.hpp>
+#include <cgui/std-backport/tuple.hpp>
 #include <cgui/std-backport/type_traits.hpp>
 #include <cgui/std-backport/utility.hpp>
-#include <cgui/std-backport/tuple.hpp>
 
 #include <cgui/warnings.hpp>
 
@@ -49,28 +49,27 @@
   template <typename T, typename... Ts>                                        \
   concept has_##NAME = member_##NAME<T, Ts...> || static_##NAME<T, Ts...> ||   \
                        extend_##NAME<T, Ts...> || free_##NAME<T, Ts...>;       \
-  struct _do_##NAME{                                                           \
+  struct _do_##NAME {                                                          \
                                                                                \
-      template <typename... Ts, has_##NAME<Ts...> T>                           \
-      static constexpr decltype(auto) call(T && torg, Ts && ...args){          \
-          auto t = bp::as_forward<T>(torg);                                    \
-  if constexpr (member_##NAME<T, Ts...>) {                                     \
-    return (*t).NAME(std::forward<Ts>(args)...);                               \
-  } else if constexpr (static_##NAME<T, Ts...>) {                              \
-    return std::remove_cvref_t<T>::NAME(*t, std::forward<Ts>(args)...);        \
-  } else if constexpr (extend_##NAME<T, Ts...>) {                              \
-    return extend_api_t<T>::NAME(*t, std::forward<Ts>(args)...);               \
-  } else {                                                                     \
-    static_assert(free_##NAME<T, Ts...>);                                      \
-    return NAME(*t, std::forward<Ts>(args)...);                                \
-  }                                                                            \
-  }                                                                            \
-  template <typename... Ts, has_##NAME<Ts...> T>                               \
-  constexpr decltype(auto) operator()(T &&t, Ts &&...args) const {             \
-    return call(std::forward<T>(t), std::forward<Ts>(args)...);                \
-  }                                                                            \
-  }                                                                            \
-  ;
+    template <typename... Ts, has_##NAME<Ts...> T>                             \
+    static constexpr decltype(auto) call(T &&torg, Ts &&...args) {             \
+      auto t = bp::as_forward<T>(torg);                                        \
+      if constexpr (member_##NAME<T, Ts...>) {                                 \
+        return (*t).NAME(std::forward<Ts>(args)...);                           \
+      } else if constexpr (static_##NAME<T, Ts...>) {                          \
+        return std::remove_cvref_t<T>::NAME(*t, std::forward<Ts>(args)...);    \
+      } else if constexpr (extend_##NAME<T, Ts...>) {                          \
+        return extend_api_t<T>::NAME(*t, std::forward<Ts>(args)...);           \
+      } else {                                                                 \
+        static_assert(free_##NAME<T, Ts...>);                                  \
+        return NAME(*t, std::forward<Ts>(args)...);                            \
+      }                                                                        \
+    }                                                                          \
+    template <typename... Ts, has_##NAME<Ts...> T>                             \
+    constexpr decltype(auto) operator()(T && t, Ts &&...args) const {          \
+      return call(std::forward<T>(t), std::forward<Ts>(args)...);              \
+    }                                                                          \
+  };
 
 #define CGUI_CALL_BBOX_MEMBER(NAME, CONCEPT, MUTCONCEPT)                       \
   static constexpr decltype(auto) _fallback(auto const &b);                    \
@@ -142,17 +141,18 @@ CGUI_CALL_CONCEPT(apply_to);
 CGUI_CALL_CONCEPT(for_each);
 
 template <typename T>
-concept is_tuple_like_hack = bp::has_tuple_size<T> && (std::tuple_size_v<std::remove_cvref_t<T>> == 0 || requires(T&& t){
-                               std::get<0>(t);
-                             });
+concept is_tuple_like_hack =
+    bp::has_tuple_size<T> && (std::tuple_size_v<std::remove_cvref_t<T>> == 0 ||
+                              requires(T &&t) { std::get<0>(t); });
 
 struct do_apply_to {
   template <typename T, typename TCB>
-    requires(has_apply_to<T, TCB> || (is_tuple_like_hack<T> &&
-             requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
-               std::apply(*cb, *t);
-             }))
-  constexpr decltype(auto) operator()(T &&t, TCB &&cb) const {
+    requires(has_apply_to<T, TCB> ||
+             (is_tuple_like_hack<T> &&
+              requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
+                std::apply(*cb, *t);
+              }))
+  constexpr decltype(auto) operator()(T && t, TCB && cb) const {
     auto tf = bp::as_forward<T>(t);
     auto cf = bp::as_forward<TCB>(cb);
     if constexpr (has_apply_to<T, TCB>) {
@@ -170,7 +170,7 @@ struct do_for_each {
     requires(has_for_each<T, TCB> || std::ranges::input_range<T> ||
              requires(bp::as_forward<T> t) { do_apply_to{}(*t, bp::no_op); }
 #if defined(CGUI_HAS_NAMED_ARGS)
-      || dooc::named_tuple_like<T>
+             || dooc::named_tuple_like<T>
 #endif
              )
   constexpr void operator()(T &&t, TCB &&cb) const {
@@ -183,9 +183,9 @@ struct do_for_each {
       // TODO: See if we can get rid of this ifdef...
 #ifdef CGUI_HAS_NAMED_ARGS
     } else if constexpr (dooc::named_tuple_like<T>) {
-      dooc::tuple_for_each([&cb] (auto&&, auto&& v) {
-        cb(std::forward<decltype(v)>(v));
-      }, std::forward<T>(t));
+      dooc::tuple_for_each(
+          [&cb](auto &&, auto &&v) { cb(std::forward<decltype(v)>(v)); },
+          std::forward<T>(t));
 #endif
     } else {
       do_apply_to{}(*tf, [&cbf](auto &&...vals) {
@@ -320,8 +320,8 @@ namespace extend {
     }                                                                          \
   }                                                                            \
   }                                                                            \
-  constexpr auto NAME(auto &&t) -> decltype(ns_lookup::do_##NAME(              \
-                                    std::forward<decltype(t)>(t)))             \
+  constexpr auto NAME(auto &&t)                                                \
+      -> decltype(ns_lookup::do_##NAME(std::forward<decltype(t)>(t)))          \
     requires(                                                                  \
         requires() { ns_lookup::do_##NAME(std::forward<decltype(t)>(t)); })    \
   {                                                                            \
@@ -929,15 +929,15 @@ inline constexpr impl::do_mouse_button mouse_button;
 } // namespace call
 
 template <typename T, typename... TArgs>
-concept has_handle = requires(bp::as_forward<T> t, bp::as_forward<TArgs>... args)
-{
-  call::handle(*t, *args...);
-};
+concept has_handle =
+    requires(bp::as_forward<T> t, bp::as_forward<TArgs>... args) {
+      call::handle(*t, *args...);
+    };
 template <typename T, typename... TArgs>
-concept has_set_state = requires(bp::as_forward<T> t, bp::as_forward<TArgs>... args)
-{
-  call::set_state(*t, *args...);
-};
+concept has_set_state =
+    requires(bp::as_forward<T> t, bp::as_forward<TArgs>... args) {
+      call::set_state(*t, *args...);
+    };
 
 constexpr auto multiply_alpha(colour auto c, std::uint_least8_t alpha) {
   extend::alpha(
@@ -1149,7 +1149,9 @@ template <ui_events evt> struct subset_ui_events<evt> {
 };
 
 template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> && requires() {
+concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
+  requires()
+{
   {
     std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
   } -> std::convertible_to<bool>;
@@ -1316,7 +1318,7 @@ concept has_set_displayed =
 
 struct do_set_displayed {
   template <typename... Ts, has_set_displayed<Ts...> T>
-  constexpr decltype(auto) operator()(T &&torg, Ts &&...vals) const {
+  constexpr decltype(auto) operator()(T && torg, Ts &&...vals) const {
     auto t = bp::as_forward(std::forward<T>(torg));
     if constexpr (member_set_displayed<T, Ts...>) {
       return (*t).set_displayed(std::forward<Ts>(vals)...);
@@ -1491,7 +1493,7 @@ concept has_area = member_area<T, Ts...> || static_area<T, Ts...> ||
 
 struct do_area {
   template <typename... Ts, has_area<Ts...> T>
-  constexpr decltype(auto) operator()(T &&torg, Ts &&...args) const {
+  constexpr decltype(auto) operator()(T && torg, Ts &&...args) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_area<T, Ts...>) {
       return (*t).area(std::forward<Ts>(args)...);
@@ -1519,7 +1521,7 @@ concept has_glyph = member_glyph<T, TChar> || free_glyph<T, TChar>;
 
 struct do_glyph {
   template <typename TChar, has_glyph<TChar> T>
-  constexpr decltype(auto) operator()(T &&torg, TChar c) const {
+  constexpr decltype(auto) operator()(T && torg, TChar c) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_glyph<T, TChar>) {
       return (*t).glyph(c);
@@ -1572,7 +1574,7 @@ struct do_text_colour : private do_text_colour_get {
   template <typename T, colour TC>
     requires(has_text_colour<T, TC> ||
              has_assignable_get<T, do_text_colour_get, TC>)
-  constexpr decltype(auto) operator()(T &&torg, TC &&vorg) const {
+  constexpr decltype(auto) operator()(T && torg, TC && vorg) const {
     auto t = bp::as_forward<T>(torg);
     auto v = bp::as_forward<TC>(vorg);
     if constexpr (member_text_colour<T, TC>) {
@@ -1654,8 +1656,8 @@ concept mut_box_pointer =
 
 template <typename T, typename TV1, typename TV2>
 concept mut_box_pair =
-    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>) &&
-    (mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
+    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>)&&(
+        mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
 
 template <typename TV1, typename TV2, mut_box_pair<TV1, TV2> T, typename TTL,
           typename TBR>
@@ -1843,20 +1845,28 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 
 } // namespace call
 
-
 struct no_state_t {};
 template <typename T>
-concept state_marker = requires(T const& t)
-{
-  {t.current_state()} -> bp::not_void;
+concept state_marker = requires(T const &t) {
+  { t.current_state() } -> bp::not_void;
 };
 template <typename T>
-concept widget_states_aspect = requires(T const& t)
-{
-  {call::state(t)} -> state_marker;
+concept widget_states_aspect = requires(T const &t) {
+  { call::state(t) } -> state_marker;
 };
 
-template <typename T, T... values> class widget_state_marker {};
+template <typename T, T... values> class widget_state_marker {
+  T value_;
+
+public:
+  constexpr explicit(false) widget_state_marker(T val) : value_(val) {
+    CGUI_ASSERT(((value_ == values) || ...));
+  }
+  constexpr widget_state_marker()
+    requires(sizeof...(values) == 1)
+      : value_(values...) {}
+  constexpr T const &current_state() const noexcept { return value_; }
+};
 template <typename T> class widget_state_marker<T> {
 public:
   static constexpr no_state_t current_state() noexcept { return no_state_t{}; }
@@ -1877,9 +1887,9 @@ public:
   constexpr auto const &widget_state() const { return TState::current_state(); }
 };
 template <typename TWH, typename TState>
-widget_render_args(TWH, TWH, TState&&) -> widget_render_args<TWH, std::remove_cvref_t<TState>>;
-template <typename TWH>
-widget_render_args(TWH, TWH) -> widget_render_args<TWH>;
+widget_render_args(TWH, TWH, TState &&)
+    -> widget_render_args<TWH, std::remove_cvref_t<TState>>;
+template <typename TWH> widget_render_args(TWH, TWH) -> widget_render_args<TWH>;
 
 template <typename T>
 concept canvas = requires(T const &tc) {
@@ -1915,11 +1925,14 @@ static_assert(renderer<dummy_renderer>);
 
 template <typename T, typename TRender = dummy_renderer>
 concept widget_display = has_render<T, TRender>;
-template <typename T, typename TRender = dummy_renderer, typename TArgs = widget_render_args<>>
+template <typename T, typename TRender = dummy_renderer,
+          typename TArgs = widget_render_args<>>
 concept display_component = has_render<T, TRender, TArgs>;
-template <typename T, typename TRender = dummy_renderer, typename TArgs = widget_render_args<>>
-concept display_component_range = has_for_each<
-    T, bp::trailing_curried<decltype(call::render), TRender, TArgs>>;
+template <typename T, typename TRender = dummy_renderer,
+          typename TArgs = widget_render_args<>>
+concept display_component_range =
+    has_for_each<T,
+                 bp::trailing_curried<decltype(call::render), TRender, TArgs>>;
 
 template <typename T, typename TRenderer = dummy_renderer>
 concept font_glyph = requires(T const &ct, TRenderer &r) {

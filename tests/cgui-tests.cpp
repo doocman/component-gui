@@ -8,8 +8,8 @@
 #include <array>
 #include <optional>
 #include <source_location>
-#include <tuple>
 #include <string_view>
+#include <tuple>
 #include <typeinfo>
 
 #include <gmock/gmock.h>
@@ -1759,29 +1759,33 @@ TEST(WidgetBuilder, SetColour) // NOLINT
 struct mock_state_aware_renderer {
   MOCK_METHOD(void, do_render, (int), (const));
   MOCK_METHOD(void, do_set_state, (int), (const));
-  MOCK_METHOD(void, render_failed, (std::string_view), (const));
+  std::string_view mutable render_failed_type{};
 
-  void render(renderer auto && , auto && arg) const {
-    if constexpr(std::is_integral_v<decltype(arg.widget_state())>) {
+  void render(renderer auto &&, auto &&arg) const {
+    using state_t = std::remove_cvref_t<decltype(arg.widget_state())>;
+    if constexpr (std::is_integral_v<state_t>) {
       do_render(arg.widget_state());
     } else {
-      render_failed(std::string_view(typeid(arg.widget_state()).name()));
+      render_failed_type = std::string_view(typeid(state_t).name());
     }
   }
   void set_state(int i) { do_set_state(i); }
 };
 
 struct int_states {
-  using states = widget_states_t<int, 0, 1>;
-  template <typename TInt>
-  using arg_t = widget_render_args<TInt, widget_state_marker<int, 0, 1>>;
-  void handle(int i, std::invocable<int> auto &&cb) { cb(i); }
+  int state_ = 0;
+  void handle(int i, std::invocable<int> auto &&cb) {
+    CGUI_ASSERT(i == 0 || i == 1);
+    state_ = i;
+    cb(i);
+  }
+  widget_state_marker<int, 0, 1> state() const { return state_; }
 };
 
 static_assert(has_handle<int_states, int, bp::no_op_t>);
 
 struct int_as_event_handler {
-  void handle(auto&&...) {}
+  void handle(int i, auto &&cb) { cb(i); }
 };
 
 TEST(WidgetBuilder, BuildWithState) // NOLINT
@@ -1789,12 +1793,9 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   auto state_aware_rend = mock_state_aware_renderer{};
   MockFunction<void()> checkpoint{};
   InSequence s;
-  EXPECT_CALL(state_aware_rend, do_render(0));
+  EXPECT_CALL(state_aware_rend, do_render(Eq(0)));
   EXPECT_CALL(checkpoint, Call());
-  EXPECT_CALL(state_aware_rend, do_render(1));
-  EXPECT_CALL(state_aware_rend, render_failed(_)).Times(0).WillRepeatedly([] (std::string_view s) {
-    std::cout << "Render failed called with type " << s << '\n';
-  });
+  EXPECT_CALL(state_aware_rend, do_render(Eq(1)));
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
                .state(int_states{})
@@ -1805,6 +1806,7 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   w.handle(1);
   checkpoint.Call();
   w.render(dummy_renderer{});
+  EXPECT_THAT(state_aware_rend.render_failed_type, IsEmpty());
 }
 
 /*
