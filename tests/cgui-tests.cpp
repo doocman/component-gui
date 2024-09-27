@@ -1772,6 +1772,7 @@ struct mock_state_aware_renderer {
 };
 
 struct int_states {
+  using states = widget_states_t<int, 0, 1>;
   template <typename TInt>
   using arg_t = widget_render_args<TInt, widget_state_marker<int, 0, 1>>;
   void handle(int i, std::invocable<int> auto &&cb) { cb(i); }

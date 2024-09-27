@@ -866,6 +866,7 @@ CGUI_CALL_CONCEPT(position);
 
 CGUI_CALL_CONCEPT(handle);
 CGUI_CALL_CONCEPT(set_state);
+CGUI_CALL_CONCEPT(state);
 
 CGUI_CALL_CONCEPT(on_button_hover);
 CGUI_CALL_CONCEPT(on_button_hold);
@@ -916,6 +917,7 @@ inline constexpr impl::_do_ascender ascender;
 inline constexpr impl::_do_base_to_top base_to_top;
 inline constexpr impl::do_bitmap_top bitmap_top;
 inline constexpr impl::_do_set_state set_state;
+inline constexpr impl::_do_state state;
 inline constexpr impl::_do_handle handle;
 
 inline constexpr impl::_do_on_button_hover on_button_hover;
@@ -1247,17 +1249,6 @@ struct cgui_mouse_exit_event {
     return {};
   }
 };
-
-template <std::equality_comparable T, T... tstates> struct widget_states_t {
-  static constexpr std::size_t state_count = sizeof...(tstates);
-  /*static constexpr std::size_t state_index(T const& in) {
-    if constexpr(std::constructible_from<long long, T>) {
-      if constexpr()
-    }
-  }*/
-};
-template <std::equality_comparable T, T... tStates>
-inline constexpr widget_states_t<T, tStates...> widget_states;
 
 namespace call {
 namespace impl {
@@ -1854,8 +1845,19 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 
 
 struct no_state_t {};
+template <typename T>
+concept state_marker = requires(T const& t)
+{
+  {t.current_state()} -> bp::not_void;
+};
+template <typename T>
+concept widget_states_aspect = requires(T const& t)
+{
+  {call::state(t)} -> state_marker;
+};
+
 template <typename T, T... values> class widget_state_marker {};
-template <> class widget_state_marker<void> {
+template <typename T> class widget_state_marker<T> {
 public:
   static constexpr no_state_t current_state() noexcept { return no_state_t{}; }
 };

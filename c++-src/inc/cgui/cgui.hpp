@@ -162,6 +162,34 @@ public:
 
 template <typename T> gui_context(T &) -> gui_context<std::remove_cvref_t<T>>;
 
+template <widget_states_aspect T>
+struct widget_state_wrapper : private T {
+  // Inherit just for the empty base optimisation.
+  using T::T;
+
+  static constexpr decltype(auto) base(auto&& self) {
+    using type = decltype(bp::forward_like<decltype(self)>(std::declval<T&>()));
+    return static_cast<type>(std::forward<decltype(self)>(self));
+  }
+
+  template <typename TWH> using arg_t = widget_render_args<TWH, std::remove_cvref_t<decltype(call::state(std::declval<T const&>()))>>;
+
+  template <renderer TR, display_component<TR> TD, typename TWH>
+  constexpr void operator()(TD &display, TR &&r, TWH w, TWH h) const {
+    call::render(display, std::forward<TR>(r), arg_t<TWH>(w, h));
+  }
+  template <renderer TR, typename TWH>
+  constexpr auto operator()(TR &&r, TWH w, TWH h) const {
+    return
+        [&r, arg = arg_t<TWH>(w, h)]<display_component<TR, arg_t<TWH>> TD>(
+            TD &&display) { call::render(display, std::forward<TR>(r), arg); };
+  }
+  static constexpr decltype(auto) handle(bp::cvref_type<widget_state_wrapper> auto&& self, auto&& evt) requires(has_handle<decltype(base(std::forward<decltype(self)>(self))), decltype(evt)>)
+  {
+    return call::handle(base(std::forward<decltype(self)>(self)), std::forward<decltype(evt)>(evt));
+  }
+};
+
 struct widget_mono_state {
   template <typename TWH> using arg_t = widget_render_args<TWH>;
 
