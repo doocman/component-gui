@@ -666,6 +666,11 @@ class buttonlike_trigger {
   bool mouse_down_{};
 
 public:
+  struct enter_event {};
+  struct exit_event{};
+  struct hold_event{};
+  struct click_event{};
+
   void handle(
       bounding_box auto &&area,
       event_types<ui_events::mouse_move, ui_events::mouse_button_down,
