@@ -66,7 +66,7 @@
       }                                                                        \
     }                                                                          \
     template <typename... Ts, has_##NAME<Ts...> T>                             \
-    constexpr decltype(auto) operator()(T && t, Ts &&...args) const {          \
+    constexpr decltype(auto) operator()(T &&t, Ts &&...args) const {           \
       return call(std::forward<T>(t), std::forward<Ts>(args)...);              \
     }                                                                          \
   };
@@ -152,7 +152,7 @@ struct do_apply_to {
               requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
                 std::apply(*cb, *t);
               }))
-  constexpr decltype(auto) operator()(T && t, TCB && cb) const {
+  constexpr decltype(auto) operator()(T &&t, TCB &&cb) const {
     auto tf = bp::as_forward<T>(t);
     auto cf = bp::as_forward<TCB>(cb);
     if constexpr (has_apply_to<T, TCB>) {
@@ -868,10 +868,6 @@ CGUI_CALL_CONCEPT(handle);
 CGUI_CALL_CONCEPT(set_state);
 CGUI_CALL_CONCEPT(state);
 
-CGUI_CALL_CONCEPT(on_button_hover);
-CGUI_CALL_CONCEPT(on_button_hold);
-CGUI_CALL_CONCEPT(on_button_click);
-CGUI_CALL_CONCEPT(on_button_exit);
 CGUI_CALL_CONCEPT(mouse_button);
 
 [[maybe_unused]] inline void bitmap_top() {}
@@ -920,10 +916,6 @@ inline constexpr impl::_do_set_state set_state;
 inline constexpr impl::_do_state state;
 inline constexpr impl::_do_handle handle;
 
-inline constexpr impl::_do_on_button_hover on_button_hover;
-inline constexpr impl::_do_on_button_hold on_button_hold;
-inline constexpr impl::_do_on_button_click on_button_click;
-inline constexpr impl::_do_on_button_exit on_button_exit;
 inline constexpr impl::_do_position position;
 inline constexpr impl::do_mouse_button mouse_button;
 } // namespace call
@@ -1149,9 +1141,7 @@ template <ui_events evt> struct subset_ui_events<evt> {
 };
 
 template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
-  requires()
-{
+concept subset_ui_event_c = std::convertible_to<T, ui_events> && requires() {
   {
     std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
   } -> std::convertible_to<bool>;
@@ -1318,7 +1308,7 @@ concept has_set_displayed =
 
 struct do_set_displayed {
   template <typename... Ts, has_set_displayed<Ts...> T>
-  constexpr decltype(auto) operator()(T && torg, Ts &&...vals) const {
+  constexpr decltype(auto) operator()(T &&torg, Ts &&...vals) const {
     auto t = bp::as_forward(std::forward<T>(torg));
     if constexpr (member_set_displayed<T, Ts...>) {
       return (*t).set_displayed(std::forward<Ts>(vals)...);
@@ -1493,7 +1483,7 @@ concept has_area = member_area<T, Ts...> || static_area<T, Ts...> ||
 
 struct do_area {
   template <typename... Ts, has_area<Ts...> T>
-  constexpr decltype(auto) operator()(T && torg, Ts &&...args) const {
+  constexpr decltype(auto) operator()(T &&torg, Ts &&...args) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_area<T, Ts...>) {
       return (*t).area(std::forward<Ts>(args)...);
@@ -1521,7 +1511,7 @@ concept has_glyph = member_glyph<T, TChar> || free_glyph<T, TChar>;
 
 struct do_glyph {
   template <typename TChar, has_glyph<TChar> T>
-  constexpr decltype(auto) operator()(T && torg, TChar c) const {
+  constexpr decltype(auto) operator()(T &&torg, TChar c) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_glyph<T, TChar>) {
       return (*t).glyph(c);
@@ -1574,7 +1564,7 @@ struct do_text_colour : private do_text_colour_get {
   template <typename T, colour TC>
     requires(has_text_colour<T, TC> ||
              has_assignable_get<T, do_text_colour_get, TC>)
-  constexpr decltype(auto) operator()(T && torg, TC && vorg) const {
+  constexpr decltype(auto) operator()(T &&torg, TC &&vorg) const {
     auto t = bp::as_forward<T>(torg);
     auto v = bp::as_forward<TC>(vorg);
     if constexpr (member_text_colour<T, TC>) {
@@ -1656,8 +1646,8 @@ concept mut_box_pointer =
 
 template <typename T, typename TV1, typename TV2>
 concept mut_box_pair =
-    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>)&&(
-        mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
+    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>) &&
+    (mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
 
 template <typename TV1, typename TV2, mut_box_pair<TV1, TV2> T, typename TTL,
           typename TBR>

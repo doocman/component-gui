@@ -349,17 +349,17 @@ public:
 #endif
 
   auto build() &&
-    requires(contract_fulfilled)
-  {
-    static_assert(bounding_box<TArea>,
-                  "You must set an area to the widget before constructing it!");
-    static_assert(contract_fulfilled);
-    return widget<TArea, TDisplay, state_wrapper, TEventHandler>(
-        std::move(area_), std::move(displays_));
-  }
-  template <typename TE2,
-            typename TRes = widget_builder_impl<TArea, TDisplay, TState, TE2>>
-  TRes event(TE2 const &) && {
+      requires(contract_fulfilled) {
+        static_assert(
+            bounding_box<TArea>,
+            "You must set an area to the widget before constructing it!");
+        static_assert(contract_fulfilled);
+        return widget<TArea, TDisplay, state_wrapper, TEventHandler>(
+            std::move(area_), std::move(displays_));
+      } template <typename TE2,
+                  typename TRes =
+                      widget_builder_impl<TArea, TDisplay, TState, TE2>>
+      TRes event(TE2 const &) && {
     return TRes(std::move(area_), std::move(displays_));
   }
 
@@ -666,22 +666,23 @@ class buttonlike_trigger {
   bool mouse_down_{};
 
 public:
-  struct enter_event {};
-  struct exit_event{};
-  struct hold_event{};
-  struct click_event{};
+  struct hover_event {};
+  struct exit_event {};
+  struct hold_event {};
+  struct click_event {
+    mouse_buttons button;
+  };
 
   void handle(
       bounding_box auto &&area,
       event_types<ui_events::mouse_move, ui_events::mouse_button_down,
                   ui_events::mouse_button_up, ui_events::mouse_exit> auto &&evt,
-      auto &&...responsees) {
+      auto &&trigger_callback) {
     using enum ui_events;
     using evt_t = decltype(evt);
     if constexpr (can_be_event<mouse_exit, evt_t>()) {
       if (is_event<mouse_exit>(evt) && mouse_inside_) {
-        invoke_if_applicable{call::on_button_exit}(
-            std::forward<decltype(responsees)>(responsees)...);
+        trigger_callback(exit_event{});
         mouse_inside_ = false;
       }
     }
@@ -691,11 +692,9 @@ public:
         auto is_now_inside = call::hit_box(area, call::position(evt));
         if (is_now_inside != mouse_inside_) {
           if (mouse_inside_) {
-            invoke_if_applicable{call::on_button_exit}(
-                std::forward<decltype(responsees)>(responsees)...);
+            trigger_callback(exit_event{});
           } else {
-            invoke_if_applicable{call::on_button_hover}(
-                std::forward<decltype(responsees)>(responsees)...);
+            trigger_callback(hover_event{});
           }
           mouse_inside_ = is_now_inside;
         }
@@ -705,22 +704,16 @@ public:
     if constexpr (can_be_event<mouse_button_down, evt_t>()) {
       if (is_event<mouse_button_down>(evt)) {
         if (!mouse_down_ && call::hit_box(area, call::position(evt))) {
-          invoke_if_applicable{call::on_button_hold}(
-              std::forward<decltype(responsees)>(responsees)...);
+          trigger_callback(hold_event{});
         }
         mouse_down_ = true;
         return;
       }
     }
     if constexpr (can_be_event<mouse_button_up, evt_t>()) {
-      if (is_event<mouse_button_up>(evt) &&
-          call::mouse_button(evt) == mouse_buttons::primary) {
+      if (is_event<mouse_button_up>(evt)) {
         if (call::hit_box(area, call::position(evt))) {
-          invoke_if_applicable{
-              [mb = call::mouse_button(evt)](auto r)
-                requires(requires() { call::on_button_click(*r, mb); })
-              { call::on_button_click(*r, mb); }}(bp::as_forward(
-              std::forward<decltype(responsees)>(responsees))...);
+          trigger_callback(click_event{call::mouse_button(evt)});
         }
         mouse_down_ = false;
         return;
