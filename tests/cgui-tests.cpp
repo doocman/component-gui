@@ -1805,6 +1805,30 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   EXPECT_THAT(state_aware_rend.render_failed_type, IsEmpty());
 }
 
+TEST(WidgetBuilder, DisplayForEachState) // NOLINT
+{
+  auto w = widget_builder()
+               .area(default_rect{0, 0, 1, 1})
+               .event(int_as_event_handler{})
+               .state(int_states{})
+               .display(display_per_state(fill_rect{}))
+               .build();
+  get<0>(w.displays().first());
+  FAIL() << "Not yet implemented";
+}
+
+TEST(Widget, BasicButton) // NOLINT
+{
+  FAIL() << "Not yet implemented";
+  /*
+  bool clicked{};
+  auto w = widget_builder()
+               .area(default_rect{0, 0, 1, 1})
+               .event(buttonlike_trigger{})
+               .state(momentary_button([&clicked] { clicked = true; }))
+      .display();*/
+}
+
 /*
 TEST(Button, Click) // NOLINT
 {
