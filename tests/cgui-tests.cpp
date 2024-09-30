@@ -1667,6 +1667,12 @@ struct mock_button_callback {
   void handle(buttonlike_trigger::exit_event) { do_on_button_exit(); }
 };
 
+TEST(InputTracker, MouseMoveAndClicks) // NOLINT
+{
+  auto tracker = input_tracker();
+  FAIL() << "Not yet implemented";
+}
+
 TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
 {
   auto trig = buttonlike_trigger();
