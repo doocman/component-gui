@@ -592,16 +592,16 @@ public:
   [[nodiscard]] constexpr auto const& colour() const noexcept {
     return colour_;
   }
-  constexpr void render(renderer auto&& r, render_args auto&& args) {
-    call::fill(r, default_rect{0, 0, w, h}, colour_);
+  constexpr void render(renderer auto&& r, render_args auto&& args) const {
+    call::fill(r, default_rect{0, 0, call::width(args), call::height(args)}, colour_);
   }
 };
 
 class display_per_state {
 public:
   constexpr explicit display_per_state(display_component auto&& dc) {}
-  constexpr auto render(renderer auto&& r, auto w, auto h) {
-    unused(r, w, h);
+  constexpr auto render(renderer auto&& r, render_args auto&& args) const {
+    unused(r, args);
   }
 };
 
