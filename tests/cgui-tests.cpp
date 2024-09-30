@@ -18,6 +18,10 @@
 
 namespace cgui::tests {
 static_assert(bounding_box<default_rect>);
+static_assert(requires(std::tuple<int> t) {
+  call::impl::do_apply_to{}(t, bp::no_op);
+});
+
 using namespace ::testing;
 
 static_assert(std::is_rvalue_reference_v<
@@ -1814,7 +1818,7 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
                .state(int_states{})
                .display(display_per_state(fill_rect{}))
                .build();
-  auto& [per_state] = w.displays();
+  auto &[per_state] = w.displays();
   get<0>(per_state).colour() = default_colour_t{255, 0, 0, 255};
   get<1>(per_state).colour() = default_colour_t{0, 255, 0, 255};
 
@@ -1822,7 +1826,7 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   auto sr = sub_renderer(r);
   w.render(sr);
   ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
-  auto& [red, green, blue, alpha] = r.drawn_pixels[0];
+  auto &[red, green, blue, alpha] = r.drawn_pixels[0];
   EXPECT_THAT(red, Eq(255));
   EXPECT_THAT(green, Eq(0));
   EXPECT_THAT(blue, Eq(0));

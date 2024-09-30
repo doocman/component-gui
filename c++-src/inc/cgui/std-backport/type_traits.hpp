@@ -26,6 +26,13 @@ constexpr bool is_increasing(std::integer_sequence<T, tVals...>) {
   }
 }
 
+template <typename T> struct remove_rvalue_reference {
+  using type = T;
+};
+template <typename T>
+struct remove_rvalue_reference<T &&> : remove_rvalue_reference<T> {};
+template <typename T>
+using remove_rvalue_reference_t = typename remove_rvalue_reference<T>::type;
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_TYPE_TRAITS_HPP

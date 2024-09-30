@@ -10,6 +10,7 @@
 
 #include <cgui/cgui-types.hpp>
 #include <cgui/ft_fonts.hpp>
+#include <cgui/std-backport/array.hpp>
 #include <cgui/stl_extend.hpp>
 
 namespace cgui {
@@ -286,6 +287,50 @@ public:
   }
 };
 
+namespace impl {
+template <typename> constexpr bool is_tuple = false;
+template <typename... Ts> constexpr bool is_tuple<std::tuple<Ts...>> = true;
+
+constexpr decltype(auto) widget_build_or_forward(auto &&v) {
+  if constexpr (display_component<decltype(v)>) {
+    return std::forward<decltype(v)>(v);
+  } else {
+    return call::build(std::forward<decltype(v)>(v),
+                       std::integral_constant<std::size_t, 1>{});
+  }
+}
+
+template <typename... Ts, std::size_t... tIs>
+constexpr auto build_tuple(std::tuple<Ts...> &&t, std::index_sequence<tIs...>)
+    -> std::tuple<bp::remove_rvalue_reference_t<
+        decltype(widget_build_or_forward(std::declval<Ts &&>()))>...> {
+  return {widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)))...};
+}
+#if CGUI_HAS_NAMED_ARGS
+template <typename... Ts>
+constexpr bool is_tuple<dooc::named_tuple<Ts...>> = true;
+
+template <dooc::template_string... tNames, typename... Ts>
+constexpr auto
+build_tuple(dooc::named_tuple<dooc::named_arg_t<tNames, Ts>...> &&t, auto &&)
+    -> dooc::named_tuple<dooc::named_arg_t<
+        tNames, bp::remove_rvalue_reference_t<decltype(widget_build_or_forward(
+                    std::declval<Ts &&>()))>>...> {
+  return {widget_build_or_forward(static_cast<Ts &&>(dooc::get<tNames>(t)))...};
+}
+#endif
+template <typename T> constexpr auto build_displays(T &&t) {
+  if constexpr (is_tuple<std::remove_cvref_t<T>>) {
+    return build_tuple(
+        std::forward<T>(t),
+        std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>{});
+  } else {
+    return std::forward<T>(t);
+  }
+}
+
+} // namespace impl
+
 template <typename TArea, typename TDisplay, widget_states_aspect TState,
           typename TEventHandler>
 class widget_builder_impl {
@@ -293,6 +338,7 @@ class widget_builder_impl {
   TDisplay displays_;
 
   using state_wrapper = widget_state_wrapper<TState>;
+  using state_arg_t = typename state_wrapper::template arg_t<int>;
 
 public:
   static constexpr bool contract_fulfilled = bounding_box<TArea>;
@@ -313,13 +359,7 @@ public:
             typename TRes = widget_builder_impl<
                 TArea, std::tuple<std::unwrap_ref_decay_t<TD2>...>, TState,
                 TEventHandler>>
-    requires((display_component<TD2, dummy_renderer,
-                                typename state_wrapper::template arg_t<int>> ||
-              display_component<std::unwrap_ref_decay_t<TD2>, dummy_renderer,
-                                typename state_wrapper::template arg_t<int>>) &&
-             ...)
-  // requires ((TState::template renderable<TD2> || TState::template
-  // renderable<std::unwrap_ref_decay_t<TD2>>) && ...)
+    requires((builder_display_args<TD2, dummy_renderer, state_arg_t>) && ...)
   TRes display(TD2 &&...d2) && {
     return TRes(std::move(area_), std::forward<decltype(d2)>(d2)...);
   }
@@ -336,10 +376,10 @@ public:
 
 #if CGUI_HAS_NAMED_ARGS
   template <dooc::arg_with_any_name... TArgs>
-    requires(display_component<typename dooc::named_arg_properties<TArgs>::type,
-                               dummy_renderer,
-                               typename state_wrapper::template arg_t<int>> &&
-             ...)
+    requires(
+        builder_display_args<typename dooc::named_arg_properties<TArgs>::type,
+                             dummy_renderer, state_arg_t> &&
+        ...)
   constexpr auto display(TArgs &&...args) && {
     return widget_builder_impl<TArea,
                                dooc::named_tuple<std::remove_cvref_t<TArgs>...>,
@@ -349,17 +389,18 @@ public:
 #endif
 
   auto build() &&
-      requires(contract_fulfilled) {
-        static_assert(
-            bounding_box<TArea>,
-            "You must set an area to the widget before constructing it!");
-        static_assert(contract_fulfilled);
-        return widget<TArea, TDisplay, state_wrapper, TEventHandler>(
-            std::move(area_), std::move(displays_));
-      } template <typename TE2,
-                  typename TRes =
-                      widget_builder_impl<TArea, TDisplay, TState, TE2>>
-      TRes event(TE2 const &) && {
+    requires(contract_fulfilled)
+  {
+    static_assert(bounding_box<TArea>,
+                  "You must set an area to the widget before constructing it!");
+    static_assert(contract_fulfilled);
+    using display_t = decltype(impl::build_displays(std::move(displays_)));
+    return widget<TArea, display_t, state_wrapper, TEventHandler>(
+        std::move(area_), impl::build_displays(std::move(displays_)));
+  }
+  template <typename TE2,
+            typename TRes = widget_builder_impl<TArea, TDisplay, TState, TE2>>
+  TRes event(TE2 const &) && {
     return TRes(std::move(area_), std::move(displays_));
   }
 
@@ -582,28 +623,66 @@ text_renderer(T &&) -> text_renderer<std::unwrap_ref_decay_t<T>>;
 
 class fill_rect {
   default_colour_t colour_{};
+
 public:
   constexpr fill_rect() = default;
   constexpr explicit fill_rect(default_colour_t c) : colour_(c) {}
 
-  [[nodiscard]] constexpr auto& colour() noexcept {
+  [[nodiscard]] constexpr auto &colour() noexcept { return colour_; }
+  [[nodiscard]] constexpr auto const &colour() const noexcept {
     return colour_;
   }
-  [[nodiscard]] constexpr auto const& colour() const noexcept {
-    return colour_;
-  }
-  constexpr void render(renderer auto&& r, render_args auto&& args) const {
-    call::fill(r, default_rect{0, 0, call::width(args), call::height(args)}, colour_);
+  constexpr void render(renderer auto &&r, render_args auto &&args) const {
+    call::fill(r, default_rect{0, 0, call::width(args), call::height(args)},
+               colour_);
   }
 };
 
-class display_per_state {
+template <display_component T> class display_per_state_impl {
+  using arr_t = std::array<T, 1>;
+  std::array<T, 1> d_;
+
 public:
-  constexpr explicit display_per_state(display_component auto&& dc) {}
-  constexpr auto render(renderer auto&& r, render_args auto&& args) const {
+  constexpr explicit display_per_state_impl(auto &&...args)
+    requires(std::constructible_from<T, decltype(args)...>)
+      : d_(bp::array_from_args<T, 1>(args...)) {}
+  constexpr auto render(renderer auto &&r, render_args auto &&args) const {
     unused(r, args);
   }
+  template <std::size_t tI>
+    requires(tI < 1)
+  static constexpr auto &&
+  get(bp::cvref_type<display_per_state_impl> auto &&v) noexcept {
+    return std::get<tI>(std::forward<decltype(v)>(v).d_);
+  }
 };
+template <std::size_t tI, typename T>
+  requires(requires(bp::as_forward<T> t) {
+    std::remove_cvref_t<T>::template get<tI>(t);
+  })
+constexpr auto &&get(T &&t) noexcept {
+  return std::remove_cvref_t<T>::template get<tI>(t);
+}
+
+template <display_component TDC, typename... TArgs> class display_per_state {
+  std::tuple<TArgs &&...> args_;
+
+public:
+  constexpr explicit display_per_state(TArgs &&...args)
+      : args_(std::forward<TArgs>(args)...) {}
+  template <typename T, T sz>
+  constexpr display_per_state_impl<TDC>
+  build(std::integral_constant<T, sz>) && {
+    return std::apply(
+        [](auto &&...args) {
+          return display_per_state_impl<TDC>(
+              std::forward<decltype(args)>(args)...);
+        },
+        args_);
+  }
+};
+template <display_component T>
+display_per_state(T &&) -> display_per_state<std::remove_cvref_t<T>, T>;
 
 /*
 template <typename Txt, bounding_box TArea = default_rect>
