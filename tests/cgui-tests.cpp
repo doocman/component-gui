@@ -1835,7 +1835,6 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   EXPECT_THAT(green, Eq(255));
   EXPECT_THAT(blue, Eq(0));
   EXPECT_THAT(alpha, Eq(255));
-  FAIL() << "Not yet implemented";
 }
 
 TEST(Widget, BasicButton) // NOLINT

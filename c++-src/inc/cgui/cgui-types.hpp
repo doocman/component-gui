@@ -1275,6 +1275,7 @@ struct cgui_mouse_exit_event {
   }
 };
 
+
 namespace call {
 namespace impl {
 // Namespace poisons to not look in call-namespace for these functions
@@ -1867,6 +1868,9 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 }
 
 } // namespace call
+
+template <typename>
+concept render_args = true;
 
 struct no_state_t {};
 template <typename T>

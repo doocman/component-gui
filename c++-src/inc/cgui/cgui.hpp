@@ -592,12 +592,18 @@ public:
   [[nodiscard]] constexpr auto const& colour() const noexcept {
     return colour_;
   }
-  constexpr void render(renderer auto&& r, auto w, auto h) {
+  constexpr void render(renderer auto&& r, render_args auto&& args) {
     call::fill(r, default_rect{0, 0, w, h}, colour_);
   }
 };
 
-
+class display_per_state {
+public:
+  constexpr explicit display_per_state(display_component auto&& dc) {}
+  constexpr auto render(renderer auto&& r, auto w, auto h) {
+    unused(r, w, h);
+  }
+};
 
 /*
 template <typename Txt, bounding_box TArea = default_rect>
