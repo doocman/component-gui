@@ -580,6 +580,25 @@ public:
 template <typename T>
 text_renderer(T &&) -> text_renderer<std::unwrap_ref_decay_t<T>>;
 
+class fill_rect {
+  default_colour_t colour_{};
+public:
+  constexpr fill_rect() = default;
+  constexpr explicit fill_rect(default_colour_t c) : colour_(c) {}
+
+  [[nodiscard]] constexpr auto& colour() noexcept {
+    return colour_;
+  }
+  [[nodiscard]] constexpr auto const& colour() const noexcept {
+    return colour_;
+  }
+  constexpr void render(renderer auto&& r, auto w, auto h) {
+    call::fill(r, default_rect{0, 0, w, h}, colour_);
+  }
+};
+
+
+
 /*
 template <typename Txt, bounding_box TArea = default_rect>
 constexpr auto text_box_widget(Txt t, TArea a = {})

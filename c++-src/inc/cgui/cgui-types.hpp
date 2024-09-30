@@ -856,6 +856,7 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
 
 CGUI_CALL_CONCEPT(draw_pixels)
 CGUI_CALL_CONCEPT(draw_alpha);
+CGUI_CALL_CONCEPT(fill);
 CGUI_CALL_CONCEPT(advance_x);
 CGUI_CALL_CONCEPT(advance_y);
 CGUI_CALL_CONCEPT(pixel_area);
@@ -1010,7 +1011,12 @@ concept mutable_bounding_box =
     bounding_box_xxyy_mut<T, TFrom> || bounding_box_coord_set<T, TFrom> ||
     bounding_box_xwyh_set<T, TFrom> || bounding_box_xxyy_set<T, TFrom>;
 
-static_assert(bounding_box<default_rect>);
+constexpr auto x_view(bounding_box auto &&b) {
+  return std::views::iota(call::tl_x(b), call::br_x(b));
+}
+constexpr auto y_view(bounding_box auto &&b) {
+  return std::views::iota(call::tl_y(b), call::br_y(b));
+}
 
 template <typename T, typename TCoord = default_pixel_coord,
           typename TColour = default_colour_t>
@@ -1171,8 +1177,35 @@ struct do_event_type {
     return _do_event_type{}(std::forward<T>(t));
   }
 };
+
+template <colour TC>
+struct fill_on_draw_pixel {
+  TC c;
+  constexpr void operator()(bounding_box auto&& b, single_pixel_draw<default_pixel_coord, TC> auto&& cb) const {
+    for (auto y : y_view(b)) {
+      for (auto x : x_view(b)) {
+        cb(default_pixel_coord{x, y}, c);
+      }
+    }
+  }
+};
+
+struct do_fill {
+  template <typename T, bounding_box TB, colour TC>
+    requires(has_fill<T, TB, TC> || has_draw_pixels<T, TB, fill_on_draw_pixel<TC>>)
+  constexpr auto operator()(T&& v, TB const& b, TC const& c) const {
+    auto vf = bp::as_forward<decltype(v)>(v);
+    if constexpr(has_fill<T, TB, TC>) {
+      return _do_fill{}(*vf, b, c);
+    } else {
+      return call::draw_pixels(*vf, b, fill_on_draw_pixel<TC>{c});
+    }
+  }
+};
+
 } // namespace impl
 inline constexpr impl::do_event_type event_type;
+inline constexpr impl::do_fill fill;
 } // namespace call
 
 template <typename T>
@@ -2087,13 +2120,6 @@ to_default_colour(default_colour_t const &&c) {
 }
 constexpr default_colour_t &&to_default_colour(default_colour_t &&c) {
   return std::move(c);
-}
-
-constexpr auto x_view(bounding_box auto &&b) {
-  return std::views::iota(call::tl_x(b), call::br_x(b));
-}
-constexpr auto y_view(bounding_box auto &&b) {
-  return std::views::iota(call::tl_y(b), call::br_y(b));
 }
 
 } // namespace cgui

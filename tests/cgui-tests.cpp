@@ -17,6 +17,7 @@
 #include <dooc/named_args_tuple.hpp>
 
 namespace cgui::tests {
+static_assert(bounding_box<default_rect>);
 using namespace ::testing;
 
 static_assert(std::is_rvalue_reference_v<
@@ -1667,12 +1668,6 @@ struct mock_button_callback {
   void handle(buttonlike_trigger::exit_event) { do_on_button_exit(); }
 };
 
-TEST(InputTracker, MouseMoveAndClicks) // NOLINT
-{
-  auto tracker = input_tracker();
-  FAIL() << "Not yet implemented";
-}
-
 TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
 {
   auto trig = buttonlike_trigger();
@@ -1819,7 +1814,27 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
                .state(int_states{})
                .display(display_per_state(fill_rect{}))
                .build();
-  get<0>(w.displays().first());
+  auto& [per_state] = w.displays();
+  get<0>(per_state).colour() = default_colour_t{255, 0, 0, 255};
+  get<1>(per_state).colour() = default_colour_t{0, 255, 0, 255};
+
+  auto r = test_renderer({0, 0, 1, 1});
+  auto sr = sub_renderer(r);
+  w.render(sr);
+  ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
+  auto& [red, green, blue, alpha] = r.drawn_pixels[0];
+  EXPECT_THAT(red, Eq(255));
+  EXPECT_THAT(green, Eq(0));
+  EXPECT_THAT(blue, Eq(0));
+  EXPECT_THAT(alpha, Eq(255));
+  r.drawn_pixels[0] = {};
+  w.handle(1);
+  w.render(sr);
+  ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
+  EXPECT_THAT(red, Eq(0));
+  EXPECT_THAT(green, Eq(255));
+  EXPECT_THAT(blue, Eq(0));
+  EXPECT_THAT(alpha, Eq(255));
   FAIL() << "Not yet implemented";
 }
 
