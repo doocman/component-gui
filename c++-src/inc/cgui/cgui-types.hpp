@@ -1639,19 +1639,23 @@ inline constexpr impl::do_area area;
 inline constexpr impl::do_glyph glyph;
 inline constexpr impl::do_text_colour text_colour;
 
-inline constexpr auto red = [](colour auto &&c, auto &&...vs) -> auto && {
+inline constexpr auto red = [](colour auto &&c,
+                               auto &&...vs) -> decltype(auto) {
   return extend::red(std::forward<decltype(c)>(c),
                      std::forward<decltype(vs)>(vs)...);
 };
-inline constexpr auto green = [](colour auto &&c, auto &&...vs) -> auto && {
+inline constexpr auto green = [](colour auto &&c,
+                                 auto &&...vs) -> decltype(auto) {
   return extend::green(std::forward<decltype(c)>(c),
                        std::forward<decltype(vs)>(vs)...);
 };
-inline constexpr auto blue = [](colour auto &&c, auto &&...vs) -> auto && {
+inline constexpr auto blue = [](colour auto &&c,
+                                auto &&...vs) -> decltype(auto) {
   return extend::blue(std::forward<decltype(c)>(c),
                       std::forward<decltype(vs)>(vs)...);
 };
-inline constexpr auto alpha = [](colour auto &&c, auto &&...vs) -> auto && {
+inline constexpr auto alpha = [](colour auto &&c,
+                                 auto &&...vs) -> decltype(auto) {
   return extend::alpha(std::forward<decltype(c)>(c),
                        std::forward<decltype(vs)>(vs)...);
 };
@@ -1885,7 +1889,6 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 template <typename>
 concept render_args = true;
 
-struct no_state_t {};
 template <typename T>
 concept state_marker = requires(T const &t) {
   { t.current_state() } -> bp::not_void;
@@ -1909,9 +1912,44 @@ public:
 };
 template <typename T> class widget_state_marker<T> {
 public:
-  static constexpr no_state_t current_state() noexcept { return no_state_t{}; }
+  static constexpr T current_state() noexcept { return T{}; }
 };
-template <typename TWH = int, typename TState = widget_state_marker<void>>
+template <typename T, T value> class widget_state_marker<T, value> {
+public:
+  constexpr widget_state_marker() noexcept = default;
+  constexpr explicit(false) widget_state_marker(T v) noexcept {
+    CGUI_ASSERT(v == value);
+    unused(v);
+  }
+  static constexpr T current_state() noexcept { return T{}; }
+};
+
+using no_state_t = widget_state_marker<int>;
+
+template <typename T, T... values> struct widget_states {
+  static constexpr std::size_t size() { return sizeof...(values); }
+};
+
+template <typename> struct all_states_in_marker {};
+template <typename T, T... values>
+struct all_states_in_marker<widget_state_marker<T, values...>> {
+  using type = widget_states<T, values...>;
+};
+template <typename T>
+using all_states_in_marker_t = typename all_states_in_marker<T>::type;
+
+template <typename T, T... values>
+constexpr std::size_t state2index(widget_state_marker<T, values...> const &v) {
+  if constexpr (sizeof...(values) < 2) {
+    return 0;
+  } else {
+    auto const i = static_cast<std::size_t>(v.current_state());
+    CGUI_ASSERT(i < sizeof...(values));
+    return i;
+  }
+}
+
+template <typename TWH = int, typename TState = no_state_t>
 class widget_render_args : TState {
   TWH w_;
   TWH h_;
@@ -1924,7 +1962,9 @@ public:
 
   constexpr TWH width() const noexcept { return w_; }
   constexpr TWH height() const noexcept { return h_; }
-  constexpr auto const &widget_state() const { return TState::current_state(); }
+  constexpr auto const &widget_state() const {
+    return static_cast<TState const &>(*this);
+  }
 };
 template <typename TWH, typename TState>
 widget_render_args(TWH, TWH, TState &&)
@@ -1970,13 +2010,13 @@ template <typename T, typename TRender = dummy_renderer,
 concept display_component = has_render<T, TRender, TArgs>;
 template <typename T, typename TRender = dummy_renderer,
           typename TArgs = widget_render_args<>,
-          typename TSzT = std::integral_constant<std::size_t, 1u>>
+          typename TSzT = widget_states<std::size_t, 0u>>
 concept built_display_concept =
     builder<T, TSzT> &&
     display_component<build_result_t<T, TSzT>, TRender, TArgs>;
 template <typename T, typename TRender = dummy_renderer,
           typename TArgs = widget_render_args<>,
-          typename TSzT = std::integral_constant<std::size_t, 1u>>
+          typename TSzT = widget_states<std::size_t, 0u>>
 concept builder_display_args =
     display_component<T, TRender, TArgs> ||
     display_component<std::unwrap_ref_decay_t<T>, TRender, TArgs> ||

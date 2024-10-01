@@ -71,14 +71,14 @@ public:
         *c_, absolute_dest,
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
          offset_x = offset_x, offset_y = offset_y](auto &&drawer) {
-          // std::invoke(
-          (*cb)(relative_dest,
-                [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
-                 offset_x, offset_y](pixel_coord auto &&px, colour auto &&col) {
-                  auto absolute_pos = call::nudge_right(
-                      call::nudge_down(px, offset_y), offset_x);
-                  std::invoke(*d, absolute_pos, col);
-                });
+          std::invoke(
+              *cb, relative_dest,
+              [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
+               offset_x, offset_y](pixel_coord auto &&px, colour auto &&col) {
+                auto absolute_pos =
+                    call::nudge_right(call::nudge_down(px, offset_y), offset_x);
+                std::invoke(*d, absolute_pos, col);
+              });
         });
   }
 
@@ -173,9 +173,12 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
     return static_cast<type>(std::forward<decltype(self)>(self));
   }
 
+  using _state_marker_t = decltype(call::state(std::declval<T const &>()));
+  using all_states_t = all_states_in_marker_t<_state_marker_t>;
+  static constexpr all_states_t all_states() noexcept { return all_states_t{}; }
+
   template <typename TWH>
-  using arg_t =
-      widget_render_args<TWH, decltype(call::state(std::declval<T const &>()))>;
+  using arg_t = widget_render_args<TWH, _state_marker_t>;
 
   template <renderer TR, display_component<TR> TD, typename TWH>
   constexpr void operator()(TD &display, TR &&r, TWH w, TWH h) const {
@@ -203,7 +206,7 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
 };
 
 struct widget_mono_state {
-  static constexpr widget_state_marker<void> state() noexcept { return {}; }
+  static constexpr no_state_t state() noexcept { return {}; }
 };
 
 struct widget_no_event_handler {};
@@ -291,20 +294,21 @@ namespace impl {
 template <typename> constexpr bool is_tuple = false;
 template <typename... Ts> constexpr bool is_tuple<std::tuple<Ts...>> = true;
 
-constexpr decltype(auto) widget_build_or_forward(auto &&v) {
+constexpr decltype(auto) widget_build_or_forward(auto &&v, auto const &states) {
   if constexpr (display_component<decltype(v)>) {
     return std::forward<decltype(v)>(v);
   } else {
-    return call::build(std::forward<decltype(v)>(v),
-                       std::integral_constant<std::size_t, 1>{});
+    return call::build(std::forward<decltype(v)>(v), states);
   }
 }
 
-template <typename... Ts, std::size_t... tIs>
-constexpr auto build_tuple(std::tuple<Ts...> &&t, std::index_sequence<tIs...>)
+template <typename... Ts, typename TStates, std::size_t... tIs>
+constexpr auto build_tuple(std::tuple<Ts...> &&t, TStates const &states,
+                           std::index_sequence<tIs...>)
     -> std::tuple<bp::remove_rvalue_reference_t<
-        decltype(widget_build_or_forward(std::declval<Ts &&>()))>...> {
-  return {widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)))...};
+        decltype(widget_build_or_forward(std::declval<Ts &&>(), states))>...> {
+  return {
+      widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)), states)...};
 }
 #if CGUI_HAS_NAMED_ARGS
 template <typename... Ts>
@@ -312,17 +316,20 @@ constexpr bool is_tuple<dooc::named_tuple<Ts...>> = true;
 
 template <dooc::template_string... tNames, typename... Ts>
 constexpr auto
-build_tuple(dooc::named_tuple<dooc::named_arg_t<tNames, Ts>...> &&t, auto &&)
+build_tuple(dooc::named_tuple<dooc::named_arg_t<tNames, Ts>...> &&t,
+            auto const &states, auto &&)
     -> dooc::named_tuple<dooc::named_arg_t<
         tNames, bp::remove_rvalue_reference_t<decltype(widget_build_or_forward(
-                    std::declval<Ts &&>()))>>...> {
-  return {widget_build_or_forward(static_cast<Ts &&>(dooc::get<tNames>(t)))...};
+                    std::declval<Ts &&>(), states))>>...> {
+  return {widget_build_or_forward(static_cast<Ts &&>(dooc::get<tNames>(t)),
+                                  states)...};
 }
 #endif
-template <typename T> constexpr auto build_displays(T &&t) {
+template <typename T, typename TStates>
+constexpr auto build_displays(T &&t, TStates const &states) {
   if constexpr (is_tuple<std::remove_cvref_t<T>>) {
     return build_tuple(
-        std::forward<T>(t),
+        std::forward<T>(t), states,
         std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>{});
   } else {
     return std::forward<T>(t);
@@ -394,9 +401,11 @@ public:
     static_assert(bounding_box<TArea>,
                   "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
-    using display_t = decltype(impl::build_displays(std::move(displays_)));
+    using display_t = decltype(impl::build_displays(
+        std::move(displays_), state_wrapper::all_states()));
     return widget<TArea, display_t, state_wrapper, TEventHandler>(
-        std::move(area_), impl::build_displays(std::move(displays_)));
+        std::move(area_), impl::build_displays(std::move(displays_),
+                                               state_wrapper::all_states()));
   }
   template <typename TE2,
             typename TRes = widget_builder_impl<TArea, TDisplay, TState, TE2>>
@@ -638,19 +647,23 @@ public:
   }
 };
 
-template <display_component T> class display_per_state_impl {
-  using arr_t = std::array<T, 1>;
-  std::array<T, 1> d_;
+template <display_component T, std::size_t tSz> class display_per_state_impl {
+  using arr_t = std::array<T, tSz>;
+  arr_t d_;
 
 public:
   constexpr explicit display_per_state_impl(auto &&...args)
     requires(std::constructible_from<T, decltype(args)...>)
-      : d_(bp::array_from_args<T, 1>(args...)) {}
-  constexpr auto render(renderer auto &&r, render_args auto &&args) const {
+      : d_(bp::array_from_args<T, tSz>(args...)) {}
+  constexpr auto render(renderer auto &&r, render_args auto const &args) const {
     unused(r, args);
+    auto disp_index = state2index(args.widget_state());
+    CGUI_ASSERT(disp_index < size(d_));
+    auto &active_display = d_[disp_index];
+    call::render(active_display, std::forward<decltype(r)>(r), args);
   }
   template <std::size_t tI>
-    requires(tI < 1)
+    requires(tI < tSz)
   static constexpr auto &&
   get(bp::cvref_type<display_per_state_impl> auto &&v) noexcept {
     return std::get<tI>(std::forward<decltype(v)>(v).d_);
@@ -658,10 +671,10 @@ public:
 };
 template <std::size_t tI, typename T>
   requires(requires(bp::as_forward<T> t) {
-    std::remove_cvref_t<T>::template get<tI>(t);
+    std::remove_cvref_t<T>::template get<tI>(*t);
   })
 constexpr auto &&get(T &&t) noexcept {
-  return std::remove_cvref_t<T>::template get<tI>(t);
+  return std::remove_cvref_t<T>::template get<tI>(std::forward<T>(t));
 }
 
 template <display_component TDC, typename... TArgs> class display_per_state {
@@ -670,12 +683,12 @@ template <display_component TDC, typename... TArgs> class display_per_state {
 public:
   constexpr explicit display_per_state(TArgs &&...args)
       : args_(std::forward<TArgs>(args)...) {}
-  template <typename T, T sz>
-  constexpr display_per_state_impl<TDC>
-  build(std::integral_constant<T, sz>) && {
+  template <typename T, T... tStates>
+  constexpr display_per_state_impl<TDC, sizeof...(tStates)>
+  build(widget_states<T, tStates...>) && {
     return std::apply(
         [](auto &&...args) {
-          return display_per_state_impl<TDC>(
+          return display_per_state_impl<TDC, sizeof...(tStates)>(
               std::forward<decltype(args)>(args)...);
         },
         args_);

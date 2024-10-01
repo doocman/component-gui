@@ -1763,9 +1763,10 @@ struct mock_state_aware_renderer {
   std::string_view mutable render_failed_type{};
 
   void render(renderer auto &&, auto &&arg) const {
-    using state_t = std::remove_cvref_t<decltype(arg.widget_state())>;
+    using state_t =
+        std::remove_cvref_t<decltype(arg.widget_state().current_state())>;
     if constexpr (std::is_integral_v<state_t>) {
-      do_render(arg.widget_state());
+      do_render(arg.widget_state().current_state());
     } else {
       render_failed_type = std::string_view(typeid(state_t).name());
     }
