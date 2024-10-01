@@ -33,6 +33,18 @@ template <typename T>
 struct remove_rvalue_reference<T &&> : remove_rvalue_reference<T> {};
 template <typename T>
 using remove_rvalue_reference_t = typename remove_rvalue_reference<T>::type;
+
+template <typename T>
+struct ct_value_wrapper {
+  T value_;
+  consteval explicit(false) ct_value_wrapper(T v) : value_(v) {}
+  constexpr T raw() const { return value_; }
+
+  constexpr auto operator<=>(const ct_value_wrapper &) const = default;
+  constexpr bool operator==(const ct_value_wrapper &) const = default;
+};
+template <typename T>
+ct_value_wrapper(T) -> ct_value_wrapper<T>;
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_TYPE_TRAITS_HPP

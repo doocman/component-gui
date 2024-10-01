@@ -55,6 +55,10 @@ template <typename T, typename... Ts>
   requires(std::is_empty_v<T>)
 struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
   using _base_t = empty_structs_optimiser<Ts...>;
+  constexpr empty_structs_optimiser() noexcept(std::is_nothrow_default_constructible_v<T> && std::is_nothrow_default_constructible_v<_base_t>) = default;
+  template <typename TArg, typename... TArgs>
+    requires(std::constructible_from<_base_t, TArgs&&...>)
+  constexpr explicit empty_structs_optimiser(TArg&&, TArgs&&... to_base) : _base_t(std::forward<TArgs>(to_base)...) {}
   static constexpr T get(auto &&, std::type_identity<T>) { return T{}; }
   using _base_t::get;
 };
@@ -63,6 +67,10 @@ template <typename T, typename... Ts>
 struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
   using _base_t = empty_structs_optimiser<Ts...>;
   T val_;
+  constexpr empty_structs_optimiser() noexcept(std::is_nothrow_default_constructible_v<T> && std::is_nothrow_default_constructible_v<_base_t>) = default;
+  template <typename TArg, typename... TArgs>
+    requires(std::constructible_from<T, TArg&&> && std::constructible_from<_base_t, TArgs&&...>)
+  constexpr explicit empty_structs_optimiser(TArg&& arg, TArgs&&... to_base) : _base_t(std::forward<TArgs>(to_base)...), val_(std::forward<TArg>(arg)) {}
   static constexpr auto &&get(auto &&self, std::type_identity<T>) {
     using this_t = decltype(bp::forward_like<decltype(self)>(
         std::declval<empty_structs_optimiser &>()));

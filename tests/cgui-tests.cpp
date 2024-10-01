@@ -1859,16 +1859,16 @@ TEST(Widget, BasicButton) // NOLINT
                  )
       .display(display_per_state(fill_rect{})).build();
   auto& [filler] = w.displays();
-  get<off>(filler).colour = {0, 0, 0, 255};
-  get<hover>(filler).colour = {1, 0, 0, 255};
-  get<hold>(filler).colour = {2, 0, 0, 255};
+  get<off>(filler).colour() = {0, 0, 0, 255};
+  get<hover>(filler).colour() = {1, 0, 0, 255};
+  get<hold>(filler).colour() = {2, 0, 0, 255};
   test_renderer r{{0, 0, 1, 1}};
   ASSERT_THAT(r.drawn_pixels, SizeIs(1));
   auto& [red, green, blue,alpha] = r.drawn_pixels.front();
   auto sr = sub_renderer(r);
 
   w.render(sr);
-  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(0, 0, 0, 255));
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
 
   w.handle(dummy_mouse_move_event{});
   EXPECT_THAT(clicked, IsFalse());
@@ -1876,7 +1876,7 @@ TEST(Widget, BasicButton) // NOLINT
   EXPECT_THAT(last_state, Eq(hover));
   calls = 0;
   w.render(sr);
-  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(1, 0, 0, 255));
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
 
   w.handle(dummy_mouse_down_event{});
   EXPECT_THAT(clicked, IsFalse());
@@ -1884,7 +1884,7 @@ TEST(Widget, BasicButton) // NOLINT
   EXPECT_THAT(last_state, Eq(hold));
   calls = 0;
   w.render(sr);
-  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(2, 0, 0, 255));
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(2, 0, 0, 255));
 
   w.handle(dummy_mouse_up_event{});
   EXPECT_THAT(clicked, IsTrue());
@@ -1892,7 +1892,7 @@ TEST(Widget, BasicButton) // NOLINT
   EXPECT_THAT(last_state, Eq(hover));
   calls = 0;
   w.render(sr);
-  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(1, 0, 0, 255));
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
 
   w.handle(dummy_mouse_move_event{});
   EXPECT_THAT(clicked, IsFalse());
@@ -1900,7 +1900,7 @@ TEST(Widget, BasicButton) // NOLINT
   EXPECT_THAT(last_state, Eq(off));
   calls = 0;
   w.render(sr);
-  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(0, 0, 0, 255));
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
 }
 
 /*
