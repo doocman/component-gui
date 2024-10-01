@@ -1844,14 +1844,63 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
 
 TEST(Widget, BasicButton) // NOLINT
 {
-  FAIL() << "Not yet implemented";
-  /*
   bool clicked{};
+  using enum momentary_button_states;
+  auto last_state = off;
+  int calls{};
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
                .event(buttonlike_trigger{})
-               .state(momentary_button([&clicked] { clicked = true; }))
-      .display();*/
+               .state(momentary_button
+                 {.on_click = [&clicked, &calls] (auto&&...) { clicked = true; ++calls; },
+                 .on_hover = [&last_state, &calls] (auto&&...) {last_state = hover; ++calls; },
+                 .on_hold = [&last_state, &calls] (auto&&...) { last_state = hold; ++calls; },
+                 .on_exit = [&last_state, &calls] (auto&&...) { last_state = off; ++calls; }}
+                 )
+      .display(display_per_state(fill_rect{})).build();
+  auto& [filler] = w.displays();
+  get<off>(filler).colour = {0, 0, 0, 255};
+  get<hover>(filler).colour = {1, 0, 0, 255};
+  get<hold>(filler).colour = {2, 0, 0, 255};
+  test_renderer r{{0, 0, 1, 1}};
+  ASSERT_THAT(r.drawn_pixels, SizeIs(1));
+  auto& [red, green, blue,alpha] = r.drawn_pixels.front();
+  auto sr = sub_renderer(r);
+
+  w.render(sr);
+  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(0, 0, 0, 255));
+
+  w.handle(dummy_mouse_move_event{});
+  EXPECT_THAT(clicked, IsFalse());
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_state, Eq(hover));
+  calls = 0;
+  w.render(sr);
+  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(1, 0, 0, 255));
+
+  w.handle(dummy_mouse_down_event{});
+  EXPECT_THAT(clicked, IsFalse());
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_state, Eq(hold));
+  calls = 0;
+  w.render(sr);
+  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(2, 0, 0, 255));
+
+  w.handle(dummy_mouse_up_event{});
+  EXPECT_THAT(clicked, IsTrue());
+  EXPECT_THAT(calls, Eq(2));
+  EXPECT_THAT(last_state, Eq(hover));
+  calls = 0;
+  w.render(sr);
+  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(1, 0, 0, 255));
+
+  w.handle(dummy_mouse_move_event{});
+  EXPECT_THAT(clicked, IsFalse());
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_state, Eq(off));
+  calls = 0;
+  w.render(sr);
+  EXPECT_THAT(std::array{red, green, blue, alpha}, ElementsAre(0, 0, 0, 255));
 }
 
 /*

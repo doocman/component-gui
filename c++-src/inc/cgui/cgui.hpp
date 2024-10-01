@@ -839,6 +839,32 @@ public:
   }
 };
 
+enum class momentary_button_states {
+  off,
+  hover,
+  hold
+};
+
+template <std::invocable TClick, std::invocable THover = bp::no_op_t, std::invocable THold = bp::no_op_t, std::invocable TExit = bp::no_op_t>
+struct momentary_button {
+  TClick on_click;
+  THover on_hover;
+  THold on_hold;
+  TExit on_exit;
+
+  using state_t = widget_state_marker<momentary_button_states, momentary_button_states::off, momentary_button_states::hover, momentary_button_states::hold>;
+  state_t current_state_{momentary_button_states::off};
+
+  [[nodiscard]] constexpr state_t state() const {
+    return current_state_;
+  }
+
+  /*
+  constexpr void handle(buttonlike_trigger::click_event const&) {
+    on_click();
+  }*/
+};
+
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_HPP
