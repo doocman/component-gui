@@ -31,36 +31,57 @@ int main(int, char **) {
                          .value();
     auto cached_font = cgui::cached_font(std::move(text_font));
     auto hello_world_header =
-        cgui::text_box_widget(std::ref(cached_font))
+        cgui::widget_builder()
             .area(cgui::call::trim_from_above(
                 &full_area, std::min<int>(cgui::call::height(full_area), 128)))
-            .display("b a").colour(cgui::choice::text = {255, 255, 255, 255});
+            .display(cgui::text_renderer(std::ref(cached_font)))
+            .build();
+    std::get<0>(hello_world_header.displays())
+        .set_displayed(hello_world_header.area(), "Hello World!")
+        .text_colour({255, 255, 255, 255});
     auto button_bar_area = cgui::call::trim_from_below(
         &full_area, std::min<int>(cgui::call::height(full_area), 128));
-    // template <momentary_button::states s> using state = cgui::choice::state<momentary_button::states, s>;
-    // using enum momentary_button::states;
-    // button.state_colour(
-    //               state<button_off>(text = {255, 255, 255, 255}, background = {128, 128, 128, 128})
-    //               state<button_hover>(text = {255, 255, 255, 255}, background = {128, 128, 128, 128})
-    //               state<button_clicked>(text = {255, 255, 255, 255}, background = {128, 128, 128, 128})
-    //               state<button_down>(text = {255, 255, 255, 255}, background = {128, 128, 128, 128}))
+    auto quit_button = cgui::widget_builder().area(cgui::call::trim_from_left(&button_bar_area, cgui::call::width(button_bar_area) / 2))
+    .display(cgui::text_renderer(std::ref(cached_font)), cgui::display_per_state(cgui::fill_rect())).event(cgui::buttonlike_trigger()).state(cgui::momentary_button{
+      .on_click = [] {}
+    }).build();
+    std::get<0>(quit_button.displays()).set_displayed(quit_button.area(), "Quit").text_colour({255, 255, 255, 255});
+    {
+      auto& background = std::get<1>(quit_button.displays());
+      using enum cgui::momentary_button_states;
+      get<off>(background).colour() = {0, 0, 0, 255};
+      get<hover>(background).colour() = {63, 63, 63, 255};
+      get<hold>(background).colour() = { 127, 127, 127, 255};
+    }
+    // template <momentary_button::states s> using state =
+    // cgui::choice::state<momentary_button::states, s>; using enum
+    // momentary_button::states; button.state_colour(
+    //               state<button_off>(text = {255, 255, 255, 255}, background =
+    //               {128, 128, 128, 128}) state<button_hover>(text = {255, 255,
+    //               255, 255}, background = {128, 128, 128, 128})
+    //               state<button_clicked>(text = {255, 255, 255, 255},
+    //               background = {128, 128, 128, 128}) state<button_down>(text
+    //               = {255, 255, 255, 255}, background = {128, 128, 128, 128}))
     // OR
     // auto brc = button_render_configuration();
     // brc.state(button_off, text = {...}, background = {...});
     cgui::unused(button_bar_area);
     auto lorum_ipsum =
-        cgui::text_box_widget(std::ref(cached_font))
+        cgui::widget_builder()
             .area(full_area)
-            .display(
-                "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed "
-                "do eiusmod tempor incididunt ut labore et dolore magna "
-                "aliqua. Ut enim ad minim veniam, quis nostrud exercitation "
-                "ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis "
-                "aute irure dolor in reprehenderit in voluptate velit esse "
-                "cillum dolore eu fugiat nulla pariatur. Excepteur sint "
-                "occaecat cupidatat non proident, sunt in culpa qui officia "
-                "deserunt mollit anim id est laborum.\n\nDid you get that?");
-
+            .display(cgui::text_renderer(std::ref(cached_font)))
+            .build();
+    std::get<0>(lorum_ipsum.displays())
+        .set_displayed(hello_world_header.area(),
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed "
+                        "do eiusmod tempor incididunt ut labore et dolore magna "
+                        "aliqua. Ut enim ad minim veniam, quis nostrud exercitation "
+                        "ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis "
+                        "aute irure dolor in reprehenderit in voluptate velit esse "
+                        "cillum dolore eu fugiat nulla pariatur. Excepteur sint "
+                        "occaecat cupidatat non proident, sunt in culpa qui officia "
+                        "deserunt mollit anim id est laborum.\n\nDid you get that?")
+        .text_colour({255, 255, 255, 255});
     bool do_exit{};
     auto renderer = main_window.canvas().value();
     auto gui =

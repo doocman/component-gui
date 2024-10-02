@@ -458,12 +458,15 @@ public:
   constexpr explicit text_renderer(std::in_place_type_t<TFont>, TU &&...f)
       : f_(std::forward<TU>(f)...) {}
 
-  constexpr void set_displayed(int w, int, std::string_view t) {
+  constexpr text_renderer& set_displayed(bounding_box auto const& area, std::string_view t) {
+    return set_displayed(call::width(area), call::height(area), t);
+  }
+  constexpr text_renderer& set_displayed(int w, int, std::string_view t)  {
     using iterator_t = decltype(tokens_.begin());
     tokens_.clear();
     line_count_ = 0;
     if (size(t) == 0) {
-      return;
+      return *this;
     }
     tokens_.reserve(std::ranges::ssize(t) +
                     1); // This may be slightly less than actual used depending
@@ -588,13 +591,14 @@ public:
         }
       }
     }
+    return *this;
   }
-  constexpr void render(auto &&rorg, int w, int h)
+  constexpr void render(auto &&rorg, render_args auto&& args)
     requires(has_render<glyph_t, decltype(rorg)>)
   {
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
-    auto do_new_area = [w, base_y2 = h + 2 * call::ascender(f_), fh,
+    auto do_new_area = [w = call::width(args), base_y2 = call::height(args) + 2 * call::ascender(f_), fh,
                         count = line_count_](newline_entry nl) mutable {
       auto tl_y = (base_y2 - fh * count) / 2;
       count -= 2;
@@ -626,6 +630,10 @@ public:
   constexpr auto const &font() const { return f_; }
   static constexpr auto &&text_colour(bp::cvref_type<text_renderer> auto &&r) {
     return std::forward<decltype(r)>(r).colour_;
+  }
+  constexpr text_renderer& text_colour(default_colour_t const& c) {
+    colour_ = c;
+    return  *this;
   }
 };
 
