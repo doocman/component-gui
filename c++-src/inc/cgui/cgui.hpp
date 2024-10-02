@@ -233,18 +233,15 @@ class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
   constexpr auto set_state_callback() {
     // At this point, the state handler can change its state and propagate the
     // state change to all affected display aspects.
-    return bp::no_op;
-#if 0 // disabled until we have tests in place.
-    auto each_display_callback = [this] (auto const& state) {
-      auto display_cb = [&state] (auto& display)
+    return [this]<typename TS>(TS const& state) {
+      auto display_cb = [&state]<typename TD>(TD& display)
       {
-        if constexpr(has_set_state<decltype(display), decltype(state)>) {
+        if constexpr(has_set_state<TD, TS>) {
           call::set_state(display, state);
         }
       };
       call::for_each(display_, display_cb);
     };
-#endif
   }
 
 public:
@@ -867,15 +864,20 @@ struct momentary_button {
 
   constexpr void handle(buttonlike_trigger::click_event const&, auto&&) {
     on_click();
-  }
-  constexpr void handle(buttonlike_trigger::exit_event const&, auto&&) {
+    current_state_ = momentary_button_states::hover;
     on_hover();
   }
+  constexpr void handle(buttonlike_trigger::exit_event const&, auto&&) {
+    current_state_ = momentary_button_states::off;
+    on_exit();
+  }
   constexpr void handle(buttonlike_trigger::hold_event const&, auto&&) {
+    current_state_ = momentary_button_states::hold;
     on_hold();
   }
   constexpr void handle(buttonlike_trigger::hover_event const&, auto&&) {
-    on_exit();
+    current_state_ = momentary_button_states::hover;
+    on_hover();
   }
 };
 

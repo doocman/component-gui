@@ -1796,6 +1796,7 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   MockFunction<void()> checkpoint{};
   InSequence s;
   EXPECT_CALL(state_aware_rend, do_render(Eq(0)));
+  EXPECT_CALL(state_aware_rend, do_set_state(Eq(1)));
   EXPECT_CALL(checkpoint, Call());
   EXPECT_CALL(state_aware_rend, do_render(Eq(1)));
   auto w = widget_builder()
@@ -1866,52 +1867,52 @@ TEST(Widget, BasicButton) // NOLINT
   ASSERT_THAT(r.drawn_pixels, SizeIs(1));
   auto& [red, green, blue,alpha] = r.drawn_pixels.front();
   auto sr = sub_renderer(r);
+  auto reset = [&clicked, &calls] {
+    clicked = false;
+    calls = 0;
+  };
 
   w.render(sr);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
+
+  w.handle(dummy_mouse_move_event{{-1, 0}});
+  EXPECT_THAT(clicked, IsFalse());
+  EXPECT_THAT(calls, Eq(0));
+  EXPECT_THAT(last_state, Eq(off));
+  w.render(sr);
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
+  reset();
 
   w.handle(dummy_mouse_move_event{});
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_state, Eq(hover));
-  calls = 0;
   w.render(sr);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
+  reset();
 
   w.handle(dummy_mouse_down_event{});
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_state, Eq(hold));
-  calls = 0;
   w.render(sr);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(2, 0, 0, 255));
+  reset();
 
   w.handle(dummy_mouse_up_event{});
   EXPECT_THAT(clicked, IsTrue());
   EXPECT_THAT(calls, Eq(2));
   EXPECT_THAT(last_state, Eq(hover));
-  calls = 0;
   w.render(sr);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
+  reset();
 
-  w.handle(dummy_mouse_move_event{});
+  w.handle(dummy_mouse_move_event{{0, 2}});
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_state, Eq(off));
-  calls = 0;
   w.render(sr);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
+  reset();
 }
-
-/*
-TEST(Button, Click) // NOLINT
-{
-  auto f = MockFunction<void()>{};
-  auto checkpoint = MockFunction<void()>{};
-  InSequence s;
-  EXPECT_CALL(checkpoint, Call()).Times(1);
-  EXPECT_CALL(f, Call()).Times(1);
-  auto b = image_button({}, [&f] { f.Call(); });
-
-}*/
 } // namespace cgui::tests
