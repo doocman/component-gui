@@ -166,8 +166,12 @@ template <typename T> gui_context(T &) -> gui_context<std::remove_cvref_t<T>>;
 template <widget_states_aspect T> struct widget_state_wrapper : private T {
   // Inherit just for the empty base optimisation.
   using T::T;
-  constexpr explicit widget_state_wrapper(T&& t) noexcept requires(std::is_move_constructible_v<T>) : T(std::move(t)) {}
-  constexpr explicit widget_state_wrapper(T const& t) requires(std::is_copy_constructible_v<T>) : T(t) {}
+  constexpr explicit widget_state_wrapper(T &&t) noexcept
+    requires(std::is_move_constructible_v<T>)
+      : T(std::move(t)) {}
+  constexpr explicit widget_state_wrapper(T const &t)
+    requires(std::is_copy_constructible_v<T>)
+      : T(t) {}
 
   static constexpr decltype(auto) base(auto &&self) {
     using type =
@@ -188,12 +192,13 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
   }
   template <renderer TR, typename TWH>
   constexpr auto operator()(TR &&r, TWH w, TWH h) const {
-    return
-        [&r,
-         arg = arg_t<TWH>(
-             w, h,
-             call::state(base(*this)))]<display_component<TR, arg_t<TWH>> TD>(
-            TD &&display) { call::render(display, std::forward<TR>(r), arg); };
+    auto arg = arg_t<TWH>(w, h, call::state(base(*this)));
+    return [r = std::forward<TR>(r),
+            arg = std::move(arg)]<typename
+                                  // display_component<TR, arg_t<TWH>>
+                                  TD>(TD &&display) mutable {
+      call::render(display, r, arg);
+    };
   }
   static constexpr decltype(auto)
   handle(bp::cvref_type<widget_state_wrapper> auto &&self, auto &&evt,
@@ -233,10 +238,9 @@ class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
   constexpr auto set_state_callback() {
     // At this point, the state handler can change its state and propagate the
     // state change to all affected display aspects.
-    return [this]<typename TS>(TS const& state) {
-      auto display_cb = [&state]<typename TD>(TD& display)
-      {
-        if constexpr(has_set_state<TD, TS>) {
+    return [this]<typename TS>(TS const &state) {
+      auto display_cb = [&state]<typename TD>(TD &display) {
+        if constexpr (has_set_state<TD, TS>) {
           call::set_state(display, state);
         }
       };
@@ -253,9 +257,12 @@ public:
     requires(std::constructible_from<TDisplay, Ts && ...>)
   constexpr explicit widget(Ts &&...d) : display_(std::forward<Ts>(d)...) {}
   template <typename TD, typename TS, typename TE>
-    requires(std::constructible_from<TDisplay, TD &&> && std::constructible_from<TEventHandler, TE&&> && std::constructible_from<TState, TS&&>)
-  constexpr widget(TArea const &a, TD && d, TS && s, TE&& e)
-      : base_t(std::forward<TS>(s), std::forward<TE>(e)), area_(a), display_(std::forward<TD>(d)) {}
+    requires(std::constructible_from<TDisplay, TD &&> &&
+             std::constructible_from<TEventHandler, TE &&> &&
+             std::constructible_from<TState, TS &&>)
+  constexpr widget(TArea const &a, TD &&d, TS &&s, TE &&e)
+      : base_t(std::forward<TS>(s), std::forward<TE>(e)), area_(a),
+        display_(std::forward<TD>(d)) {}
 
   [[nodiscard]] TArea const &area() const { return area_; }
 
@@ -267,11 +274,15 @@ public:
   constexpr TDisplay const &displays() const noexcept { return display_; }
 
   constexpr void render(renderer auto &&r) const {
-    call::for_each(display_,
-                   state(*this)(r, call::width(area_), call::height(area_)));
+    auto w = call::width(area_);
+    auto h = call::height(area_);
+    // auto render_callback = state(*this)(r.sub(area_), call::width(area_),
+    // call::height(area_));
+    auto render_callback = state(*this)(r.sub(area_), w, h);
+    call::for_each(display_, std::move(render_callback));
   }
   constexpr void handle(auto &&evt)
-    requires(has_handle<TEventHandler, TArea const&, decltype(evt),
+    requires(has_handle<TEventHandler, TArea const &, decltype(evt),
                         decltype(set_state_callback())>)
   {
     // First level: we call the event handler that takes input events and
@@ -353,23 +364,30 @@ public:
 
   constexpr widget_builder_impl() = default;
   template <typename TUs, typename TS, typename TE>
-    requires(std::constructible_from<TDisplay, TUs &&> && std::constructible_from<TState, TS&&> && std::constructible_from<TEventHandler, TE&&>)
-  constexpr explicit widget_builder_impl(TArea const &a, TUs && displ, TS&& s, TE&& e)
-      : area_(a), displays_(std::forward<TUs>(displ)), state_(std::forward<TS>(s)), event_(std::forward<TE>(e)) {}
+    requires(std::constructible_from<TDisplay, TUs &&> &&
+             std::constructible_from<TState, TS &&> &&
+             std::constructible_from<TEventHandler, TE &&>)
+  constexpr explicit widget_builder_impl(TArea const &a, TUs &&displ, TS &&s,
+                                         TE &&e)
+      : area_(a), displays_(std::forward<TUs>(displ)),
+        state_(std::forward<TS>(s)), event_(std::forward<TE>(e)) {}
 
-  template <widget_states_aspect TS2, typename TRes = widget_builder_impl<
-                                          TArea, TDisplay, std::remove_cvref_t<TS2>, TEventHandler>>
-  TRes state(TS2 && s) && {
-    return TRes(std::move(area_), std::move(displays_), std::forward<TS2>(s), std::move(event_));
+  template <widget_states_aspect TS2,
+            typename TRes = widget_builder_impl<
+                TArea, TDisplay, std::remove_cvref_t<TS2>, TEventHandler>>
+  TRes state(TS2 &&s) && {
+    return TRes(std::move(area_), std::move(displays_), std::forward<TS2>(s),
+                std::move(event_));
   }
 
-  template <typename... TD2, typename TTuple = std::tuple<std::unwrap_ref_decay_t<TD2>...>,
-            typename TRes = widget_builder_impl<
-                TArea, TTuple, TState,
-                TEventHandler>>
+  template <
+      typename... TD2,
+      typename TTuple = std::tuple<std::unwrap_ref_decay_t<TD2>...>,
+      typename TRes = widget_builder_impl<TArea, TTuple, TState, TEventHandler>>
     requires((builder_display_args<TD2, dummy_renderer, state_arg_t>) && ...)
   TRes display(TD2 &&...d2) && {
-    return TRes(std::move(area_), TTuple(std::forward<decltype(d2)>(d2)...), std::move(state_), std::move(event_));
+    return TRes(std::move(area_), TTuple(std::forward<decltype(d2)>(d2)...),
+                std::move(state_), std::move(event_));
   }
 
   template <display_component_range<dummy_renderer,
@@ -379,7 +397,8 @@ public:
                 TArea, std::unwrap_reference_t<std::remove_cvref_t<TTupleLike>>,
                 state_wrapper, TEventHandler>>
   TRes display(TTupleLike &&displays) && {
-    return TRes(std::move(area_), std::forward<TTupleLike>(displays), std::move(state_), std::move(event_));
+    return TRes(std::move(area_), std::forward<TTupleLike>(displays),
+                std::move(state_), std::move(event_));
   }
 
 #if CGUI_HAS_NAMED_ARGS
@@ -390,10 +409,9 @@ public:
         ...)
   constexpr auto display(TArgs &&...args) && {
     using tuple_t = dooc::named_tuple<std::remove_cvref_t<TArgs>...>;
-    return widget_builder_impl<TArea,
-                               tuple_t,
-                               TState, TEventHandler>(
-        std::move(area_), tuple_t(std::forward<TArgs>(args)...), std::move(state_), std::move(event_));
+    return widget_builder_impl<TArea, tuple_t, TState, TEventHandler>(
+        std::move(area_), tuple_t(std::forward<TArgs>(args)...),
+        std::move(state_), std::move(event_));
   }
 #endif
 
@@ -406,13 +424,16 @@ public:
     using display_t = decltype(impl::build_displays(
         std::move(displays_), state_wrapper::all_states()));
     return widget<TArea, display_t, state_wrapper, TEventHandler>(
-        std::move(area_), impl::build_displays(std::move(displays_),
-                                               state_wrapper::all_states()), state_wrapper(std::move(state_)), std::move(event_));
+        std::move(area_),
+        impl::build_displays(std::move(displays_), state_wrapper::all_states()),
+        state_wrapper(std::move(state_)), std::move(event_));
   }
   template <typename TE2,
-            typename TRes = widget_builder_impl<TArea, TDisplay, TState, std::remove_cvref_t<TE2>>>
-  TRes event(TE2 && e) && {
-    return TRes(std::move(area_), std::move(displays_), std::move(state_), std::forward<TE2>(e));
+            typename TRes = widget_builder_impl<TArea, TDisplay, TState,
+                                                std::remove_cvref_t<TE2>>>
+  TRes event(TE2 &&e) && {
+    return TRes(std::move(area_), std::move(displays_), std::move(state_),
+                std::forward<TE2>(e));
   }
 
   template <bounding_box TA, typename TRes = widget_builder_impl<
@@ -458,10 +479,11 @@ public:
   constexpr explicit text_renderer(std::in_place_type_t<TFont>, TU &&...f)
       : f_(std::forward<TU>(f)...) {}
 
-  constexpr text_renderer& set_displayed(bounding_box auto const& area, std::string_view t) {
+  constexpr text_renderer &set_displayed(bounding_box auto const &area,
+                                         std::string_view t) {
     return set_displayed(call::width(area), call::height(area), t);
   }
-  constexpr text_renderer& set_displayed(int w, int, std::string_view t)  {
+  constexpr text_renderer &set_displayed(int w, int, std::string_view t) {
     using iterator_t = decltype(tokens_.begin());
     tokens_.clear();
     line_count_ = 0;
@@ -593,13 +615,14 @@ public:
     }
     return *this;
   }
-  constexpr void render(auto &&rorg, render_args auto&& args)
+  constexpr void render(auto &&rorg, render_args auto &&args) const
     requires(has_render<glyph_t, decltype(rorg)>)
   {
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
-    auto do_new_area = [w = call::width(args), base_y2 = call::height(args) + 2 * call::ascender(f_), fh,
-                        count = line_count_](newline_entry nl) mutable {
+    auto do_new_area = [w = call::width(args),
+                        base_y2 = call::height(args) + 2 * call::ascender(f_),
+                        fh, count = line_count_](newline_entry nl) mutable {
       auto tl_y = (base_y2 - fh * count) / 2;
       count -= 2;
       auto x = (w - nl.length) / 2;
@@ -631,9 +654,9 @@ public:
   static constexpr auto &&text_colour(bp::cvref_type<text_renderer> auto &&r) {
     return std::forward<decltype(r)>(r).colour_;
   }
-  constexpr text_renderer& text_colour(default_colour_t const& c) {
+  constexpr text_renderer &text_colour(default_colour_t const &c) {
     colour_ = c;
-    return  *this;
+    return *this;
   }
 };
 
@@ -652,12 +675,13 @@ public:
     return colour_;
   }
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
-    call::fill(r, default_rect{0, 0, call::width(args), call::height(args)},
+    call::fill(r, default_rect{{0, 0}, {call::width(args), call::height(args)}},
                colour_);
   }
 };
 
-template <display_component T, typename TState, TState... tStates> class display_per_state_impl {
+template <display_component T, typename TState, TState... tStates>
+class display_per_state_impl {
   static constexpr auto state_count = sizeof...(tStates);
   using arr_t = std::array<T, state_count>;
   arr_t d_;
@@ -677,7 +701,8 @@ public:
     requires((tI == tStates) || ...)
   static constexpr auto &&
   get(bp::cvref_type<display_per_state_impl> auto &&v) noexcept {
-    return std::get<state2index(widget_state_marker<TState, tStates...>(tI))>(std::forward<decltype(v)>(v).d_);
+    return std::get<state2index(widget_state_marker<TState, tStates...>(tI))>(
+        std::forward<decltype(v)>(v).d_);
   }
 };
 template <bp::ct_value_wrapper val, typename T>
@@ -850,40 +875,39 @@ public:
   }
 };
 
-enum class momentary_button_states {
-  off,
-  hover,
-  hold
-};
+enum class momentary_button_states { off, hover, hold };
 
-template <std::invocable TClick, std::invocable THover = bp::no_op_t, std::invocable THold = bp::no_op_t, std::invocable TExit = bp::no_op_t>
+template <std::invocable TClick, std::invocable THover = bp::no_op_t,
+          std::invocable THold = bp::no_op_t,
+          std::invocable TExit = bp::no_op_t>
 struct momentary_button {
   TClick on_click;
   THover on_hover;
   THold on_hold;
   TExit on_exit;
 
-  using state_t = widget_state_marker<momentary_button_states, momentary_button_states::off, momentary_button_states::hover, momentary_button_states::hold>;
+  using state_t =
+      widget_state_marker<momentary_button_states, momentary_button_states::off,
+                          momentary_button_states::hover,
+                          momentary_button_states::hold>;
   state_t current_state_{momentary_button_states::off};
 
-  [[nodiscard]] constexpr state_t state() const {
-    return current_state_;
-  }
+  [[nodiscard]] constexpr state_t state() const { return current_state_; }
 
-  constexpr void handle(buttonlike_trigger::click_event const&, auto&&) {
+  constexpr void handle(buttonlike_trigger::click_event const &, auto &&) {
     on_click();
     current_state_ = momentary_button_states::hover;
     on_hover();
   }
-  constexpr void handle(buttonlike_trigger::exit_event const&, auto&&) {
+  constexpr void handle(buttonlike_trigger::exit_event const &, auto &&) {
     current_state_ = momentary_button_states::off;
     on_exit();
   }
-  constexpr void handle(buttonlike_trigger::hold_event const&, auto&&) {
+  constexpr void handle(buttonlike_trigger::hold_event const &, auto &&) {
     current_state_ = momentary_button_states::hold;
     on_hold();
   }
-  constexpr void handle(buttonlike_trigger::hover_event const&, auto&&) {
+  constexpr void handle(buttonlike_trigger::hover_event const &, auto &&) {
     current_state_ = momentary_button_states::hover;
     on_hover();
   }

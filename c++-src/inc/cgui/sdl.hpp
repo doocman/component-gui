@@ -242,6 +242,11 @@ public:
   [[nodiscard]] std::string &ctor_string_mut() { return s_; }
   void take_ownership(SDL_Window *w) { handle_.reset(w); }
 
+  [[nodiscard]] SDL_Rect local_area() const {
+    SDL_Rect r{};
+    SDL_GetWindowSize(handle(), &r.w, &r.h);
+    return r;
+  }
   [[nodiscard]] SDL_Rect area() const {
     SDL_Rect r;
     SDL_GetWindowSize(handle(), &r.w, &r.h);
