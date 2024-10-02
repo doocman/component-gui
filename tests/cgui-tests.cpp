@@ -1787,7 +1787,7 @@ struct int_states {
 static_assert(has_handle<int_states, int, bp::no_op_t>);
 
 struct int_as_event_handler {
-  void handle(int i, auto &&cb) { cb(i); }
+  void handle(auto const&, int i, auto &&cb) { cb(i); }
 };
 
 TEST(WidgetBuilder, BuildWithState) // NOLINT

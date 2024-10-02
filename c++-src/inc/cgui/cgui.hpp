@@ -274,12 +274,12 @@ public:
                    state(*this)(r, call::width(area_), call::height(area_)));
   }
   constexpr void handle(auto &&evt)
-    requires(has_handle<TEventHandler, decltype(evt),
+    requires(has_handle<TEventHandler, TArea const&, decltype(evt),
                         decltype(set_state_callback())>)
   {
     // First level: we call the event handler that takes input events and
     // translates it to a component state change.
-    call::handle(event_handler(*this), std::forward<decltype(evt)>(evt),
+    call::handle(event_handler(*this), area(), std::forward<decltype(evt)>(evt),
                  [this](auto &&state_event) {
                    // Second level: event handler has taken the event input and
                    // now translates it to a behaviour event that the state
@@ -415,13 +415,13 @@ public:
   template <typename TE2,
             typename TRes = widget_builder_impl<TArea, TDisplay, TState, std::remove_cvref_t<TE2>>>
   TRes event(TE2 && e) && {
-    return TRes(std::move(area_), std::move(displays_), std::move(event_), std::forward<TE2>(e));
+    return TRes(std::move(area_), std::move(displays_), std::move(state_), std::forward<TE2>(e));
   }
 
   template <bounding_box TA, typename TRes = widget_builder_impl<
                                  TA, TDisplay, TState, TEventHandler>>
   TRes area(TA const &a) && {
-    return TRes(a, std::move(displays_), std::move(event_), std::move(state_));
+    return TRes(a, std::move(displays_), std::move(state_), std::move(event_));
   }
 };
 
@@ -865,10 +865,18 @@ struct momentary_button {
     return current_state_;
   }
 
-  /*
-  constexpr void handle(buttonlike_trigger::click_event const&) {
+  constexpr void handle(buttonlike_trigger::click_event const&, auto&&) {
     on_click();
-  }*/
+  }
+  constexpr void handle(buttonlike_trigger::exit_event const&, auto&&) {
+    on_hover();
+  }
+  constexpr void handle(buttonlike_trigger::hold_event const&, auto&&) {
+    on_hold();
+  }
+  constexpr void handle(buttonlike_trigger::hover_event const&, auto&&) {
+    on_exit();
+  }
 };
 
 } // namespace cgui
