@@ -68,6 +68,7 @@ int main(int, char **) {
     std::get<0>(lorum_ipsum.displays())
         .set_displayed(
             hello_world_header.area(),
+#if 0
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed "
             "do eiusmod tempor incididunt ut labore et dolore magna "
             "aliqua. Ut enim ad minim veniam, quis nostrud exercitation "
@@ -75,7 +76,13 @@ int main(int, char **) {
             "aute irure dolor in reprehenderit in voluptate velit esse "
             "cillum dolore eu fugiat nulla pariatur. Excepteur sint "
             "occaecat cupidatat non proident, sunt in culpa qui officia "
-            "deserunt mollit anim id est laborum.\n\nDid you get that?")
+            "deserunt mollit anim id est laborum.\n\nDid you get that?"
+#else
+            "h\nMuch text bad performance. Fix?"
+#endif
+
+
+            )
         .text_colour({255, 255, 255, 255});
     bool do_exit{};
     auto renderer = main_window.canvas().value();
@@ -83,17 +90,30 @@ int main(int, char **) {
                                                 quit_button);
     gui.render(renderer);
     renderer.present();
+    using namespace std::chrono;
+    constexpr auto run_interval = duration_cast<nanoseconds>(1s) / 60;;
+    auto next_run = steady_clock::now() + run_interval;
     while (!do_exit) {
+      SDL_Rect to_rerender{};
       while (cgui::poll_event(sdl_context, [&]<typename T>(T e) {
                if constexpr (std::is_same_v<T, cgui::sdl_quit_event>) {
                  do_exit = true;
                } else if constexpr(cgui::has_handle<decltype(gui), T>) {
-                 gui.handle(std::move(e));
+                 to_rerender = gui.handle(std::move(e));
+               } else {
+                std::get<0>(hello_world_header.displays())
+                    .set_displayed(hello_world_header.area(), typeid(T).name());
+                 to_rerender = hello_world_header.area();
                }
               cgui::unused(e);
              }) != 0) {
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(16));
+      if (!cgui::empty_box(to_rerender)) {
+        gui.render(renderer, to_rerender);
+        renderer.present();
+      }
+      std::this_thread::sleep_until(next_run);
+      next_run += run_interval;
     }
     return EXIT_SUCCESS;
   } catch (std::exception const &e) {

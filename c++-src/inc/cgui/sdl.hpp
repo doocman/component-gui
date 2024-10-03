@@ -204,6 +204,12 @@ public:
     return {};
   }
 
+  void fill(bounding_box auto const& b, colour auto const& c) {
+    decltype(auto) sdlb = copy_box<SDL_Rect>(b);
+    SDL_SetRenderDrawColor(r_, call::red(c), call::green(c), call::blue(c), call::alpha(c));
+    SDL_RenderFillRect(r_, &sdlb);
+  }
+
   [[nodiscard]] default_rect area() const { return a_; }
 };
 
@@ -281,6 +287,7 @@ using sdl_window_flag_struct_t =
 
 inline constexpr sdl_window_flag_struct_t<SDL_WINDOW_RESIZABLE>
     sdl_window_resizable;
+inline constexpr sdl_window_flag_struct_t<SDL_WINDOW_OPENGL> sdl_window_opengl;
 
 class sdl_window_builder {
   std::string title_;
@@ -314,13 +321,27 @@ public:
       if (auto r = SDL_GetRenderer(w); r != nullptr) {
         return sdl_window(w);
       }
-      if (auto r = SDL_CreateRenderer(w, -1, SDL_RENDERER_TARGETTEXTURE);
+      if (auto r = SDL_CreateRenderer(w, -1, SDL_RENDERER_TARGETTEXTURE | SDL_RENDERER_ACCELERATED);
           r != nullptr) {
         return sdl_window(w);
       }
     }
     title_ = std::move(happy_res.ctor_string_mut());
     return unexpected(std::string(SDL_GetError()));
+  }
+};
+
+template <>
+struct extend_api<SDL_MouseMotionEvent> {
+  static constexpr subset_ui_events<ui_events::mouse_move> is_event(SDL_MouseMotionEvent const&) {
+    return  {};
+  }
+};
+template <>
+struct extend_api<SDL_MouseButtonEvent> {
+
+  static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const& e) {
+    return static_cast<mouse_buttons>(e.button);
   }
 };
 
@@ -332,8 +353,9 @@ template <> struct sdl_event_t<void> {
   SDL_Event raw_event;
 };
 
-using sdl_generic_event = sdl_event_t<void>;
-using sdl_quit_event = sdl_event_t<SDL_QuitEvent>;
+using sdl_generic_event = SDL_Event;//sdl_event_t<void>;
+using sdl_quit_event = SDL_QuitEvent;//sdl_event_t<SDL_QuitEvent>;
+using sdl_mouse_move_event = SDL_MouseMotionEvent;//sdl_event_t<SDL_MouseMotionEvent>;
 
 template <typename T>
 using sdl_event_callback_result =
@@ -361,24 +383,30 @@ inline expected<sdl_window, std::string> build(sdl_window_builder &&builder) {
 }
 
 inline auto switch_sdl_event(sdl_event_callback auto &&cb,
-                             sdl_generic_event const &e)
+                             SDL_Event const &e)
     -> sdl_event_callback_result<decltype(cb)> {
   constexpr auto gen_evt = []<typename T>(T const &e) {
-    return sdl_event_t<T>{e};
+    return e;
   };
-  auto &raw_evt = e.raw_event;
-  switch (static_cast<SDL_EventType>(raw_evt.type)) {
+  switch (static_cast<SDL_EventType>(e.type)) {
   case SDL_QUIT:
-    return cb(gen_evt(raw_evt.quit));
+    return cb(gen_evt(e.quit));
+  case SDL_MOUSEMOTION:
+    return cb(gen_evt(e.motion));
+  case SDL_MOUSEBUTTONUP:
+    [[fallthrough]];
+  case SDL_MOUSEBUTTONDOWN:
+    return cb(gen_evt(e.button));
+  case SDL_WINDOWEVENT:
+    return cb(gen_evt(e.window));
   default:
     return cb(e);
   }
 }
 
 inline int poll_event(sdl_context_instance &, sdl_event_callback auto &&cb) {
-  sdl_generic_event e{};
-  auto &raw_evt = e.raw_event;
-  if (SDL_PollEvent(&raw_evt) != 0) {
+  SDL_Event e;
+  if (SDL_PollEvent(&e) != 0) {
     switch_sdl_event(std::forward<decltype(cb)>(cb), e);
     return 1;
   }

@@ -18,8 +18,8 @@ namespace cgui {
 template <canvas T, bounding_box TB> class sub_renderer {
   T *c_;
   TB area_;
-  using x_t = decltype(call::tl_x(area_));
-  using y_t = decltype(call::tl_y(area_));
+  using x_t = std::remove_cvref_t<decltype(call::tl_x(area_))>;
+  using y_t = std::remove_cvref_t<decltype(call::tl_y(area_))>;
   x_t offset_x{};
   y_t offset_y{};
   default_colour_t set_colour_{};
@@ -44,6 +44,14 @@ template <canvas T, bounding_box TB> class sub_renderer {
     return a;
   }
 
+  template <typename TB2>
+  constexpr std::pair<TB2, TB2> relative_absolute_dest(TB2 const& dest) const {
+    auto relative_dest = call::box_intersection<TB2>(dest, area_);
+    auto absolute_dest =
+        call::nudge_right(call::nudge_down(relative_dest, offset_y), offset_x);
+    return {relative_dest, absolute_dest};
+  }
+
 public:
   constexpr sub_renderer(T &c, TB a, x_t x, y_t y, default_colour_t sc)
       : c_(std::addressof(c)), area_(a), offset_x(x), offset_y(y),
@@ -52,6 +60,8 @@ public:
   }
   constexpr sub_renderer(T &c, TB a) : sub_renderer(c, a, 0, 0, {}) {}
   constexpr explicit sub_renderer(T &c) : sub_renderer(c, call::area(c)) {}
+
+
 
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
@@ -64,9 +74,7 @@ public:
         return return_type{};
       }
     }
-    auto relative_dest = call::box_intersection<TB2>(dest, area_);
-    auto absolute_dest =
-        call::nudge_right(call::nudge_down(relative_dest, offset_y), offset_x);
+    auto [relative_dest, absolute_dest] = relative_absolute_dest(dest);
     return call::draw_pixels(
         *c_, absolute_dest,
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
@@ -92,6 +100,13 @@ public:
                     drawer(point, multiply_alpha(set_colour_, alpha));
                   });
                 });
+  }
+
+  constexpr void fill(bounding_box auto const& dest, colour auto const& c) {
+    auto [relative_dest, absolute_dest] = relative_absolute_dest(dest);
+    if (!empty_box(absolute_dest)) {
+      call::fill(*c_, absolute_dest, c);
+    }
   }
 
   constexpr sub_renderer sub(bounding_box auto &&b,
@@ -138,8 +153,6 @@ public:
   explicit constexpr gui_context(std::tuple<TWidgets...> ws)
       : widgets_(std::move(ws)) {}
 
-  [[nodiscard]] default_rect area() const { return {}; }
-
   template <widget_display... TW2>
   [[nodiscard]] constexpr gui_context<T, TWidgets..., TW2...>
   with(TW2 &&...ws) && {
@@ -155,15 +168,26 @@ public:
         std::tuple_cat(widgets_, std::tuple<TW2...>(std::forward<TW2>(ws)...)));
   }
 
-  constexpr void render(T &c) {
-    auto r = sub_renderer(c);
+  template <typename... Ts>
+  constexpr void render(sub_renderer<Ts...> && r) {
+    static_assert(call::impl::member_fill<decltype(r), decltype(r.area()), default_colour_t>);
+    call::fill(r, r.area(), default_colour_t{0, 0, 0, 255});
     tuple_for_each([&r](auto &&v) { call::render(v, r); }, widgets_);
   }
 
-  constexpr void handle(auto const& evt) requires((has_handle<TWidgets, decltype(evt)> || ...))
+  constexpr void render(T &c, bounding_box auto const& rarea) {
+    render(sub_renderer(c, rarea));
+  }
+
+  constexpr void render(T &c) {
+    render(sub_renderer(c));
+  }
+
+  constexpr void handle(auto const &evt)
+    requires((has_handle<TWidgets, decltype(evt)> || ...))
   {
-    call::for_each(widgets_, [&evt] <typename TW>(TW& w) {
-      if constexpr(has_handle<TW&, decltype(evt)>) {
+    call::for_each(widgets_, [&evt]<typename TW>(TW &w) {
+      if constexpr (has_handle<TW &, decltype(evt)>) {
         call::handle(w, evt);
       }
     });
@@ -191,10 +215,11 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
   using state_marker_t = decltype(call::state(std::declval<T const &>()));
   using all_states_t = all_states_in_marker_t<state_marker_t>;
   static constexpr all_states_t all_states() noexcept { return all_states_t{}; }
-  [[nodiscard]] constexpr state_marker_t state() const noexcept { return call::state(base(*this)); }
+  [[nodiscard]] constexpr state_marker_t state() const noexcept {
+    return call::state(base(*this));
+  }
 
-  template <typename TWH>
-  using arg_t = widget_render_args<TWH, state_marker_t>;
+  template <typename TWH> using arg_t = widget_render_args<TWH, state_marker_t>;
 
   template <renderer TR, display_component<TR> TD, typename TWH>
   constexpr void operator()(TD &display, TR &&r, TWH w, TWH h) const {
@@ -226,25 +251,22 @@ struct widget_mono_state {
 
 struct widget_no_event_handler {};
 
-template <bounding_box TArea>
-class widget_display_state_callbacks {
+template <bounding_box TArea> class widget_display_state_callbacks {
   TArea full_area_;
   TArea to_rerender_{};
-public:
-  explicit constexpr widget_display_state_callbacks(TArea full_area) : full_area_(full_area) {}
 
-  constexpr void rerender() {
-    to_rerender_ = full_area_;
-  }
-  constexpr void rerender(bounding_box auto const& part_area) {
-    bounding_box auto moved_part_area = call::move_tl_to(part_area, call::top_left(full_area_));
+public:
+  explicit constexpr widget_display_state_callbacks(TArea full_area)
+      : full_area_(full_area) {}
+
+  constexpr void rerender() { to_rerender_ = full_area_; }
+  constexpr void rerender(bounding_box auto const &part_area) {
+    bounding_box auto moved_part_area =
+        call::move_tl_to(part_area, call::top_left(full_area_));
     to_rerender_ = call::box_union(moved_part_area, to_rerender_);
     to_rerender_ = call::box_intersection(to_rerender_, full_area_);
   }
-  TArea const& to_rerender() const {
-    return to_rerender_;
-  }
-
+  TArea const &to_rerender() const { return to_rerender_; }
 };
 
 template <bounding_box TArea, typename TDisplay, typename TState,
@@ -265,7 +287,7 @@ class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
         std::type_identity<TEventHandler>{});
   }
 
-  constexpr auto set_state_callback(display_state_callbacks_t& display_cb) {
+  constexpr auto set_state_callback(display_state_callbacks_t &display_cb) {
     // At this point, the state handler can change its state and propagate the
     // state change to all affected display aspects.
     return [this, &display_cb]<typename TS>(TS const &state) {
@@ -273,7 +295,9 @@ class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
         if constexpr (has_set_state<TD, TS, decltype(display_cb)>) {
           call::set_state(display, state, display_cb);
         } else {
-          static_assert(!has_set_state<TD, TS>, "You are probably missing the display_state callback argument in your display set_state");
+          static_assert(!has_set_state<TD, TS>,
+                        "You are probably missing the display_state callback "
+                        "argument in your display set_state");
           unused(display, state, display_cb);
         }
       };
@@ -309,28 +333,27 @@ public:
   constexpr void render(renderer auto &&r) const {
     auto w = call::width(area_);
     auto h = call::height(area_);
-    // auto render_callback = state(*this)(r.sub(area_), call::width(area_),
-    // call::height(area_));
     auto render_callback = state(*this)(r.sub(area_), w, h);
     call::for_each(display_, std::move(render_callback));
   }
   constexpr TArea handle(auto &&evt)
     requires(has_handle<TEventHandler, TArea const &, decltype(evt),
-                        decltype(set_state_callback(std::declval<display_state_callbacks_t&>()))>)
+                        decltype(set_state_callback(
+                            std::declval<display_state_callbacks_t &>()))>)
   {
     display_state_callbacks_t display_callbacks(area());
     // We expect that all default-constructed areas are empty.
     // First level: we call the event handler that takes input events and
     // translates it to a component state change.
     call::handle(event_handler(*this), area(), std::forward<decltype(evt)>(evt),
-                 [this, &display_callbacks] <typename TStateEvent> (TStateEvent &&state_event) {
+                 [this, &display_callbacks]<typename TStateEvent>(
+                     TStateEvent &&state_event) {
                    // Second level: event handler has taken the event input and
                    // now translates it to a behaviour event that the state
                    // aspect can read.
-                     auto prev_state = call::state(state(*this));
-                   call::handle(
-                       state(*this),
-                       std::forward<TStateEvent>(state_event));
+                   auto prev_state = call::state(state(*this));
+                   call::handle(state(*this),
+                                std::forward<TStateEvent>(state_event));
                    auto new_state = call::state(state(*this));
                    if (prev_state != new_state) {
                      set_state_callback(display_callbacks)(new_state);
@@ -722,7 +745,8 @@ public:
 
 template <display_component T, typename TState, TState... tStates>
 class display_per_state_impl {
-  static constexpr auto state_count = std::max<std::size_t>(sizeof...(tStates), 1u);
+  static constexpr auto state_count =
+      std::max<std::size_t>(sizeof...(tStates), 1u);
   using arr_t = std::array<T, state_count>;
   arr_t d_;
 
@@ -745,8 +769,9 @@ public:
         std::forward<decltype(v)>(v).d_);
   }
 
-  static constexpr void set_state(auto const&, display_state_callbacks auto&& cb) {
-    if constexpr(state_count > 1) {
+  static constexpr void set_state(auto const &,
+                                  display_state_callbacks auto &&cb) {
+    if constexpr (state_count > 1) {
       cb.rerender();
     } else {
       unused(cb);
