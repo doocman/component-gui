@@ -1447,7 +1447,9 @@ TEST(TextRender, CenterAligned) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "1 0");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1475,7 +1477,9 @@ TEST(TextRender, TwoLinesSpace) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "1 1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1501,7 +1505,9 @@ TEST(TextRender, TwoLinesDashDirect) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "120");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1524,7 +1530,9 @@ TEST(TextRender, TwoLinesDashIndirect) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "1001");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1548,7 +1556,9 @@ TEST(TextRender, ManualNewLine) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "1\n1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1571,7 +1581,9 @@ TEST(TextRender, ThreeLines) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "10011");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1594,7 +1606,9 @@ TEST(TextRender,
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "012");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1771,23 +1785,26 @@ struct mock_state_aware_renderer {
       render_failed_type = std::string_view(typeid(state_t).name());
     }
   }
-  void set_state(int i, display_state_callbacks auto&& cb) { do_set_state(i); cb.rerender(); }
+  void set_state(state_marker auto const &i,
+                 display_state_callbacks auto &&cb) {
+    do_set_state(i.current_state());
+    cb.rerender();
+  }
 };
 
 struct int_states {
   int state_ = 0;
-  void handle(int i, std::invocable<widget_state_marker<int, 0, 1>> auto &&cb) {
+  void handle(int i) {
     CGUI_ASSERT(i == 0 || i == 1);
     state_ = i;
-    cb(i);
   }
   widget_state_marker<int, 0, 1> state() const { return state_; }
 };
 
-static_assert(has_handle<int_states, int, bp::no_op_t>);
+static_assert(has_handle<int_states, int>);
 
 struct int_as_event_handler {
-  void handle(auto const&, int i, auto &&cb) { cb(i); }
+  void handle(auto const &, int i, auto &&cb) { cb(i); }
 };
 
 TEST(WidgetBuilder, BuildWithState) // NOLINT
@@ -1812,11 +1829,17 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   EXPECT_THAT(state_aware_rend.render_failed_type, IsEmpty());
 }
 
-inline void expect_box_equal(bounding_box auto const& to_test, bounding_box auto const& to_expect, std::source_location const& sl = std::source_location::current()) {
-  EXPECT_THAT(call::tl_x(to_test), Eq(call::tl_x(to_expect))) << "At " << sl.file_name() << ':' << sl.line();
-  EXPECT_THAT(call::tl_y(to_test), Eq(call::tl_y(to_expect))) << "At " << sl.file_name() << ':' << sl.line();
-  EXPECT_THAT(call::br_x(to_test), Eq(call::br_x(to_expect))) << "At " << sl.file_name() << ':' << sl.line();
-  EXPECT_THAT(call::br_y(to_test), Eq(call::br_y(to_expect))) << "At " << sl.file_name() << ':' << sl.line();
+inline void expect_box_equal(
+    bounding_box auto const &to_test, bounding_box auto const &to_expect,
+    std::source_location const &sl = std::source_location::current()) {
+  EXPECT_THAT(call::tl_x(to_test), Eq(call::tl_x(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::tl_y(to_test), Eq(call::tl_y(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::br_x(to_test), Eq(call::br_x(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::br_y(to_test), Eq(call::br_y(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
 }
 
 TEST(WidgetBuilder, DisplayForEachState) // NOLINT
@@ -1860,20 +1883,35 @@ TEST(Widget, BasicButton) // NOLINT
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
                .event(buttonlike_trigger{})
-               .state(momentary_button
-                 {.on_click = [&clicked, &calls] (auto&&...) { clicked = true; ++calls; },
-                 .on_hover = [&last_state, &calls] (auto&&...) {last_state = hover; ++calls; },
-                 .on_hold = [&last_state, &calls] (auto&&...) { last_state = hold; ++calls; },
-                 .on_exit = [&last_state, &calls] (auto&&...) { last_state = off; ++calls; }}
-                 )
-      .display(display_per_state(fill_rect{})).build();
-  auto& [filler] = w.displays();
+               .state(momentary_button{.on_click =
+                                           [&clicked, &calls](auto &&...) {
+                                             clicked = true;
+                                             ++calls;
+                                           },
+                                       .on_hover =
+                                           [&last_state, &calls](auto &&...) {
+                                             last_state = hover;
+                                             ++calls;
+                                           },
+                                       .on_hold =
+                                           [&last_state, &calls](auto &&...) {
+                                             last_state = hold;
+                                             ++calls;
+                                           },
+                                       .on_exit =
+                                           [&last_state, &calls](auto &&...) {
+                                             last_state = off;
+                                             ++calls;
+                                           }})
+               .display(display_per_state(fill_rect{}))
+               .build();
+  auto &[filler] = w.displays();
   get<off>(filler).colour() = {0, 0, 0, 255};
   get<hover>(filler).colour() = {1, 0, 0, 255};
   get<hold>(filler).colour() = {2, 0, 0, 255};
   test_renderer r{{0, 0, 1, 1}};
   ASSERT_THAT(r.drawn_pixels, SizeIs(1));
-  auto& [red, green, blue,alpha] = r.drawn_pixels.front();
+  auto &[red, green, blue, alpha] = r.drawn_pixels.front();
   auto sr = sub_renderer(r);
   auto reset = [&clicked, &calls] {
     clicked = false;

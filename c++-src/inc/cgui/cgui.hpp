@@ -188,12 +188,13 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
     return static_cast<type>(std::forward<decltype(self)>(self));
   }
 
-  using _state_marker_t = decltype(call::state(std::declval<T const &>()));
-  using all_states_t = all_states_in_marker_t<_state_marker_t>;
+  using state_marker_t = decltype(call::state(std::declval<T const &>()));
+  using all_states_t = all_states_in_marker_t<state_marker_t>;
   static constexpr all_states_t all_states() noexcept { return all_states_t{}; }
+  [[nodiscard]] constexpr state_marker_t state() const noexcept { return call::state(base(*this)); }
 
   template <typename TWH>
-  using arg_t = widget_render_args<TWH, _state_marker_t>;
+  using arg_t = widget_render_args<TWH, state_marker_t>;
 
   template <renderer TR, display_component<TR> TD, typename TWH>
   constexpr void operator()(TD &display, TR &&r, TWH w, TWH h) const {
@@ -210,14 +211,12 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
     };
   }
   static constexpr decltype(auto)
-  handle(bp::cvref_type<widget_state_wrapper> auto &&self, auto &&evt,
-         auto &&cb)
+  handle(bp::cvref_type<widget_state_wrapper> auto &&self, auto &&evt)
     requires(has_handle<decltype(base(std::forward<decltype(self)>(self))),
-                        decltype(evt), decltype(cb)>)
+                        decltype(evt)>)
   {
     return call::handle(base(std::forward<decltype(self)>(self)),
-                        std::forward<decltype(evt)>(evt),
-                        std::forward<decltype(cb)>(cb));
+                        std::forward<decltype(evt)>(evt));
   }
 };
 
@@ -943,20 +942,20 @@ struct momentary_button {
 
   [[nodiscard]] constexpr state_t state() const { return current_state_; }
 
-  constexpr void handle(buttonlike_trigger::click_event const &, auto &&) {
+  constexpr void handle(buttonlike_trigger::click_event const &) {
     on_click();
     current_state_ = momentary_button_states::hover;
     on_hover();
   }
-  constexpr void handle(buttonlike_trigger::exit_event const &, auto &&) {
+  constexpr void handle(buttonlike_trigger::exit_event const &) {
     current_state_ = momentary_button_states::off;
     on_exit();
   }
-  constexpr void handle(buttonlike_trigger::hold_event const &, auto &&) {
+  constexpr void handle(buttonlike_trigger::hold_event const &) {
     current_state_ = momentary_button_states::hold;
     on_hold();
   }
-  constexpr void handle(buttonlike_trigger::hover_event const &, auto &&) {
+  constexpr void handle(buttonlike_trigger::hover_event const &) {
     current_state_ = momentary_button_states::hover;
     on_hover();
   }

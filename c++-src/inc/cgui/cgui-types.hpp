@@ -66,7 +66,7 @@
       }                                                                        \
     }                                                                          \
     template <typename... Ts, has_##NAME<Ts...> T>                             \
-    constexpr decltype(auto) operator()(T && t, Ts &&...args) const {          \
+    constexpr decltype(auto) operator()(T &&t, Ts &&...args) const {           \
       return call(std::forward<T>(t), std::forward<Ts>(args)...);              \
     }                                                                          \
   };
@@ -153,7 +153,7 @@ struct do_apply_to {
               requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
                 std::apply(*cb, *t);
               }))
-  constexpr decltype(auto) operator()(T && t, TCB && cb) const {
+  constexpr decltype(auto) operator()(T &&t, TCB &&cb) const {
     auto tf = bp::as_forward<T>(t);
     auto cf = bp::as_forward<TCB>(cb);
     if constexpr (has_apply_to<T, TCB>) {
@@ -1022,17 +1022,18 @@ concept mutable_bounding_box =
     bounding_box_xwyh_set<T, TFrom> || bounding_box_xxyy_set<T, TFrom>;
 
 template <typename T, typename... TArgs>
-concept set_state_with_rerender = has_set_state<T, TArgs...> &&
+concept set_state_with_rerender =
+    has_set_state<T, TArgs...> &&
     requires(bp::as_forward<T> t, bp::as_forward<TArgs>... args) {
-  {call::set_state(*t, *args...)} -> bounding_box;
+      { call::set_state(*t, *args...) } -> bounding_box;
     };
 
 template <typename T, typename TBox = default_rect>
-concept display_state_callbacks = bounding_box<TBox> && requires(T& t, TBox const& cbox)
-{
-  t.rerender();
-  t.rerender(cbox);
-};
+concept display_state_callbacks =
+    bounding_box<TBox> && requires(T &t, TBox const &cbox) {
+      t.rerender();
+      t.rerender(cbox);
+    };
 
 constexpr auto x_view(bounding_box auto &&b) {
   return std::views::iota(call::tl_x(b), call::br_x(b));
@@ -1170,9 +1171,7 @@ template <ui_events evt> struct subset_ui_events<evt> {
 };
 
 template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
-  requires()
-{
+concept subset_ui_event_c = std::convertible_to<T, ui_events> && requires() {
   {
     std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
   } -> std::convertible_to<bool>;
@@ -1368,7 +1367,7 @@ concept has_set_displayed =
 
 struct do_set_displayed {
   template <typename... Ts, has_set_displayed<Ts...> T>
-  constexpr decltype(auto) operator()(T && torg, Ts &&...vals) const {
+  constexpr decltype(auto) operator()(T &&torg, Ts &&...vals) const {
     auto t = bp::as_forward(std::forward<T>(torg));
     if constexpr (member_set_displayed<T, Ts...>) {
       return (*t).set_displayed(std::forward<Ts>(vals)...);
@@ -1543,7 +1542,7 @@ concept has_area = member_area<T, Ts...> || static_area<T, Ts...> ||
 
 struct do_area {
   template <typename... Ts, has_area<Ts...> T>
-  constexpr decltype(auto) operator()(T && torg, Ts &&...args) const {
+  constexpr decltype(auto) operator()(T &&torg, Ts &&...args) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_area<T, Ts...>) {
       return (*t).area(std::forward<Ts>(args)...);
@@ -1571,7 +1570,7 @@ concept has_glyph = member_glyph<T, TChar> || free_glyph<T, TChar>;
 
 struct do_glyph {
   template <typename TChar, has_glyph<TChar> T>
-  constexpr decltype(auto) operator()(T && torg, TChar c) const {
+  constexpr decltype(auto) operator()(T &&torg, TChar c) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_glyph<T, TChar>) {
       return (*t).glyph(c);
@@ -1624,7 +1623,7 @@ struct do_text_colour : private do_text_colour_get {
   template <typename T, colour TC>
     requires(has_text_colour<T, TC> ||
              has_assignable_get<T, do_text_colour_get, TC>)
-  constexpr decltype(auto) operator()(T && torg, TC && vorg) const {
+  constexpr decltype(auto) operator()(T &&torg, TC &&vorg) const {
     auto t = bp::as_forward<T>(torg);
     auto v = bp::as_forward<TC>(vorg);
     if constexpr (member_text_colour<T, TC>) {
@@ -1710,8 +1709,8 @@ concept mut_box_pointer =
 
 template <typename T, typename TV1, typename TV2>
 concept mut_box_pair =
-    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>)&&(
-        mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
+    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>) &&
+    (mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
 
 template <typename TV1, typename TV2, mut_box_pair<TV1, TV2> T, typename TTL,
           typename TBR>
@@ -1911,7 +1910,7 @@ concept widget_states_aspect = requires(T const &t) {
   { call::state(t) } -> state_marker;
 };
 
-template <typename T, T... values> class widget_state_marker {
+template <std::equality_comparable T, T... values> class widget_state_marker {
   T value_;
 
 public:
@@ -1938,6 +1937,12 @@ public:
 };
 
 using no_state_t = widget_state_marker<int>;
+
+template <typename T, T... tS1, T... tS2>
+constexpr bool operator==(widget_state_marker<T, tS1...> const &l,
+                          widget_state_marker<T, tS2...> const &r) {
+  return l.current_state() == r.current_state();
+}
 
 template <typename T, T... values> struct widget_states {
   static constexpr std::size_t size() { return sizeof...(values); }
@@ -2002,16 +2007,17 @@ constexpr auto center(bounding_box auto const &b) {
 constexpr bool empty_box(bounding_box auto const &b) {
   return call::width(b) == 0 || call::height(b) == 0;
 }
-template <bounding_box T, bounding_box T2>
-constexpr T copy_box(T2 && b) {
-  if constexpr(bp::cvref_type<T2, T>) {
+template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
+  if constexpr (bp::cvref_type<T2, T>) {
     return std::forward<T2>(b);
-  } else if constexpr(std::constructible_from<T, T2&&>) {
+  } else if constexpr (std::constructible_from<T, T2 &&>) {
     return T(std::forward<T2>(b));
-  } else if constexpr(call::impl::has_from_xywh<T, decltype(call::tl_x(b))>) {
-    return call::box_from_xywh<T>(call::tl_x(b), call::tl_y(b), call::width(b), call::height(b));
+  } else if constexpr (call::impl::has_from_xywh<T, decltype(call::tl_x(b))>) {
+    return call::box_from_xywh<T>(call::tl_x(b), call::tl_y(b), call::width(b),
+                                  call::height(b));
   } else {
-    return call::box_from_xyxy<T>(call::tl_x(b), call::tl_y(b), call::br_x(b), call::br_y(b));
+    return call::box_from_xyxy<T>(call::tl_x(b), call::tl_y(b), call::br_x(b),
+                                  call::br_y(b));
   }
 }
 
