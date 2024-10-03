@@ -1771,12 +1771,12 @@ struct mock_state_aware_renderer {
       render_failed_type = std::string_view(typeid(state_t).name());
     }
   }
-  void set_state(int i) { do_set_state(i); }
+  void set_state(int i, display_state_callbacks auto&& cb) { do_set_state(i); cb.rerender(); }
 };
 
 struct int_states {
   int state_ = 0;
-  void handle(int i, std::invocable<int> auto &&cb) {
+  void handle(int i, std::invocable<widget_state_marker<int, 0, 1>> auto &&cb) {
     CGUI_ASSERT(i == 0 || i == 1);
     state_ = i;
     cb(i);
@@ -1812,6 +1812,13 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   EXPECT_THAT(state_aware_rend.render_failed_type, IsEmpty());
 }
 
+inline void expect_box_equal(bounding_box auto const& to_test, bounding_box auto const& to_expect, std::source_location const& sl = std::source_location::current()) {
+  EXPECT_THAT(call::tl_x(to_test), Eq(call::tl_x(to_expect))) << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::tl_y(to_test), Eq(call::tl_y(to_expect))) << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::br_x(to_test), Eq(call::br_x(to_expect))) << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::br_y(to_test), Eq(call::br_y(to_expect))) << "At " << sl.file_name() << ':' << sl.line();
+}
+
 TEST(WidgetBuilder, DisplayForEachState) // NOLINT
 {
   auto w = widget_builder()
@@ -1834,7 +1841,8 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   EXPECT_THAT(blue, Eq(0));
   EXPECT_THAT(alpha, Eq(255));
   r.drawn_pixels[0] = {};
-  w.handle(1);
+  bounding_box auto new_area = w.handle(1);
+  expect_box_equal(new_area, r.area());
   w.render(sr);
   ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
   EXPECT_THAT(red, Eq(0));

@@ -60,19 +60,7 @@ int main(int, char **) {
       get<hover>(background).colour() = {190, 190, 190, 255};
       get<hold>(background).colour() = {63, 63, 63, 255};
     }
-    // template <momentary_button::states s> using state =
-    // cgui::choice::state<momentary_button::states, s>; using enum
-    // momentary_button::states; button.state_colour(
-    //               state<button_off>(text = {255, 255, 255, 255}, background =
-    //               {128, 128, 128, 128}) state<button_hover>(text = {255, 255,
-    //               255, 255}, background = {128, 128, 128, 128})
-    //               state<button_clicked>(text = {255, 255, 255, 255},
-    //               background = {128, 128, 128, 128}) state<button_down>(text
-    //               = {255, 255, 255, 255}, background = {128, 128, 128, 128}))
-    // OR
-    // auto brc = button_render_configuration();
-    // brc.state(button_off, text = {...}, background = {...});
-    cgui::unused(button_bar_area);
+
     auto lorum_ipsum = cgui::widget_builder()
                            .area(full_area)
                            .display(cgui::text_renderer(std::ref(cached_font)))
@@ -96,10 +84,13 @@ int main(int, char **) {
     gui.render(renderer);
     renderer.present();
     while (!do_exit) {
-      while (cgui::poll_event(sdl_context, [&]<typename T>(T) {
+      while (cgui::poll_event(sdl_context, [&]<typename T>(T e) {
                if constexpr (std::is_same_v<T, cgui::sdl_quit_event>) {
                  do_exit = true;
+               } else if constexpr(cgui::has_handle<decltype(gui), T>) {
+                 gui.handle(std::move(e));
                }
+              cgui::unused(e);
              }) != 0) {
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(16));

@@ -159,6 +159,15 @@ public:
     auto r = sub_renderer(c);
     tuple_for_each([&r](auto &&v) { call::render(v, r); }, widgets_);
   }
+
+  constexpr void handle(auto const& evt) requires((has_handle<TWidgets, decltype(evt)> || ...))
+  {
+    call::for_each(widgets_, [&evt] <typename TW>(TW& w) {
+      if constexpr(has_handle<TW&, decltype(evt)>) {
+        call::handle(w, evt);
+      }
+    });
+  }
 };
 
 template <typename T> gui_context(T &) -> gui_context<std::remove_cvref_t<T>>;
@@ -218,9 +227,31 @@ struct widget_mono_state {
 
 struct widget_no_event_handler {};
 
+template <bounding_box TArea>
+class widget_display_state_callbacks {
+  TArea full_area_;
+  TArea to_rerender_{};
+public:
+  explicit constexpr widget_display_state_callbacks(TArea full_area) : full_area_(full_area) {}
+
+  constexpr void rerender() {
+    to_rerender_ = full_area_;
+  }
+  constexpr void rerender(bounding_box auto const& part_area) {
+    bounding_box auto moved_part_area = call::move_tl_to(part_area, call::top_left(full_area_));
+    to_rerender_ = call::box_union(moved_part_area, to_rerender_);
+    to_rerender_ = call::box_intersection(to_rerender_, full_area_);
+  }
+  TArea const& to_rerender() const {
+    return to_rerender_;
+  }
+
+};
+
 template <bounding_box TArea, typename TDisplay, typename TState,
           typename TEventHandler>
 class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
+  using display_state_callbacks_t = widget_display_state_callbacks<TArea>;
   TArea area_{};
   TDisplay display_;
   using base_t = bp::empty_structs_optimiser<TState, TEventHandler>;
@@ -235,16 +266,19 @@ class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
         std::type_identity<TEventHandler>{});
   }
 
-  constexpr auto set_state_callback() {
+  constexpr auto set_state_callback(display_state_callbacks_t& display_cb) {
     // At this point, the state handler can change its state and propagate the
     // state change to all affected display aspects.
-    return [this]<typename TS>(TS const &state) {
-      auto display_cb = [&state]<typename TD>(TD &display) {
-        if constexpr (has_set_state<TD, TS>) {
-          call::set_state(display, state);
+    return [this, &display_cb]<typename TS>(TS const &state) {
+      auto display_setter = [&state, &display_cb]<typename TD>(TD &display) {
+        if constexpr (has_set_state<TD, TS, decltype(display_cb)>) {
+          call::set_state(display, state, display_cb);
+        } else {
+          static_assert(!has_set_state<TD, TS>, "You are probably missing the display_state callback argument in your display set_state");
+          unused(display, state, display_cb);
         }
       };
-      call::for_each(display_, display_cb);
+      call::for_each(display_, display_setter);
     };
   }
 
@@ -281,22 +315,29 @@ public:
     auto render_callback = state(*this)(r.sub(area_), w, h);
     call::for_each(display_, std::move(render_callback));
   }
-  constexpr void handle(auto &&evt)
+  constexpr TArea handle(auto &&evt)
     requires(has_handle<TEventHandler, TArea const &, decltype(evt),
-                        decltype(set_state_callback())>)
+                        decltype(set_state_callback(std::declval<display_state_callbacks_t&>()))>)
   {
+    display_state_callbacks_t display_callbacks(area());
+    // We expect that all default-constructed areas are empty.
     // First level: we call the event handler that takes input events and
     // translates it to a component state change.
     call::handle(event_handler(*this), area(), std::forward<decltype(evt)>(evt),
-                 [this](auto &&state_event) {
+                 [this, &display_callbacks] <typename TStateEvent> (TStateEvent &&state_event) {
                    // Second level: event handler has taken the event input and
                    // now translates it to a behaviour event that the state
                    // aspect can read.
+                     auto prev_state = call::state(state(*this));
                    call::handle(
                        state(*this),
-                       std::forward<decltype(state_event)>(state_event),
-                       set_state_callback());
+                       std::forward<TStateEvent>(state_event));
+                   auto new_state = call::state(state(*this));
+                   if (prev_state != new_state) {
+                     set_state_callback(display_callbacks)(new_state);
+                   }
                  });
+    return display_callbacks.to_rerender();
   }
 };
 
@@ -682,7 +723,7 @@ public:
 
 template <display_component T, typename TState, TState... tStates>
 class display_per_state_impl {
-  static constexpr auto state_count = sizeof...(tStates);
+  static constexpr auto state_count = std::max<std::size_t>(sizeof...(tStates), 1u);
   using arr_t = std::array<T, state_count>;
   arr_t d_;
 
@@ -703,6 +744,14 @@ public:
   get(bp::cvref_type<display_per_state_impl> auto &&v) noexcept {
     return std::get<state2index(widget_state_marker<TState, tStates...>(tI))>(
         std::forward<decltype(v)>(v).d_);
+  }
+
+  static constexpr void set_state(auto const&, display_state_callbacks auto&& cb) {
+    if constexpr(state_count > 1) {
+      cb.rerender();
+    } else {
+      unused(cb);
+    }
   }
 };
 template <bp::ct_value_wrapper val, typename T>

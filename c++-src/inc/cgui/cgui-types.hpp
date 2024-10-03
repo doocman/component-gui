@@ -1021,6 +1021,19 @@ concept mutable_bounding_box =
     bounding_box_xxyy_mut<T, TFrom> || bounding_box_coord_set<T, TFrom> ||
     bounding_box_xwyh_set<T, TFrom> || bounding_box_xxyy_set<T, TFrom>;
 
+template <typename T, typename... TArgs>
+concept set_state_with_rerender = has_set_state<T, TArgs...> &&
+    requires(bp::as_forward<T> t, bp::as_forward<TArgs>... args) {
+  {call::set_state(*t, *args...)} -> bounding_box;
+    };
+
+template <typename T, typename TBox = default_rect>
+concept display_state_callbacks = bounding_box<TBox> && requires(T& t, TBox const& cbox)
+{
+  t.rerender();
+  t.rerender(cbox);
+};
+
 constexpr auto x_view(bounding_box auto &&b) {
   return std::views::iota(call::tl_x(b), call::br_x(b));
 }
@@ -1988,6 +2001,18 @@ constexpr auto center(bounding_box auto const &b) {
 
 constexpr bool empty_box(bounding_box auto const &b) {
   return call::width(b) == 0 || call::height(b) == 0;
+}
+template <bounding_box T, bounding_box T2>
+constexpr T copy_box(T2 && b) {
+  if constexpr(bp::cvref_type<T2, T>) {
+    return std::forward<T2>(b);
+  } else if constexpr(std::constructible_from<T, T2&&>) {
+    return T(std::forward<T2>(b));
+  } else if constexpr(call::impl::has_from_xywh<T, decltype(call::tl_x(b))>) {
+    return call::box_from_xywh<T>(call::tl_x(b), call::tl_y(b), call::width(b), call::height(b));
+  } else {
+    return call::box_from_xyxy<T>(call::tl_x(b), call::tl_y(b), call::br_x(b), call::br_y(b));
+  }
 }
 
 struct dummy_renderer {
