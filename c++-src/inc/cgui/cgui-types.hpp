@@ -1160,6 +1160,7 @@ template <ui_events... evts> struct subset_ui_events {
 template <ui_events evt> struct subset_ui_events<evt> {
   constexpr explicit(false) subset_ui_events(ui_events v) noexcept {
     assert(v == evt);
+    unused(v);
   }
   constexpr subset_ui_events() noexcept = default;
   constexpr explicit(false) operator ui_events() const noexcept { return evt; }

@@ -285,7 +285,8 @@ public:
   auto ascender() const { return handle()->ascender >> 6; }
 };
 
-inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face const & face, char v) {
+expected<ft_font_glyph, FT_Error> glyph(ft_font_face const &face,
+                                               char v) {
   auto gl_index = FT_Get_Char_Index(face.handle(), v);
   if (auto ec = FT_Load_Glyph(face.handle(), gl_index, FT_LOAD_DEFAULT);
       ec != 0) {

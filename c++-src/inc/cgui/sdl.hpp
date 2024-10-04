@@ -331,20 +331,6 @@ public:
   }
 };
 
-template <>
-struct extend_api<SDL_MouseMotionEvent> {
-  static constexpr subset_ui_events<ui_events::mouse_move> is_event(SDL_MouseMotionEvent const&) {
-    return  {};
-  }
-};
-template <>
-struct extend_api<SDL_MouseButtonEvent> {
-
-  static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const& e) {
-    return static_cast<mouse_buttons>(e.button);
-  }
-};
-
 template <typename T> struct sdl_event_t {
   T event;
 };
@@ -413,6 +399,20 @@ inline int poll_event(sdl_context_instance &, sdl_event_callback auto &&cb) {
   return 0;
 }
 } // namespace
+
+template <>
+struct extend_api<SDL_MouseMotionEvent> {
+  static constexpr subset_ui_events<ui_events::mouse_move> is_event(SDL_MouseMotionEvent const&) {
+    return  {};
+  }
+};
+template <>
+struct extend_api<SDL_MouseButtonEvent> {
+
+  static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const& e) {
+    return static_cast<mouse_buttons>(e.button);
+  }
+};
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_SDL_HPP

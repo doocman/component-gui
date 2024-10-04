@@ -2,10 +2,10 @@
 #include <cgui/embedded/@NAME@.hpp>
 
 namespace cgui::embedded {
+constexpr unsigned char @NAME@_data_[] = {
+  @data_cpp@
+};
 std::span<unsigned char const> @NAME@() noexcept {
-  constexpr unsigned char data[] = {
-    @data_cpp@
-  };
-  return std::span(data);
+  return std::span(@NAME@_data_);
 }
 }

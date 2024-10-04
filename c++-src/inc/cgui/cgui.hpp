@@ -45,11 +45,12 @@ template <canvas T, bounding_box TB> class sub_renderer {
   }
 
   template <typename TB2>
-  constexpr std::pair<TB2, TB2> relative_absolute_dest(TB2 const& dest) const {
-    auto relative_dest = call::box_intersection<TB2>(dest, area_);
-    auto absolute_dest =
-        call::nudge_right(call::nudge_down(relative_dest, offset_y), offset_x);
-    return {relative_dest, absolute_dest};
+  constexpr TB2 to_relative_dest(TB2 const& input_dest) const {
+    return call::box_intersection<TB2>(input_dest, area_);
+  }
+  template <typename TB2>
+  constexpr TB2 to_absolute(TB2 const& relative_dest) const {
+    return call::nudge_right(call::nudge_down(relative_dest, offset_y), offset_x);
   }
 
 public:
@@ -65,7 +66,8 @@ public:
 
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
-    if (empty_box(dest)) {
+    auto relative_dest = to_relative_dest(dest);
+    if (empty_box(relative_dest)) {
       using return_type =
           decltype(call::draw_pixels(*c_, dest, [](auto &&...) {}));
       if constexpr (std::is_void_v<return_type>) {
@@ -74,7 +76,7 @@ public:
         return return_type{};
       }
     }
-    auto [relative_dest, absolute_dest] = relative_absolute_dest(dest);
+    auto absolute_dest = to_absolute(relative_dest);
     return call::draw_pixels(
         *c_, absolute_dest,
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
@@ -103,7 +105,7 @@ public:
   }
 
   constexpr void fill(bounding_box auto const& dest, colour auto const& c) {
-    auto [relative_dest, absolute_dest] = relative_absolute_dest(dest);
+    auto absolute_dest = to_absolute(to_relative_dest(dest));
     if (!empty_box(absolute_dest)) {
       call::fill(*c_, absolute_dest, c);
     }
