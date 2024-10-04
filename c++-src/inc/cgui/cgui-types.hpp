@@ -1835,8 +1835,8 @@ constexpr auto box_union(T1 const &b1, T2 const &b2) {
 
 template <typename TRes = void, bounding_box T1, bounding_box T2>
 constexpr auto box_intersection(T1 const &b1, T2 const &b2) {
-  assert(call::valid_box(b1));
-  assert(call::valid_box(b2));
+  CGUI_ASSERT(call::valid_box(b1));
+  CGUI_ASSERT(call::valid_box(b2));
   using result_t =
       std::conditional_t<std::is_void_v<TRes>, std::common_type<T1, T2>,
                          std::type_identity<TRes>>::type;

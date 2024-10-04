@@ -23,6 +23,7 @@ cgui_assert(auto &&val, std::string_view text = {},
     if (!empty(text)) {
       std::cerr << '\t' << text;
     }
+    std::abort();
   }
 }
 #define CGUI_ASSERT(EXPR) ::cgui::cgui_assert((EXPR))

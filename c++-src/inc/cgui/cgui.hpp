@@ -171,7 +171,7 @@ public:
     return res;
   }
 
-  constexpr TB const &area() const { return area_.relative_area(); }
+  constexpr TB area() const { return area_.relative_area(); }
 };
 
 template <typename T, typename TB> sub_renderer(T &, TB) -> sub_renderer<T, TB>;
@@ -183,6 +183,8 @@ template <canvas T, widget_display... TWidgets> class gui_context {
   std::tuple<TWidgets...> widgets_;
 
 public:
+  using native_box_t = std::remove_cvref_t<decltype(std::declval<T&>().area())>;
+
   explicit constexpr gui_context(T const &, TWidgets... ws)
       : widgets_(std::move(ws)...) {}
   explicit constexpr gui_context(TWidgets... ws) : widgets_(std::move(ws)...) {}
@@ -205,9 +207,7 @@ public:
   }
 
   template <typename... Ts> constexpr void render(sub_renderer<Ts...> &&r) {
-    static_assert(call::impl::member_fill<decltype(r), decltype(r.area()),
-                                          default_colour_t>);
-    call::fill(r, r.area(), default_colour_t{0, 0, 0, 255});
+    cgui::fill(r, r.area(), default_colour_t{0, 0, 0, 255});
     tuple_for_each([&r](auto &&v) { call::render(v, r); }, widgets_);
   }
 
@@ -217,14 +217,16 @@ public:
 
   constexpr void render(T &c) { render(sub_renderer(c)); }
 
-  constexpr bounding_box auto handle(auto const &evt)
+  constexpr native_box_t handle(auto const &evt)
     requires((has_handle<TWidgets, decltype(evt)> || ...))
   {
+    auto b = native_box_t{};
     call::for_each(widgets_, [&evt]<typename TW>(TW &w) {
       if constexpr (has_handle<TW &, decltype(evt)>) {
         call::handle(w, evt);
       }
     });
+    return b;
   }
 };
 
