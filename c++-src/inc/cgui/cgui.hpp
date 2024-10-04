@@ -15,25 +15,70 @@
 
 namespace cgui {
 
+template <typename TX, typename TY> class nudger {
+  TX x_;
+  TY y_;
+
+public:
+  constexpr nudger(TX x, TY y) : x_(x), y_(y) {}
+
+  constexpr pixel_coord auto operator()(auto &&in) const
+    requires(requires() {
+      call::nudge_down(in, y_);
+      call::nudge_right(in, x_);
+    })
+  {
+    return call::nudge_down(call::nudge_right(in, x_), y_);
+  }
+};
+
+template <bounding_box TB = default_rect> class recursive_area_navigator {
+  TB relative_area_;
+  using x_t = std::remove_cvref_t<decltype(call::tl_x(relative_area_))>;
+  using y_t = std::remove_cvref_t<decltype(call::tl_y(relative_area_))>;
+  x_t offset_x_{};
+  y_t offset_y_{};
+
+  constexpr recursive_area_navigator(TB const &b, x_t ox, y_t oy)
+      : relative_area_(b), offset_x_(ox), offset_y_(oy) {}
+
+public:
+  constexpr explicit recursive_area_navigator(TB const &b)
+      : relative_area_(b) {}
+  template <bounding_box TB2 = TB>
+  constexpr recursive_area_navigator sub(TB2 const &b) const {
+    auto intersection = call::box_intersection<TB>(b, relative_area_);
+    if (call::valid_box(intersection)) {
+      return {call::nudge_up(call::nudge_left(intersection, call::tl_x(b)),
+                             call::tl_y(b)),
+              offset_x_ + call::tl_x(b), offset_y_ + call::tl_y(b)};
+    } else {
+      auto x = call::tl_x(relative_area_);
+      auto y = call::tl_y(relative_area_);
+      return {call::box_from_xyxy<TB>(x, y, x, y), offset_x_, offset_y_};
+    }
+    return recursive_area_navigator(copy_box<TB2>(b));
+  }
+  constexpr TB relative_area() const { return relative_area_; }
+  template <typename TB2 = TB>
+  constexpr TB move_to_absolute(TB2 const &b) const {
+    return call::box_from_xywh<TB>(call::tl_x(b) + offset_x_,
+                                   call::tl_y(b) + offset_y_, call::width(b),
+                                   call::height(b));
+  }
+  constexpr TB absolute_area() const {
+    return move_to_absolute(relative_area_);
+  }
+
+  constexpr nudger<x_t, y_t> relative_to_absolute_nudger() const noexcept {
+    return {offset_x_, offset_y_};
+  }
+};
+
 template <canvas T, bounding_box TB> class sub_renderer {
   T *c_;
-  TB area_;
-  using x_t = std::remove_cvref_t<decltype(call::tl_x(area_))>;
-  using y_t = std::remove_cvref_t<decltype(call::tl_y(area_))>;
-  x_t offset_x{};
-  y_t offset_y{};
+  recursive_area_navigator<TB> area_;
   default_colour_t set_colour_{};
-
-  constexpr auto relative_area() const {
-    return call::box_from_xywh<TB>(x_t{}, y_t{}, call::width(area_),
-                                   call::height(area_));
-  }
-
-  template <bounding_box TB2> constexpr auto absolute_area(TB2 const &b) const {
-    return call::box_from_xywh<TB2>(call::tl_x(b) + offset_x,
-                                    call::tl_y(b) + offset_y, call::width(b),
-                                    call::height(b));
-  }
 
   static constexpr TB bound_area(TB a) {
     if (!call::valid_box(a)) {
@@ -45,24 +90,23 @@ template <canvas T, bounding_box TB> class sub_renderer {
   }
 
   template <typename TB2>
-  constexpr TB2 to_relative_dest(TB2 const& input_dest) const {
-    return call::box_intersection<TB2>(input_dest, area_);
+  constexpr TB2 to_relative_dest(TB2 const &input_dest) const {
+    return call::box_intersection<TB2>(input_dest, area_.relative_area());
   }
   template <typename TB2>
-  constexpr TB2 to_absolute(TB2 const& relative_dest) const {
-    return call::nudge_right(call::nudge_down(relative_dest, offset_y), offset_x);
+  constexpr TB2 to_absolute(TB2 const &relative_dest) const {
+    return area_.move_to_absolute(relative_dest);
+  }
+  constexpr sub_renderer(T &c, recursive_area_navigator<TB> a,
+                         default_colour_t sc)
+      : c_(std::addressof(c)), area_(a), set_colour_(sc) {
+    assert(call::valid_box(area_.relative_area()));
   }
 
 public:
-  constexpr sub_renderer(T &c, TB a, x_t x, y_t y, default_colour_t sc)
-      : c_(std::addressof(c)), area_(a), offset_x(x), offset_y(y),
-        set_colour_(sc) {
-    assert(call::valid_box(area_));
-  }
-  constexpr sub_renderer(T &c, TB a) : sub_renderer(c, a, 0, 0, {}) {}
+  constexpr sub_renderer(T &c, TB a)
+      : sub_renderer(c, recursive_area_navigator<TB>(a), {}) {}
   constexpr explicit sub_renderer(T &c) : sub_renderer(c, call::area(c)) {}
-
-
 
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
@@ -80,13 +124,12 @@ public:
     return call::draw_pixels(
         *c_, absolute_dest,
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
-         offset_x = offset_x, offset_y = offset_y](auto &&drawer) {
+         nudge = area_.relative_to_absolute_nudger()](auto &&drawer) {
           std::invoke(
               *cb, relative_dest,
               [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
-               offset_x, offset_y](pixel_coord auto &&px, colour auto &&col) {
-                auto absolute_pos =
-                    call::nudge_right(call::nudge_down(px, offset_y), offset_x);
+               &nudge](pixel_coord auto &&px, colour auto &&col) {
+                auto absolute_pos = nudge(px);
                 std::invoke(*d, absolute_pos, col);
               });
         });
@@ -104,7 +147,9 @@ public:
                 });
   }
 
-  constexpr void fill(bounding_box auto const& dest, colour auto const& c) {
+  constexpr void fill(bounding_box auto const &dest, colour auto const &c)
+    requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
+  {
     auto absolute_dest = to_absolute(to_relative_dest(dest));
     if (!empty_box(absolute_dest)) {
       call::fill(*c_, absolute_dest, c);
@@ -113,18 +158,7 @@ public:
 
   constexpr sub_renderer sub(bounding_box auto &&b,
                              default_colour_t col) const {
-    auto intersection = call::box_intersection<TB>(b, area_);
-    if (call::valid_box(intersection)) {
-      return {*c_,
-              call::nudge_up(call::nudge_left(intersection, call::tl_x(b)),
-                             call::tl_y(b)),
-              offset_x + call::tl_x(b), offset_y + call::tl_y(b), col};
-    } else {
-      auto x = call::tl_x(area_);
-      auto y = call::tl_y(area_);
-      return {*c_, call::box_from_xyxy<TB>(x, y, x, y), offset_x, offset_y,
-              col};
-    }
+    return {*c_, area_.sub(b), col};
   }
 
   constexpr sub_renderer sub(bounding_box auto &&b) const {
@@ -170,22 +204,20 @@ public:
         std::tuple_cat(widgets_, std::tuple<TW2...>(std::forward<TW2>(ws)...)));
   }
 
-  template <typename... Ts>
-  constexpr void render(sub_renderer<Ts...> && r) {
-    static_assert(call::impl::member_fill<decltype(r), decltype(r.area()), default_colour_t>);
+  template <typename... Ts> constexpr void render(sub_renderer<Ts...> &&r) {
+    static_assert(call::impl::member_fill<decltype(r), decltype(r.area()),
+                                          default_colour_t>);
     call::fill(r, r.area(), default_colour_t{0, 0, 0, 255});
     tuple_for_each([&r](auto &&v) { call::render(v, r); }, widgets_);
   }
 
-  constexpr void render(T &c, bounding_box auto const& rarea) {
+  constexpr void render(T &c, bounding_box auto const &rarea) {
     render(sub_renderer(c, rarea));
   }
 
-  constexpr void render(T &c) {
-    render(sub_renderer(c));
-  }
+  constexpr void render(T &c) { render(sub_renderer(c)); }
 
-  constexpr void handle(auto const &evt)
+  constexpr bounding_box auto handle(auto const &evt)
     requires((has_handle<TWidgets, decltype(evt)> || ...))
   {
     call::for_each(widgets_, [&evt]<typename TW>(TW &w) {
@@ -740,8 +772,8 @@ public:
     return colour_;
   }
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
-    call::fill(r, default_rect{{0, 0}, {call::width(args), call::height(args)}},
-               colour_);
+    fill(r, default_rect{{0, 0}, {call::width(args), call::height(args)}},
+         colour_);
   }
 };
 

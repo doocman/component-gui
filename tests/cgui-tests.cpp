@@ -1163,6 +1163,58 @@ struct test_renderer {
   }
 };
 
+inline void expect_box_equal(
+    bounding_box auto const &to_test, bounding_box auto const &to_expect,
+    std::source_location const &sl = std::source_location::current()) {
+  EXPECT_THAT(call::tl_x(to_test), Eq(call::tl_x(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::tl_y(to_test), Eq(call::tl_y(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::br_x(to_test), Eq(call::br_x(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::br_y(to_test), Eq(call::br_y(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+}
+
+TEST(RecursiveAreaNavigator, NavigateSimple) // NOLINT
+{
+  auto nav = recursive_area_navigator({{0, 0}, {5, 5}});
+  expect_box_equal(nav.relative_area(), default_rect{{0, 0}, {5, 5}});
+  expect_box_equal(nav.absolute_area(), default_rect{{0, 0}, {5, 5}});
+  auto sub = nav.sub({{0, 0}, {4, 4}});
+  expect_box_equal(sub.relative_area(), default_rect{{0, 0}, {4, 4}});
+  expect_box_equal(sub.absolute_area(), default_rect{{0, 0}, {4, 4}});
+  sub = nav.sub({{1, 1}, {2, 2}});
+  expect_box_equal(sub.relative_area(), default_rect{{0, 0}, {1, 1}});
+  expect_box_equal(sub.absolute_area(), default_rect{{1, 1}, {2, 2}});
+  sub = nav.sub({{0, 0}, {6, 6}});
+  expect_box_equal(sub.relative_area(), default_rect{{0, 0}, {5, 5}});
+  expect_box_equal(sub.absolute_area(), default_rect{{0, 0}, {5, 5}});
+
+  nav = recursive_area_navigator({{1, 1}, {5, 5}});
+  sub = nav.sub({{0, 2}, {4, 4}});
+  expect_box_equal(sub.relative_area(), default_rect{{1, 0}, {4, 2}});
+  expect_box_equal(sub.absolute_area(), default_rect{{1, 2}, {4, 4}});
+  auto sub2 = sub.sub({{2, 0}, {4, 3}});
+  expect_box_equal(sub2.relative_area(), default_rect{{0, 0}, {2, 2}});
+  expect_box_equal(sub2.absolute_area(), default_rect{{2, 2}, {4, 4}});
+}
+
+TEST(RecursiveAreaNavigator, Nudger) // NOLINT
+{
+  auto nav = recursive_area_navigator({{0, 0}, {5, 5}});
+  auto nudger = nav.relative_to_absolute_nudger();
+  auto xy = nudger(default_pixel_coord{0, 0});
+  auto& [x, y] = xy;
+  EXPECT_THAT(x, Eq(0));
+  EXPECT_THAT(y, Eq(0));
+  auto sub = nav.sub({{1, 1,}, { 5, 5}});
+  nudger = sub.relative_to_absolute_nudger();
+  xy = nudger(default_pixel_coord{0, 0});
+  EXPECT_THAT(x, Eq(1));
+  EXPECT_THAT(y, Eq(1));
+}
+
 TEST(SubRenderer, DrawPixels) // NOLINT
 {
   auto r = test_renderer({{0, 0}, {6, 7}});
@@ -1827,19 +1879,6 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   checkpoint.Call();
   w.render(dummy_renderer{});
   EXPECT_THAT(state_aware_rend.render_failed_type, IsEmpty());
-}
-
-inline void expect_box_equal(
-    bounding_box auto const &to_test, bounding_box auto const &to_expect,
-    std::source_location const &sl = std::source_location::current()) {
-  EXPECT_THAT(call::tl_x(to_test), Eq(call::tl_x(to_expect)))
-      << "At " << sl.file_name() << ':' << sl.line();
-  EXPECT_THAT(call::tl_y(to_test), Eq(call::tl_y(to_expect)))
-      << "At " << sl.file_name() << ':' << sl.line();
-  EXPECT_THAT(call::br_x(to_test), Eq(call::br_x(to_expect)))
-      << "At " << sl.file_name() << ':' << sl.line();
-  EXPECT_THAT(call::br_y(to_test), Eq(call::br_y(to_expect)))
-      << "At " << sl.file_name() << ':' << sl.line();
 }
 
 TEST(WidgetBuilder, DisplayForEachState) // NOLINT

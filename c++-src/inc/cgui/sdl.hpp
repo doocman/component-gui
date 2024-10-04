@@ -204,9 +204,10 @@ public:
     return {};
   }
 
-  void fill(bounding_box auto const& b, colour auto const& c) {
+  void fill(bounding_box auto const &b, colour auto const &c) {
     decltype(auto) sdlb = copy_box<SDL_Rect>(b);
-    SDL_SetRenderDrawColor(r_, call::red(c), call::green(c), call::blue(c), call::alpha(c));
+    SDL_SetRenderDrawColor(r_, call::red(c), call::green(c), call::blue(c),
+                           call::alpha(c));
     SDL_RenderFillRect(r_, &sdlb);
   }
 
@@ -321,7 +322,8 @@ public:
       if (auto r = SDL_GetRenderer(w); r != nullptr) {
         return sdl_window(w);
       }
-      if (auto r = SDL_CreateRenderer(w, -1, SDL_RENDERER_TARGETTEXTURE | SDL_RENDERER_ACCELERATED);
+      if (auto r = SDL_CreateRenderer(
+              w, -1, SDL_RENDERER_TARGETTEXTURE | SDL_RENDERER_ACCELERATED);
           r != nullptr) {
         return sdl_window(w);
       }
@@ -339,9 +341,10 @@ template <> struct sdl_event_t<void> {
   SDL_Event raw_event;
 };
 
-using sdl_generic_event = SDL_Event;//sdl_event_t<void>;
-using sdl_quit_event = SDL_QuitEvent;//sdl_event_t<SDL_QuitEvent>;
-using sdl_mouse_move_event = SDL_MouseMotionEvent;//sdl_event_t<SDL_MouseMotionEvent>;
+using sdl_generic_event = SDL_Event;  // sdl_event_t<void>;
+using sdl_quit_event = SDL_QuitEvent; // sdl_event_t<SDL_QuitEvent>;
+using sdl_mouse_move_event =
+    SDL_MouseMotionEvent; // sdl_event_t<SDL_MouseMotionEvent>;
 
 template <typename T>
 using sdl_event_callback_result =
@@ -368,12 +371,9 @@ inline expected<sdl_window, std::string> build(sdl_window_builder &&builder) {
   return std::move(builder).build();
 }
 
-inline auto switch_sdl_event(sdl_event_callback auto &&cb,
-                             SDL_Event const &e)
+inline auto switch_sdl_event(sdl_event_callback auto &&cb, SDL_Event const &e)
     -> sdl_event_callback_result<decltype(cb)> {
-  constexpr auto gen_evt = []<typename T>(T const &e) {
-    return e;
-  };
+  constexpr auto gen_evt = []<typename T>(T const &e) { return e; };
   switch (static_cast<SDL_EventType>(e.type)) {
   case SDL_QUIT:
     return cb(gen_evt(e.quit));
@@ -400,16 +400,22 @@ inline int poll_event(sdl_context_instance &, sdl_event_callback auto &&cb) {
 }
 } // namespace
 
-template <>
-struct extend_api<SDL_MouseMotionEvent> {
-  static constexpr subset_ui_events<ui_events::mouse_move> is_event(SDL_MouseMotionEvent const&) {
-    return  {};
+template <> struct extend_api<SDL_MouseMotionEvent> {
+  static constexpr subset_ui_events<ui_events::mouse_move>
+  event_type(SDL_MouseMotionEvent const &) {
+    return {};
   }
 };
-template <>
-struct extend_api<SDL_MouseButtonEvent> {
+template <> struct extend_api<SDL_MouseButtonEvent> {
+  static constexpr subset_ui_events<ui_events::mouse_button_up,
+                                    ui_events::mouse_button_down>
+  event_type(SDL_MouseMotionEvent const &e) {
+    CGUI_ASSERT(e.type == SDL_MOUSEBUTTONUP || e.type == SDL_MOUSEBUTTONDOWN);
+    return {e.type == SDL_MOUSEBUTTONUP ? ui_events::mouse_button_up
+                                        : ui_events::mouse_button_down};
+  }
 
-  static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const& e) {
+  static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
     return static_cast<mouse_buttons>(e.button);
   }
 };

@@ -66,7 +66,7 @@
       }                                                                        \
     }                                                                          \
     template <typename... Ts, has_##NAME<Ts...> T>                             \
-    constexpr decltype(auto) operator()(T &&t, Ts &&...args) const {           \
+    constexpr decltype(auto) operator()(T && t, Ts &&...args) const {          \
       return call(std::forward<T>(t), std::forward<Ts>(args)...);              \
     }                                                                          \
   };
@@ -153,7 +153,7 @@ struct do_apply_to {
               requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
                 std::apply(*cb, *t);
               }))
-  constexpr decltype(auto) operator()(T &&t, TCB &&cb) const {
+  constexpr decltype(auto) operator()(T && t, TCB && cb) const {
     auto tf = bp::as_forward<T>(t);
     auto cf = bp::as_forward<TCB>(cb);
     if constexpr (has_apply_to<T, TCB>) {
@@ -1172,7 +1172,9 @@ template <ui_events evt> struct subset_ui_events<evt> {
 };
 
 template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> && requires() {
+concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
+  requires()
+{
   {
     std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
   } -> std::convertible_to<bool>;
@@ -1202,6 +1204,26 @@ struct do_event_type {
     return _do_event_type{}(std::forward<T>(t));
   }
 };
+} // namespace impl
+inline constexpr impl::do_event_type event_type;
+inline constexpr impl::_do_fill fill;
+} // namespace call
+
+template <typename T, typename... TVals>
+concept has_native_fill =
+    requires(bp::as_forward<T> t, bp::as_forward<TVals>... args) {
+      call::fill(*t, *args...);
+    };
+
+template <typename T, typename... TVals>
+concept has_draw_pixels =
+    requires(bp::as_forward<T> t, bp::as_forward<TVals>... args) {
+      call::draw_pixels(*t, *args...);
+    };
+
+template <typename T>
+concept has_event_type =
+    requires(bp::as_forward<T> t) { call::event_type(*t); };
 
 template <colour TC> struct fill_on_draw_pixel {
   TC c;
@@ -1216,28 +1238,18 @@ template <colour TC> struct fill_on_draw_pixel {
   }
 };
 
-struct do_fill {
-  template <typename T, bounding_box TB, colour TC>
-    requires(has_fill<T, TB, TC> ||
-             has_draw_pixels<T, TB, fill_on_draw_pixel<TC>>)
-  constexpr auto operator()(T &&v, TB const &b, TC const &c) const {
-    auto vf = bp::as_forward<decltype(v)>(v);
-    if constexpr (has_fill<T, TB, TC>) {
-      return _do_fill{}(*vf, b, c);
-    } else {
-      return call::draw_pixels(*vf, b, fill_on_draw_pixel<TC>{c});
-    }
+constexpr auto fill =
+    []<typename T, bounding_box TB, colour TC>(T &&v, TB const &b, TC const &c)
+  requires(has_native_fill<T, TB, TC> ||
+           has_draw_pixels<T, TB, fill_on_draw_pixel<TC>>)
+{
+  auto vf = bp::as_forward<decltype(v)>(v);
+  if constexpr (has_native_fill<T, TB, TC>) {
+    return call::fill(*vf, b, c);
+  } else {
+    return call::draw_pixels(*vf, b, fill_on_draw_pixel<TC>{c});
   }
 };
-
-} // namespace impl
-inline constexpr impl::do_event_type event_type;
-inline constexpr impl::do_fill fill;
-} // namespace call
-
-template <typename T>
-concept has_event_type =
-    requires(bp::as_forward<T> t) { call::event_type(*t); };
 
 template <ui_events tEvt, has_event_type T> consteval bool can_be_event() {
   using subset_t =
@@ -1368,7 +1380,7 @@ concept has_set_displayed =
 
 struct do_set_displayed {
   template <typename... Ts, has_set_displayed<Ts...> T>
-  constexpr decltype(auto) operator()(T &&torg, Ts &&...vals) const {
+  constexpr decltype(auto) operator()(T && torg, Ts &&...vals) const {
     auto t = bp::as_forward(std::forward<T>(torg));
     if constexpr (member_set_displayed<T, Ts...>) {
       return (*t).set_displayed(std::forward<Ts>(vals)...);
@@ -1543,7 +1555,7 @@ concept has_area = member_area<T, Ts...> || static_area<T, Ts...> ||
 
 struct do_area {
   template <typename... Ts, has_area<Ts...> T>
-  constexpr decltype(auto) operator()(T &&torg, Ts &&...args) const {
+  constexpr decltype(auto) operator()(T && torg, Ts &&...args) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_area<T, Ts...>) {
       return (*t).area(std::forward<Ts>(args)...);
@@ -1571,7 +1583,7 @@ concept has_glyph = member_glyph<T, TChar> || free_glyph<T, TChar>;
 
 struct do_glyph {
   template <typename TChar, has_glyph<TChar> T>
-  constexpr decltype(auto) operator()(T &&torg, TChar c) const {
+  constexpr decltype(auto) operator()(T && torg, TChar c) const {
     auto t = bp::as_forward<T>(torg);
     if constexpr (member_glyph<T, TChar>) {
       return (*t).glyph(c);
@@ -1624,7 +1636,7 @@ struct do_text_colour : private do_text_colour_get {
   template <typename T, colour TC>
     requires(has_text_colour<T, TC> ||
              has_assignable_get<T, do_text_colour_get, TC>)
-  constexpr decltype(auto) operator()(T &&torg, TC &&vorg) const {
+  constexpr decltype(auto) operator()(T && torg, TC && vorg) const {
     auto t = bp::as_forward<T>(torg);
     auto v = bp::as_forward<TC>(vorg);
     if constexpr (member_text_colour<T, TC>) {
@@ -1710,8 +1722,8 @@ concept mut_box_pointer =
 
 template <typename T, typename TV1, typename TV2>
 concept mut_box_pair =
-    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>) &&
-    (mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
+    (mut_box_pointer<T, TV1> || call::is_placeholder_v<TV1>)&&(
+        mut_box_pointer<T, TV2> || call::is_placeholder_v<TV2>);
 
 template <typename TV1, typename TV2, mut_box_pair<TV1, TV2> T, typename TTL,
           typename TBR>
