@@ -57,12 +57,12 @@ public:
       auto y = call::tl_y(relative_area_);
       return {call::box_from_xyxy<TB>(x, y, x, y), offset_x_, offset_y_};
     }
-    return recursive_area_navigator(copy_box<TB2>(b));
+    return recursive_area_navigator(copy_box<TB>(b));
   }
   constexpr TB relative_area() const { return relative_area_; }
   template <typename TB2 = TB>
-  constexpr TB move_to_absolute(TB2 const &b) const {
-    return call::box_from_xywh<TB>(call::tl_x(b) + offset_x_,
+  constexpr TB2 move_to_absolute(TB2 const &b) const {
+    return call::box_from_xywh<TB2>(call::tl_x(b) + offset_x_,
                                    call::tl_y(b) + offset_y_, call::width(b),
                                    call::height(b));
   }
@@ -171,7 +171,7 @@ public:
     return res;
   }
 
-  constexpr TB const &area() const { return area_; }
+  constexpr TB const &area() const { return area_.relative_area(); }
 };
 
 template <typename T, typename TB> sub_renderer(T &, TB) -> sub_renderer<T, TB>;
