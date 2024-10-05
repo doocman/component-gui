@@ -34,66 +34,71 @@ int main(int, char **) {
                          .value();
     std::cout << "font_face generated\n";
     auto cached_font = cgui::cached_font(std::move(text_font));
-    auto hello_world_header =
-        cgui::widget_builder()
-            .area(cgui::call::trim_from_above(
-                &full_area, std::min<int>(cgui::call::height(full_area), 128)))
-            .display(cgui::text_renderer(std::ref(cached_font)))
-            .build();
-    std::get<0>(hello_world_header.displays())
-        .set_displayed(hello_world_header.area(), "Hello World!")
-        .text_colour({255, 255, 255, 255});
-    auto button_bar_area = cgui::call::trim_from_below(
-        &full_area, std::min<int>(cgui::call::height(full_area), 128));
-    auto quit_button =
-        cgui::widget_builder()
-            .area(cgui::call::trim_from_left(
-                &button_bar_area, cgui::call::width(button_bar_area) / 2))
-            .display(cgui::display_per_state(cgui::fill_rect()),
-                     cgui::text_renderer(std::ref(cached_font)))
-            .event(cgui::buttonlike_trigger())
-            .state(cgui::momentary_button{.on_click = [] {}})
-            .build();
-    std::get<1>(quit_button.displays())
-        .set_displayed(quit_button.area(), "Quit")
-        .text_colour({255, 255, 255, 255});
-    {
-      auto &background = std::get<0>(quit_button.displays());
-      using enum cgui::momentary_button_states;
-      get<off>(background).colour() = {40, 40, 40, 255};
-      get<hover>(background).colour() = {190, 190, 190, 255};
-      get<hold>(background).colour() = {63, 63, 63, 255};
-    }
 
-    auto lorum_ipsum = cgui::widget_builder()
-                           .area(full_area)
-                           .display(cgui::text_renderer(std::ref(cached_font)))
-                           .build();
-    std::get<0>(lorum_ipsum.displays())
-        .set_displayed(
-            hello_world_header.area(),
-#if 1
-            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed "
-            "do eiusmod tempor incididunt ut labore et dolore magna "
-            "aliqua. Ut enim ad minim veniam, quis nostrud exercitation "
-            "ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis "
-            "aute irure dolor in reprehenderit in voluptate velit esse "
-            "cillum dolore eu fugiat nulla pariatur. Excepteur sint "
-            "occaecat cupidatat non proident, sunt in culpa qui officia "
-            "deserunt mollit anim id est laborum.\n\nDid you get that?"
-#else
-            "h\nMuch text bad performance. Fix?"
-#endif
-
-            )
-        .text_colour({255, 255, 255, 255});
     bool do_exit{};
     auto renderer = main_window.canvas().value();
-    auto gui = cgui::gui_context(renderer).with(hello_world_header, lorum_ipsum,
-                                                quit_button);
 
-    auto gui = cgui::gui_context(renderer).with(/*widgets...*/).on_resize([] (cgui::bounding_box auto const& sz, auto&& widgets) {}).build();
+    using area_t = decltype(full_area);
+    auto gui =
+        cgui::gui_context_builder()
+            .widgets(
 
+                cgui::widget_builder().area(area_t{}).display(
+                    cgui::text_renderer(std::ref(cached_font))),
+                cgui::widget_builder()
+                    .area(area_t{})
+                    .display(cgui::display_per_state(cgui::fill_rect()),
+                             cgui::text_renderer(std::ref(cached_font)))
+                    .event(cgui::buttonlike_trigger())
+                    .state(cgui::momentary_button{.on_click = [] {}}),
+                cgui::widget_builder().area(area_t{}).display(
+                    cgui::text_renderer(std::ref(cached_font))) //
+                )
+            .on_resize([](cgui::size_wh auto const &sz, auto &&widgets) {
+              using namespace cgui;
+              auto &[hello_world_header, quit_button, lorum_ipsum] = widgets;
+              auto full_area = cgui::call::box_from_xywh<area_t>(
+                  0, 0, call::width(sz), call::height(sz));
+              hello_world_header.area(call::trim_from_above(
+                  &full_area,
+                  std::min<int>(cgui::call::height(full_area), 128)));
+              std::get<0>(hello_world_header.displays())
+                  .set_displayed(hello_world_header.area(), "Hello World!")
+                  .text_colour({255, 255, 255, 255});
+              auto button_bar_area = cgui::call::trim_from_below(
+                  &full_area,
+                  std::min<int>(cgui::call::height(full_area), 128));
+              {
+                auto &background = std::get<0>(quit_button.displays());
+                using enum cgui::momentary_button_states;
+                get<off>(background).colour() = {40, 40, 40, 255};
+                get<hover>(background).colour() = {190, 190, 190, 255};
+                get<hold>(background).colour() = {63, 63, 63, 255};
+              }
+              quit_button.area(cgui::call::trim_from_left(
+                  &button_bar_area, cgui::call::width(button_bar_area) / 2));
+
+              std::get<1>(quit_button.displays())
+                  .set_displayed(quit_button.area(), "Quit")
+                  .text_colour({255, 255, 255, 255});
+
+              lorum_ipsum.area(full_area);
+              std::get<0>(lorum_ipsum.displays())
+                  .set_displayed(
+                      hello_world_header.area(),
+                      "Lorem ipsum dolor sit amet, consectetur adipiscing "
+                      "elit, sed do eiusmod tempor incididunt ut labore et "
+                      "dolore magna aliqua. Ut enim ad minim veniam, quis "
+                      "nostrud exercitation ullamco laboris nisi ut aliquip ex "
+                      "ea commodo consequat. Duis aute irure dolor in "
+                      "reprehenderit in voluptate velit esse cillum dolore eu "
+                      "fugiat nulla pariatur. Excepteur sint occaecat "
+                      "cupidatat non proident, sunt in culpa qui officia "
+                      "deserunt mollit anim id est laborum.\n\nDid you get "
+                      "that?")
+                  .text_colour({255, 255, 255, 255});
+            })
+            .build(full_area);
 
     gui.render(renderer);
     renderer.present();
@@ -109,10 +114,10 @@ int main(int, char **) {
                } else if constexpr (cgui::has_handle<decltype(gui), T>) {
                  to_rerender = gui.handle(std::move(e));
                } else {
-                 std::get<0>(hello_world_header.displays())
-                     .set_displayed(hello_world_header.area(),
-                                    typeid(T).name());
-                 to_rerender = hello_world_header.area();
+                 // std::get<0>(hello_world_header.displays())
+                 //     .set_displayed(hello_world_header.area(),
+                 //                    typeid(T).name());
+                 // to_rerender = hello_world_header.area();
                }
                cgui::unused(e);
              }) != 0) {

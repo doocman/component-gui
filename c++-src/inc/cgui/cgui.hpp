@@ -676,7 +676,7 @@ public:
   }
 };
 
-constexpr widget_builder_impl<std::nullptr_t, std::tuple<>, widget_mono_state,
+constexpr widget_builder_impl<default_rect, std::tuple<>, widget_mono_state,
                               widget_no_event_handler>
 widget_builder() {
   return {};
