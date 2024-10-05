@@ -405,7 +405,7 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
   event_type(SDL_MouseMotionEvent const &) {
     return {};
   }
-  static constexpr default_pixel_coord position(SDL_MouseMotionEvent const& e) {
+  static constexpr default_pixel_coord position(SDL_MouseMotionEvent const &e) {
     return {e.x, e.y};
   }
 };
@@ -420,6 +420,17 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
 
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
     return static_cast<mouse_buttons>(e.button);
+  }
+};
+template <> struct extend_api<SDL_WindowEvent> {
+  static constexpr subset_ui_events<ui_events::window_resized,
+                                    ui_events::system>
+  is_event(SDL_WindowEvent const &e) {
+    return e.event == SDL_WINDOWEVENT_RESIZED ? ui_events::window_resized
+                                              : ui_events::system;
+  }
+  static constexpr default_size_wh size_of(SDL_WindowEvent const &e) {
+    return {e.data1, e.data2};
   }
 };
 } // namespace cgui
