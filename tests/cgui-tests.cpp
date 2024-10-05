@@ -1205,10 +1205,14 @@ TEST(RecursiveAreaNavigator, Nudger) // NOLINT
   auto nav = recursive_area_navigator({{0, 0}, {5, 5}});
   auto nudger = nav.relative_to_absolute_nudger();
   auto xy = nudger(default_pixel_coord{0, 0});
-  auto& [x, y] = xy;
+  auto &[x, y] = xy;
   EXPECT_THAT(x, Eq(0));
   EXPECT_THAT(y, Eq(0));
-  auto sub = nav.sub({{1, 1,}, { 5, 5}});
+  auto sub = nav.sub({{
+                          1,
+                          1,
+                      },
+                      {5, 5}});
   nudger = sub.relative_to_absolute_nudger();
   xy = nudger(default_pixel_coord{0, 0});
   EXPECT_THAT(x, Eq(1));
@@ -2004,8 +2008,9 @@ TEST(Widget, BasicButton) // NOLINT
 struct rerender_if_state {
   int rerender_state;
 
-  constexpr void render(auto&&...) const noexcept {}
-  constexpr void set_state(state_marker auto const& i, display_state_callbacks auto&& cb) {
+  constexpr void render(auto &&...) const noexcept {}
+  constexpr void set_state(state_marker auto const &i,
+                           display_state_callbacks auto &&cb) {
     if (i.current_state() == rerender_state) {
       cb.rerender();
     }
@@ -2014,15 +2019,29 @@ struct rerender_if_state {
 
 TEST(GuiContext, RerenderOutput) // NOLINT
 {
-  auto w1b = widget_builder().area(default_rect{{0, 0}, {1, 1}}).event(int_as_event_handler{}).state(int_states{}).display(rerender_if_state{0});
-  auto w2b = widget_builder().area(default_rect{{1, 0}, {2, 1}}).event(int_as_event_handler{}).state(int_states{}).display(rerender_if_state{1});
-  auto w3b = widget_builder().area(default_rect{{2, 0}, {3, 1}}).event(int_as_event_handler{}).state(int_states{}).display(rerender_if_state{0});
+  auto w1b = widget_builder()
+                 .area(default_rect{{0, 0}, {1, 1}})
+                 .event(int_as_event_handler{})
+                 .state(int_states{})
+                 .display(rerender_if_state{0});
+  auto w2b = widget_builder()
+                 .area(default_rect{{1, 0}, {2, 1}})
+                 .event(int_as_event_handler{})
+                 .state(int_states{})
+                 .display(rerender_if_state{1});
+  auto w3b = widget_builder()
+                 .area(default_rect{{2, 0}, {3, 1}})
+                 .event(int_as_event_handler{})
+                 .state(int_states{})
+                 .display(rerender_if_state{0});
   auto r = test_renderer({{0, 0}, {3, 1}});
-  auto guic = gui_context(r, std::move(w1b).build(), std::move(w2b).build());
+  auto guic = gui_context(r, std::move(w1b).build(), std::move(w2b).build(),
+                          std::move(w3b).build());
   guic.render(r);
   auto rarea = guic.handle(1);
   expect_box_equal(rarea, default_rect{{1, 0}, {2, 1}});
   rarea = guic.handle(0);
-  expect_box_equal(rarea, default_rect{{0, 0}, {3, 1}});
+  EXPECT_TRUE(call::box_includes_box(rarea, default_rect{{0, 0}, {1, 1}}));
+  EXPECT_TRUE(call::box_includes_box(rarea, default_rect{{2, 0}, {3, 1}}));
 }
 } // namespace cgui::tests

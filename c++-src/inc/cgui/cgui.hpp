@@ -63,8 +63,8 @@ public:
   template <typename TB2 = TB>
   constexpr TB2 move_to_absolute(TB2 const &b) const {
     return call::box_from_xywh<TB2>(call::tl_x(b) + offset_x_,
-                                   call::tl_y(b) + offset_y_, call::width(b),
-                                   call::height(b));
+                                    call::tl_y(b) + offset_y_, call::width(b),
+                                    call::height(b));
   }
   constexpr TB absolute_area() const {
     return move_to_absolute(relative_area_);
@@ -179,11 +179,47 @@ template <typename T>
 sub_renderer(T &t)
     -> sub_renderer<T, std::remove_cvref_t<decltype(call::area(t))>>;
 
+template <bounding_box TArea = default_rect>
+class widget_display_state_callbacks {
+  recursive_area_navigator<TArea> full_area_;
+  TArea to_rerender_{};
+
+  explicit(false) constexpr widget_display_state_callbacks(
+      recursive_area_navigator<TArea> nav)
+      : full_area_(nav) {}
+
+public:
+  explicit constexpr widget_display_state_callbacks(TArea full_area)
+      : full_area_(full_area) {}
+
+  constexpr void rerender() { to_rerender_ = full_area_.relative_area(); }
+  constexpr void rerender(bounding_box auto part_area) {
+    if (!empty_box(to_rerender_)) {
+      part_area = call::box_union(part_area, to_rerender_);
+    }
+    to_rerender_ =
+        call::box_intersection(part_area, full_area_.relative_area());
+  }
+  TArea result_area() const {
+    return full_area_.move_to_absolute(to_rerender_);
+  }
+  constexpr widget_display_state_callbacks sub(TArea rel_area) const {
+    return {full_area_.sub(rel_area)};
+  }
+  constexpr void merge_sub(widget_display_state_callbacks const &s) {
+    if (!empty_box((s.to_rerender_))) {
+      auto sub_area = s.full_area_.move_to_absolute(s.to_rerender_);
+      rerender(sub_area);
+    }
+  }
+};
+
 template <canvas T, widget_display... TWidgets> class gui_context {
   std::tuple<TWidgets...> widgets_;
 
 public:
-  using native_box_t = std::remove_cvref_t<decltype(std::declval<T&>().area())>;
+  using native_box_t =
+      std::remove_cvref_t<decltype(std::declval<T &>().area())>;
 
   explicit constexpr gui_context(T const &, TWidgets... ws)
       : widgets_(std::move(ws)...) {}
@@ -220,13 +256,16 @@ public:
   constexpr native_box_t handle(auto const &evt)
     requires((has_handle<TWidgets, decltype(evt)> || ...))
   {
-    auto b = native_box_t{};
-    call::for_each(widgets_, [&evt]<typename TW>(TW &w) {
+    auto b = widget_display_state_callbacks(
+        {{0, 0}, {highest_possible, highest_possible}});
+    call::for_each(widgets_, [&evt, &b]<typename TW>(TW &w) {
       if constexpr (has_handle<TW &, decltype(evt)>) {
-        call::handle(w, evt);
+        auto s = b.sub(w.area());
+        call::handle(w, evt, s);
+        b.merge_sub(s);
       }
     });
-    return b;
+    return b.result_area();
   }
 };
 
@@ -286,24 +325,6 @@ struct widget_mono_state {
 };
 
 struct widget_no_event_handler {};
-
-template <bounding_box TArea> class widget_display_state_callbacks {
-  TArea full_area_;
-  TArea to_rerender_{};
-
-public:
-  explicit constexpr widget_display_state_callbacks(TArea full_area)
-      : full_area_(full_area) {}
-
-  constexpr void rerender() { to_rerender_ = full_area_; }
-  constexpr void rerender(bounding_box auto const &part_area) {
-    bounding_box auto moved_part_area =
-        call::move_tl_to(part_area, call::top_left(full_area_));
-    to_rerender_ = call::box_union(moved_part_area, to_rerender_);
-    to_rerender_ = call::box_intersection(to_rerender_, full_area_);
-  }
-  TArea const &to_rerender() const { return to_rerender_; }
-};
 
 template <bounding_box TArea, typename TDisplay, typename TState,
           typename TEventHandler>
@@ -372,12 +393,11 @@ public:
     auto render_callback = state(*this)(r.sub(area_), w, h);
     call::for_each(display_, std::move(render_callback));
   }
-  constexpr TArea handle(auto &&evt)
-    requires(has_handle<TEventHandler, TArea const &, decltype(evt),
-                        decltype(set_state_callback(
-                            std::declval<display_state_callbacks_t &>()))>)
+  template <typename TEvt, display_state_callbacks TCallback>
+  constexpr void handle(TEvt &&evt, TCallback &&display_callbacks)
+    requires(has_handle<TEventHandler, TArea const &, TEvt,
+                        decltype(set_state_callback(display_callbacks))>)
   {
-    display_state_callbacks_t display_callbacks(area());
     // We expect that all default-constructed areas are empty.
     // First level: we call the event handler that takes input events and
     // translates it to a component state change.
@@ -395,7 +415,15 @@ public:
                      set_state_callback(display_callbacks)(new_state);
                    }
                  });
-    return display_callbacks.to_rerender();
+  }
+  constexpr bounding_box auto handle(auto &&evt)
+    requires(has_handle<TEventHandler, TArea const &, decltype(evt),
+                        decltype(set_state_callback(
+                            std::declval<display_state_callbacks_t &>()))>)
+  {
+    display_state_callbacks_t display_callbacks(area());
+    handle(evt, display_callbacks);
+    return display_callbacks.result_area();
   }
 };
 
