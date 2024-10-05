@@ -2011,17 +2011,16 @@ TEST(Widget, BasicButton) // NOLINT
 struct mock_widget_resize {
 
   MOCK_METHOD(void, do_resize, (int w, int h));
-  void set_size(bounding_box auto const& b) {
+  void set_size(bounding_box auto const &b) {
     do_resize(call::width(b), call::height(b));
   }
-  void render(auto&&) const{}
+  void render(auto &&) const {}
 };
 
-template <typename T>
-struct ref_builder {
-  T* to_return_;
+template <typename T> struct ref_builder {
+  T *to_return_;
 
-  constexpr T& build(auto&&...) const { return *to_return_; }
+  constexpr T &build(auto &&...) const { return *to_return_; }
 };
 
 TEST(GuiContext, BuildResize) // NOLINT
@@ -2030,10 +2029,14 @@ TEST(GuiContext, BuildResize) // NOLINT
   InSequence s;
   EXPECT_CALL(w, do_resize(2, 2));
   EXPECT_CALL(w, do_resize(3, 3));
-  auto gui = gui_context_builder().widgets(std::ref(w)).on_resize([] (size_wh auto const& wh, auto&& widgets) {
-    auto& [w] = widgets;
-    w.set_size(default_rect{0, 0, call::width(wh), call::height(wh)});
-  }).build({{0,0 }, {2, 2}});
+  auto gui =
+      gui_context_builder()
+          .widgets(std::ref(w))
+          .on_resize([](size_wh auto const &wh, auto &&widgets) {
+            auto &[w] = widgets;
+            w.set_size(default_rect{0, 0, call::width(wh), call::height(wh)});
+          })
+          .build({{0, 0}, {2, 2}});
   auto area = gui.handle(dummy_window_resized_event{{3, 3}});
   expect_box_equal(area, default_rect{{0, 0}, {3, 3}});
 }
@@ -2068,9 +2071,9 @@ TEST(GuiContext, RerenderOutput) // NOLINT
                  .state(int_states{})
                  .display(rerender_if_state{0});
   auto r = test_renderer({{0, 0}, {3, 1}});
-  //auto guic = gui_context(r, std::move(w1b).build(), std::move(w2b).build(),
-  //                        std::move(w3b).build());
-  auto guic = gui_context_builder().widgets(std::move(w1b), std::move(w2b), std::move(w3b)).build({{0, 0}, {1, 1}});
+  auto guic = gui_context_builder()
+                  .widgets(std::move(w1b), std::move(w2b), std::move(w3b))
+                  .build({{0, 0}, {1, 1}});
   guic.render(r);
   auto rarea = guic.handle(1);
   expect_box_equal(rarea, default_rect{{1, 0}, {2, 1}});

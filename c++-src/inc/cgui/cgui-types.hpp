@@ -2109,9 +2109,8 @@ concept widget_display_args =
     widget_display<std::unwrap_ref_decay_t<T>, TRender> ||
     widget_display_builder<T, TRender>;
 
-template <typename TRender>
-struct _widget_display_filter {
-  constexpr void operator()(widget_display_args<TRender> auto&&) const {}
+template <typename TRender> struct _widget_display_filter {
+  constexpr void operator()(widget_display_args<TRender> auto &&) const {}
 };
 template <typename T, typename TRender = dummy_renderer>
 concept widget_display_range = has_for_each<T, _widget_display_filter<TRender>>;

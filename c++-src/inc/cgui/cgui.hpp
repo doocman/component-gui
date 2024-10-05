@@ -203,9 +203,7 @@ public:
   TArea result_area() const {
     return full_area_.move_to_absolute(to_rerender_);
   }
-  constexpr bool empty_result() const {
-    return empty_box(to_rerender_);
-  }
+  constexpr bool empty_result() const { return empty_box(to_rerender_); }
   template <bounding_box TA2 = TArea>
   constexpr widget_display_state_callbacks sub(TA2 rel_area) const {
     return {full_area_.sub(rel_area)};
@@ -223,7 +221,22 @@ namespace impl {
 template <typename> constexpr bool is_tuple = false;
 template <typename... Ts> constexpr bool is_tuple<std::tuple<Ts...>> = true;
 
-constexpr decltype(auto) gui_context_build_or_forward(auto&& v) {#@!%}
+constexpr decltype(auto) gui_context_build_or_forward(auto &&v) {
+  auto vf = bp::as_forward<decltype(v)>(v);
+  if constexpr (widget_display<decltype(v)>) {
+    return *vf;
+  } else {
+    return (*vf).build();
+  }
+}
+
+template <typename... Ts, std::size_t... tIs>
+constexpr auto build_context_display_tuple(std::tuple<Ts...> &&t,
+                                           std::index_sequence<tIs...>) {
+  return std::tuple<bp::remove_rvalue_reference_t<
+      decltype(gui_context_build_or_forward(std::declval<Ts &&>()))>...>{
+      gui_context_build_or_forward(std::forward<Ts>(std::get<tIs>(t)))...};
+}
 
 constexpr decltype(auto) widget_build_or_forward(auto &&v, auto const &states) {
   if constexpr (display_component<decltype(v)>) {
@@ -239,11 +252,22 @@ constexpr auto build_tuple(std::tuple<Ts...> &&t, TStates const &states,
     -> std::tuple<bp::remove_rvalue_reference_t<
         decltype(widget_build_or_forward(std::declval<Ts &&>(), states))>...> {
   return {
-    widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)), states)...};
+      widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)), states)...};
 }
 #if CGUI_HAS_NAMED_ARGS
 template <typename... Ts>
 constexpr bool is_tuple<dooc::named_tuple<Ts...>> = true;
+
+template <dooc::template_string... tNames, typename... Ts>
+constexpr auto
+build_tuple(dooc::named_tuple<dooc::named_arg_t<tNames, Ts>...> &&t, auto &&)
+    -> dooc::named_tuple<dooc::named_arg_t<
+        tNames,
+        bp::remove_rvalue_reference_t<decltype(gui_context_build_or_forward(
+            std::declval<Ts &&>()))>>...> {
+  return {gui_context_build_or_forward(
+      static_cast<Ts &&>(dooc::get<tNames>(t)))...};
+}
 
 template <dooc::template_string... tNames, typename... Ts>
 constexpr auto
@@ -256,6 +280,18 @@ build_tuple(dooc::named_tuple<dooc::named_arg_t<tNames, Ts>...> &&t,
                                   states)...};
 }
 #endif
+template <typename T> constexpr auto build_gui_context_widgets(T &&t) {
+  auto tf = bp::as_forward<T>(t);
+  if constexpr (widget_display_builder<T>) {
+    return call::build(*tf);
+  } else if constexpr (is_tuple<std::remove_cvref_t<T>>) {
+    return build_context_display_tuple(
+        *tf,
+        std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>{});
+  } else {
+    return *tf;
+  }
+}
 template <typename T, typename TStates>
 constexpr auto build_displays(T &&t, TStates const &states) {
   if constexpr (is_tuple<std::remove_cvref_t<T>>) {
@@ -269,39 +305,51 @@ constexpr auto build_displays(T &&t, TStates const &states) {
 
 } // namespace impl
 
-
-template <bounding_box TArea, typename TOnResize = bp::no_op_t, widget_display_range TWidgets = std::tuple<>> class gui_context : bp::empty_structs_optimiser<TOnResize> {
+template <bounding_box TArea, typename TOnResize = bp::no_op_t,
+          widget_display_range TWidgets = std::tuple<>>
+class gui_context : bp::empty_structs_optimiser<TOnResize> {
   using _base_t = bp::empty_structs_optimiser<TOnResize>;
   TWidgets widgets_;
 
-  constexpr void call_on_resize(size_wh auto const& sz) {
-    _base_t::get(static_cast<_base_t&>(*this), std::type_identity<TOnResize>{})(sz, widgets_);
+  constexpr void call_on_resize(size_wh auto const &sz) {
+    _base_t::get(static_cast<_base_t &>(*this),
+                 std::type_identity<TOnResize>{})(sz, widgets_);
   }
 
 public:
   using native_box_t = TArea;
 
   template <typename... TWs>
-    requires(std::constructible_from<TWidgets, TWs&&...>)
-  explicit constexpr gui_context(auto const &, TWs&&... ws)
-  : widgets_(std::forward<TWs>(ws)...) {}
+    requires(std::constructible_from<TWidgets, TWs && ...>)
+  explicit constexpr gui_context(auto const &, TWs &&...ws)
+      : widgets_(std::forward<TWs>(ws)...) {}
 
   template <typename... TWs>
-    requires(std::constructible_from<TWidgets, TWs&&...>)
-  explicit constexpr gui_context(TWs&&... ws) : widgets_(std::forward<TWs>(ws)...) {}
+    requires(std::constructible_from<TWidgets, TWs && ...>)
+  explicit constexpr gui_context(TWs &&...ws)
+      : widgets_(std::forward<TWs>(ws)...) {}
 
   template <typename TOnRsz, typename TWs>
-    requires(std::constructible_from<TOnResize, TOnRsz&&> && std::constructible_from<TWidgets, TWs&&>)
-  constexpr gui_context(TOnRsz&& on_rsz, TWs&& ws, bounding_box auto const& start_area) : _base_t(std::forward<TOnRsz>(on_rsz)), widgets_(std::forward<TWs>(ws)) {
-    call_on_resize(default_size_wh{call::width(start_area), call::height(start_area)});
+    requires(std::constructible_from<TOnResize, TOnRsz &&> &&
+             std::constructible_from<TWidgets, TWs &&>)
+  constexpr gui_context(TOnRsz &&on_rsz, TWs &&ws,
+                        bounding_box auto const &start_area)
+      : _base_t(std::forward<TOnRsz>(on_rsz)), widgets_(std::forward<TWs>(ws)) {
+    call_on_resize(
+        default_size_wh{call::width(start_area), call::height(start_area)});
   }
 
   template <widget_display... TW2>
-  [[nodiscard]] constexpr auto
-  with(TW2 &&...ws) && {
+  [[nodiscard]] constexpr auto with(TW2 &&...ws) && {
     unused(ws...);
-    return gui_context<TArea, decltype(std::tuple_cat(widgets_, std::declval<std::tuple<std::unwrap_ref_decay_t<TW2>...>>()))>(std::tuple_cat(
-        std::move(widgets_), std::tuple<std::unwrap_ref_decay_t<TW2>...>(std::forward<TW2>(ws)...)));
+    return gui_context<
+        TArea,
+        decltype(std::tuple_cat(
+            widgets_,
+            std::declval<std::tuple<std::unwrap_ref_decay_t<TW2>...>>()))>(
+        std::tuple_cat(std::move(widgets_),
+                       std::tuple<std::unwrap_ref_decay_t<TW2>...>(
+                           std::forward<TW2>(ws)...)));
   }
 
   template <typename... Ts> constexpr void render(sub_renderer<Ts...> &&r) {
@@ -316,16 +364,19 @@ public:
   constexpr void render(canvas auto &&c) { render(sub_renderer(c)); }
 
   constexpr native_box_t handle(auto const &evt)
-    //requires((has_handle<TWidgets, decltype(evt)> || ...) || can_be_event<ui_events::window_resized, decltype(evt)>())
+  // requires((has_handle<TWidgets, decltype(evt)> || ...) ||
+  // can_be_event<ui_events::window_resized, decltype(evt)>())
   {
-    if constexpr(can_be_event<ui_events::window_resized, decltype(evt)>()) {
+    if constexpr (can_be_event<ui_events::window_resized, decltype(evt)>()) {
       if (is_event<ui_events::window_resized>(evt)) {
         auto sz = call::size_of(evt);
         call_on_resize(sz);
-        return call::box_from_xyxy<native_box_t>(0, 0, call::width(sz), call::height(sz));
+        return call::box_from_xyxy<native_box_t>(0, 0, call::width(sz),
+                                                 call::height(sz));
       }
     }
-    auto b = widget_display_state_callbacks(call::box_from_xyxy<native_box_t>(0, 0, highest_possible, highest_possible));
+    auto b = widget_display_state_callbacks(call::box_from_xyxy<native_box_t>(
+        0, 0, highest_possible, highest_possible));
     call::for_each(widgets_, [&evt, &b]<typename TW>(TW &w) {
       if constexpr (has_handle<TW &, decltype(evt)>) {
         auto s = b.sub(w.area());
@@ -346,18 +397,31 @@ class gui_context_builder_impl {
 
 public:
   constexpr gui_context_builder_impl() = default;
-  constexpr gui_context_builder_impl(auto&& w, auto&& onrsz) : widgets_(std::forward<decltype(w)>(w)), on_resize_(std::forward<decltype(onrsz)>(onrsz)) {}
-  template <widget_display_args... TWs, typename WT = std::tuple<std::unwrap_ref_decay_t<TWs>...>>
-  constexpr gui_context_builder_impl<WT, TOnResize> widgets(TWs&&... ws) && { return {WT(std::forward<TWs>(ws)...), std::move(on_resize_)}; }
+  constexpr gui_context_builder_impl(auto &&w, auto &&onrsz)
+      : widgets_(std::forward<decltype(w)>(w)),
+        on_resize_(std::forward<decltype(onrsz)>(onrsz)) {}
+  template <widget_display_args... TWs,
+            typename WT = std::tuple<std::unwrap_ref_decay_t<TWs>...>>
+  constexpr gui_context_builder_impl<WT, TOnResize> widgets(TWs &&...ws) && {
+    return {WT(std::forward<TWs>(ws)...), std::move(on_resize_)};
+  }
   template <typename TORSZ2>
-  constexpr gui_context_builder_impl<TWidgets, TORSZ2> on_resize(TORSZ2&& onrsz) && { return {std::move(widgets_), std::forward<TORSZ2>(onrsz)}; }
-  template <bounding_box TArea = default_rect>
-  constexpr gui_context<TArea, TOnResize, TWidgets> build(TArea const& start_area) && {
-    return {std::move(on_resize_), std::move(widgets_), start_area};
+  constexpr gui_context_builder_impl<TWidgets, TORSZ2>
+  on_resize(TORSZ2 &&onrsz) && {
+    return {std::move(widgets_), std::forward<TORSZ2>(onrsz)};
+  }
+  template <bounding_box TArea = default_rect,
+            typename TW =
+                decltype(impl::build_gui_context_widgets(std::move(widgets_)))>
+  constexpr gui_context<TArea, TOnResize, TW>
+  build(TArea const &start_area) && {
+    return {std::move(on_resize_),
+            impl::build_gui_context_widgets(std::move(widgets_)), start_area};
   }
 };
 
-constexpr gui_context_builder_impl<std::tuple<>, bp::no_op_t> gui_context_builder() {
+constexpr gui_context_builder_impl<std::tuple<>, bp::no_op_t>
+gui_context_builder() {
   return {};
 }
 
@@ -434,7 +498,7 @@ class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
         std::type_identity<TEventHandler>{});
   }
 
-  constexpr auto set_state_callback(display_state_callbacks auto& display_cb) {
+  constexpr auto set_state_callback(display_state_callbacks auto &display_cb) {
     // At this point, the state handler can change its state and propagate the
     // state change to all affected display aspects.
     return [this, &display_cb]<typename TS>(TS const &state) {
