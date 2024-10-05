@@ -129,13 +129,13 @@ class sdl_canvas {
     }
   };
   SDL_Renderer *r_;
-  default_rect a_;
+  SDL_Rect a_;
   cleanup_object_t<decltype(cleanup), SDL_Texture *> t_{};
 
   constexpr SDL_Texture *texture() const { return t_.first_value(); }
 
 public:
-  constexpr sdl_canvas(SDL_Renderer *r, default_rect const &a) : r_(r), a_(a) {}
+  constexpr sdl_canvas(SDL_Renderer *r, SDL_Rect const &a) : r_(r), a_(a) {}
 
   void present() { SDL_RenderPresent(r_); }
 
@@ -211,7 +211,7 @@ public:
     SDL_RenderFillRect(r_, &sdlb);
   }
 
-  [[nodiscard]] default_rect area() const { return a_; }
+  [[nodiscard]] SDL_Rect area() const { return a_; }
 };
 
 struct sdl_display_dpi {
@@ -265,7 +265,7 @@ public:
     if (auto rend = SDL_GetRenderer(handle()); rend != nullptr) {
       int w, h;
       SDL_GetWindowSize(handle(), &w, &h);
-      return sdl_canvas{rend, default_rect{{0, 0}, {w, h}}};
+      return sdl_canvas{rend, SDL_Rect{0, 0, w, h}};
     }
     return unexpected(SDL_GetError());
   }
@@ -404,6 +404,9 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
   static constexpr subset_ui_events<ui_events::mouse_move>
   event_type(SDL_MouseMotionEvent const &) {
     return {};
+  }
+  static constexpr default_pixel_coord position(SDL_MouseMotionEvent const& e) {
+    return {e.x, e.y};
   }
 };
 template <> struct extend_api<SDL_MouseButtonEvent> {

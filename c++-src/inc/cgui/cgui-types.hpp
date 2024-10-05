@@ -1686,7 +1686,7 @@ inline constexpr auto alpha = [](colour auto &&c,
 };
 
 template <typename T, typename TXY>
-constexpr auto box_from_xyxy(TXY xl, TXY yt, TXY xr, TXY yb,
+constexpr auto box_from_xyxy(TXY xl, TXY yt, std::type_identity_t<TXY> xr, std::type_identity_t<TXY> yb,
                              std::type_identity<T> = {}) {
   if constexpr (impl::has_bbox_init<T, TXY>) {
     return impl::do_from_xyxy{}(std::type_identity<T>{}, xl, yt, xr, yb);

@@ -203,12 +203,17 @@ public:
   TArea result_area() const {
     return full_area_.move_to_absolute(to_rerender_);
   }
-  constexpr widget_display_state_callbacks sub(TArea rel_area) const {
+  constexpr bool empty_result() const {
+    return empty_box(to_rerender_);
+  }
+  template <bounding_box TA2 = TArea>
+  constexpr widget_display_state_callbacks sub(TA2 rel_area) const {
     return {full_area_.sub(rel_area)};
   }
-  constexpr void merge_sub(widget_display_state_callbacks const &s) {
-    if (!empty_box((s.to_rerender_))) {
-      auto sub_area = s.full_area_.move_to_absolute(s.to_rerender_);
+  template <bounding_box TA2 = TArea>
+  constexpr void merge_sub(widget_display_state_callbacks<TA2> const &s) {
+    if (!s.empty_result()) {
+      auto sub_area = s.result_area();
       rerender(sub_area);
     }
   }
@@ -256,8 +261,7 @@ public:
   constexpr native_box_t handle(auto const &evt)
     requires((has_handle<TWidgets, decltype(evt)> || ...))
   {
-    auto b = widget_display_state_callbacks(
-        {{0, 0}, {highest_possible, highest_possible}});
+    auto b = widget_display_state_callbacks(call::box_from_xyxy<native_box_t>(0, 0, highest_possible, highest_possible));
     call::for_each(widgets_, [&evt, &b]<typename TW>(TW &w) {
       if constexpr (has_handle<TW &, decltype(evt)>) {
         auto s = b.sub(w.area());
@@ -344,7 +348,7 @@ class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
         std::type_identity<TEventHandler>{});
   }
 
-  constexpr auto set_state_callback(display_state_callbacks_t &display_cb) {
+  constexpr auto set_state_callback(display_state_callbacks auto& display_cb) {
     // At this point, the state handler can change its state and propagate the
     // state change to all affected display aspects.
     return [this, &display_cb]<typename TS>(TS const &state) {

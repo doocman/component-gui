@@ -95,7 +95,7 @@ int main(int, char **) {
     renderer.present();
     using namespace std::chrono;
     constexpr auto run_interval = duration_cast<nanoseconds>(1s) / 60;
-    ;
+
     auto next_run = steady_clock::now() + run_interval;
     while (!do_exit) {
       SDL_Rect to_rerender{};
