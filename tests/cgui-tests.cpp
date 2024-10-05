@@ -33,6 +33,9 @@ static_assert(std::is_rvalue_reference_v<
                   std::declval<
                       cgui::bp::details::expected_member<int, bool> &&>()))>);
 
+static_assert(canvas<dummy_canvas>);
+static_assert(renderer<dummy_renderer>);
+
 TEST(TupleForEach, Order) // NOLINT
 {
   auto vals = std::tuple(1, 2, 3);
@@ -2005,6 +2008,36 @@ TEST(Widget, BasicButton) // NOLINT
   reset();
 }
 
+struct mock_widget_resize {
+
+  MOCK_METHOD(void, do_resize, (int w, int h));
+  void set_size(bounding_box auto const& b) {
+    do_resize(call::width(b), call::height(b));
+  }
+  void render(auto&&) const{}
+};
+
+template <typename T>
+struct ref_builder {
+  T* to_return_;
+
+  constexpr T& build(auto&&...) const { return *to_return_; }
+};
+
+TEST(GuiContext, BuildResize) // NOLINT
+{
+  auto w = mock_widget_resize();
+  InSequence s;
+  EXPECT_CALL(w, do_resize(2, 2));
+  EXPECT_CALL(w, do_resize(3, 3));
+  auto gui = gui_context_builder().widgets(std::ref(w)).on_resize([] (size_wh auto const& wh, auto&& widgets) {
+    auto& [w] = widgets;
+    w.set_size(default_rect{0, 0, call::width(wh), call::height(wh)});
+  }).build({{0,0 }, {2, 2}});
+  auto area = gui.handle(dummy_window_resized_event{{3, 3}});
+  expect_box_equal(area, default_rect{{0, 0}, {3, 3}});
+}
+
 struct rerender_if_state {
   int rerender_state;
 
@@ -2035,8 +2068,9 @@ TEST(GuiContext, RerenderOutput) // NOLINT
                  .state(int_states{})
                  .display(rerender_if_state{0});
   auto r = test_renderer({{0, 0}, {3, 1}});
-  auto guic = gui_context(r, std::move(w1b).build(), std::move(w2b).build(),
-                          std::move(w3b).build());
+  //auto guic = gui_context(r, std::move(w1b).build(), std::move(w2b).build(),
+  //                        std::move(w3b).build());
+  auto guic = gui_context_builder().widgets(std::move(w1b), std::move(w2b), std::move(w3b)).build({{0, 0}, {1, 1}});
   guic.render(r);
   auto rarea = guic.handle(1);
   expect_box_equal(rarea, default_rect{{1, 0}, {2, 1}});

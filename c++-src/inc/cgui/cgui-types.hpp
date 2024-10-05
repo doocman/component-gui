@@ -864,6 +864,7 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
   return val;
 }
 
+CGUI_CALL_CONCEPT(size_of);
 CGUI_CALL_CONCEPT(draw_pixels)
 CGUI_CALL_CONCEPT(draw_alpha);
 CGUI_CALL_CONCEPT(fill);
@@ -914,6 +915,7 @@ inline constexpr impl::height_t height;
 inline constexpr impl::top_left_t top_left;
 inline constexpr impl::bottom_right_t bottom_right;
 
+inline constexpr impl::_do_size_of size_of;
 inline constexpr impl::_do_draw_pixels draw_pixels;
 inline constexpr impl::_do_draw_alpha draw_alpha;
 inline constexpr impl::_do_advance_x advance_x;
@@ -930,6 +932,25 @@ inline constexpr impl::_do_handle handle;
 inline constexpr impl::_do_position position;
 inline constexpr impl::do_mouse_button mouse_button;
 } // namespace call
+
+template <typename T>
+concept size_wh = requires(T const &t) {
+  { call::width(t) } -> bp::not_void;
+  { call::height(t) } -> bp::not_void;
+};
+
+template <typename T = int> struct basic_size_wh {
+  T w;
+  T h;
+
+  static constexpr auto &&width(bp::cvref_type<basic_size_wh> auto &&wh) {
+    return std::forward<decltype(wh)>(wh).w;
+  }
+  static constexpr auto &&height(bp::cvref_type<basic_size_wh> auto &&wh) {
+    return std::forward<decltype(wh)>(wh).h;
+  }
+};
+using default_size_wh = basic_size_wh<int>;
 
 template <typename T, typename... TArgs>
 concept has_handle =
@@ -1102,7 +1123,8 @@ enum class ui_events {
   mouse_move,
   mouse_button_down,
   mouse_button_up,
-  mouse_exit
+  mouse_exit,
+  window_resized,
 };
 
 template <ui_events tEvt> struct ui_event_identity {
@@ -1130,6 +1152,12 @@ template <> struct ui_event_constraints<ui_events::mouse_move> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
     { call::position(t) } -> pixel_coord;
+  };
+};
+template <> struct ui_event_constraints<ui_events::window_resized> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::size_of(t) } -> size_wh;
   };
 };
 
@@ -1251,13 +1279,22 @@ constexpr auto fill =
   }
 };
 
-template <ui_events tEvt, has_event_type T> consteval bool can_be_event() {
-  using subset_t =
-      std::remove_cvref_t<decltype(call::event_type(std::declval<T &&>()))>;
-  return subset_t::can_be_event(ui_event_identity<tEvt>{});
+template <ui_events tEvt, typename T> consteval bool can_be_event() {
+  if constexpr (has_event_type<T>) {
+    using subset_t =
+        std::remove_cvref_t<decltype(call::event_type(std::declval<T &&>()))>;
+    return subset_t::can_be_event(ui_event_identity<tEvt>{});
+  } else {
+    return false;
+  }
 }
-template <ui_events tEvt, has_event_type T> constexpr bool is_event(T &&evt) {
-  return static_cast<ui_events>(call::event_type(evt)) == tEvt;
+template <ui_events tEvt, typename T> constexpr bool is_event(T &&evt) {
+  if constexpr (can_be_event<tEvt, T>()) {
+    return static_cast<ui_events>(call::event_type(evt)) == tEvt;
+  } else {
+    unused(evt);
+    return false;
+  }
 }
 
 template <typename T, ui_events... tEvents>
@@ -1284,6 +1321,9 @@ template <> struct dummy_event<ui_events::mouse_button_up> {
   default_pixel_coord pos;
   mouse_buttons button_id;
 };
+template <> struct dummy_event<ui_events::window_resized> {
+  default_size_wh sz;
+};
 
 template <typename> constexpr bool is_dummy_event_v = false;
 template <ui_events tEvt>
@@ -1303,10 +1343,16 @@ template <is_dummy_event_c T>
 constexpr mouse_buttons mouse_button(T const &t) {
   return t.button_id;
 }
+template <is_dummy_event_c T>
+  requires(requires(T const &t) { t.sz; })
+constexpr auto size_of(T const &t) {
+  return t.sz;
+}
 
 using dummy_mouse_move_event = dummy_event<ui_events::mouse_move>;
 using dummy_mouse_down_event = dummy_event<ui_events::mouse_button_down>;
 using dummy_mouse_up_event = dummy_event<ui_events::mouse_button_up>;
+using dummy_window_resized_event = dummy_event<ui_events::window_resized>;
 
 struct cgui_mouse_exit_event {
   static constexpr subset_ui_events<ui_events::mouse_exit> event_type(auto &&) {
@@ -1686,7 +1732,8 @@ inline constexpr auto alpha = [](colour auto &&c,
 };
 
 template <typename T, typename TXY>
-constexpr auto box_from_xyxy(TXY xl, TXY yt, std::type_identity_t<TXY> xr, std::type_identity_t<TXY> yb,
+constexpr auto box_from_xyxy(TXY xl, TXY yt, std::type_identity_t<TXY> xr,
+                             std::type_identity_t<TXY> yb,
                              std::type_identity<T> = {}) {
   if constexpr (impl::has_bbox_init<T, TXY>) {
     return impl::do_from_xyxy{}(std::type_identity<T>{}, xl, yt, xr, yb);
@@ -2034,6 +2081,10 @@ template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
   }
 }
 
+struct dummy_canvas {
+  constexpr default_rect area() const { return {}; }
+};
+
 struct dummy_renderer {
   constexpr void draw_pixels(bounding_box auto const &,
                              pixel_draw_callback auto &&) {}
@@ -2045,10 +2096,26 @@ struct dummy_renderer {
   }
   constexpr dummy_renderer sub(bounding_box auto &&) const { return {}; }
 };
-static_assert(renderer<dummy_renderer>);
 
 template <typename T, typename TRender = dummy_renderer>
 concept widget_display = has_render<T, TRender>;
+template <typename T, typename TRender = dummy_renderer>
+concept widget_display_builder = builder<T> && requires(bp::as_forward<T> t) {
+  { (*t).build() } -> widget_display<TRender>;
+};
+template <typename T, typename TRender = dummy_renderer>
+concept widget_display_args =
+    widget_display<T, TRender> ||
+    widget_display<std::unwrap_ref_decay_t<T>, TRender> ||
+    widget_display_builder<T, TRender>;
+
+template <typename TRender>
+struct _widget_display_filter {
+  constexpr void operator()(widget_display_args<TRender> auto&&) const {}
+};
+template <typename T, typename TRender = dummy_renderer>
+concept widget_display_range = has_for_each<T, _widget_display_filter<TRender>>;
+
 template <typename T, typename TRender = dummy_renderer,
           typename TArgs = widget_render_args<>>
 concept display_component = has_render<T, TRender, TArgs>;

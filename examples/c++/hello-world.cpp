@@ -91,6 +91,10 @@ int main(int, char **) {
     auto renderer = main_window.canvas().value();
     auto gui = cgui::gui_context(renderer).with(hello_world_header, lorum_ipsum,
                                                 quit_button);
+
+    auto gui = cgui::gui_context(renderer).with(/*widgets...*/).on_resize([] (cgui::bounding_box auto const& sz, auto&& widgets) {}).build();
+
+
     gui.render(renderer);
     renderer.present();
     using namespace std::chrono;
