@@ -425,7 +425,7 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
 template <> struct extend_api<SDL_WindowEvent> {
   static constexpr subset_ui_events<ui_events::window_resized,
                                     ui_events::system>
-  is_event(SDL_WindowEvent const &e) {
+  event_type(SDL_WindowEvent const &e) {
     return e.event == SDL_WINDOWEVENT_RESIZED ? ui_events::window_resized
                                               : ui_events::system;
   }

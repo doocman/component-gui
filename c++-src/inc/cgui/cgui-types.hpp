@@ -1958,6 +1958,36 @@ constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
 
 } // namespace call
 
+constexpr bool empty_box(bounding_box auto const &b) {
+  return call::width(b) == 0 || call::height(b) == 0;
+}
+
+template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
+  if constexpr (bp::cvref_type<T2, T>) {
+    return std::forward<T2>(b);
+  } else if constexpr (std::constructible_from<T, T2 &&>) {
+    return T(std::forward<T2>(b));
+  } else if constexpr (call::impl::has_from_xywh<T, decltype(call::tl_x(b))>) {
+    return call::box_from_xywh<T>(call::tl_x(b), call::tl_y(b), call::width(b),
+                                  call::height(b));
+  } else {
+    return call::box_from_xyxy<T>(call::tl_x(b), call::tl_y(b), call::br_x(b),
+                                  call::br_y(b));
+  }
+}
+
+template <typename TRes = void, typename TB1, typename TB2>
+constexpr auto box_add(TB1 const& b1, TB2 const& b2) -> decltype(call::box_union<TRes>(b1, b2)) {
+  using result_t = decltype(call::box_union<TRes>(b1, b2));
+  if (empty_box(b1)) {
+    return copy_box<result_t>(b2);
+  }
+  if (empty_box(b2)) {
+    return copy_box<result_t>(b1);
+  }
+  return call::box_union<TRes>(b1, b2);
+}
+
 template <typename>
 concept render_args = true;
 
@@ -2062,23 +2092,6 @@ constexpr auto center(bounding_box auto const &b) {
   auto br = call::bottom_right(b);
   return default_pixel_coord{(x_of(br) - x_of(tl)) / 2,
                              (y_of(br) - y_of(tl)) / 2};
-}
-
-constexpr bool empty_box(bounding_box auto const &b) {
-  return call::width(b) == 0 || call::height(b) == 0;
-}
-template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
-  if constexpr (bp::cvref_type<T2, T>) {
-    return std::forward<T2>(b);
-  } else if constexpr (std::constructible_from<T, T2 &&>) {
-    return T(std::forward<T2>(b));
-  } else if constexpr (call::impl::has_from_xywh<T, decltype(call::tl_x(b))>) {
-    return call::box_from_xywh<T>(call::tl_x(b), call::tl_y(b), call::width(b),
-                                  call::height(b));
-  } else {
-    return call::box_from_xyxy<T>(call::tl_x(b), call::tl_y(b), call::br_x(b),
-                                  call::br_y(b));
-  }
 }
 
 struct dummy_canvas {

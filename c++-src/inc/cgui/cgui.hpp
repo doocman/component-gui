@@ -371,8 +371,9 @@ public:
       if (is_event<ui_events::window_resized>(evt)) {
         auto sz = call::size_of(evt);
         call_on_resize(sz);
-        return call::box_from_xyxy<native_box_t>(0, 0, call::width(sz),
-                                                 call::height(sz));
+        auto ret_box = call::box_from_xyxy<native_box_t>(0, 0, call::width(sz),
+                                                         call::height(sz));
+        return ret_box;
       }
     }
     auto b = widget_display_state_callbacks(call::box_from_xyxy<native_box_t>(

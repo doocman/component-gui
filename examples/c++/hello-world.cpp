@@ -112,7 +112,8 @@ int main(int, char **) {
                if constexpr (std::is_same_v<T, cgui::sdl_quit_event>) {
                  do_exit = true;
                } else if constexpr (cgui::has_handle<decltype(gui), T>) {
-                 to_rerender = gui.handle(std::move(e));
+                 auto new_rerender = gui.handle(std::move(e));
+                 to_rerender = cgui::box_add(to_rerender, new_rerender);
                } else {
                  // std::get<0>(hello_world_header.displays())
                  //     .set_displayed(hello_world_header.area(),
