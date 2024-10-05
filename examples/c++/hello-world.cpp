@@ -50,7 +50,7 @@ int main(int, char **) {
                     .display(cgui::display_per_state(cgui::fill_rect()),
                              cgui::text_renderer(std::ref(cached_font)))
                     .event(cgui::buttonlike_trigger())
-                    .state(cgui::momentary_button{.on_click = [] {}}),
+                    .state(cgui::momentary_button{.on_click = [&do_exit] {do_exit = true;}}),
                 cgui::widget_builder().area(area_t{}).display(
                     cgui::text_renderer(std::ref(cached_font))) //
                 )
@@ -114,11 +114,6 @@ int main(int, char **) {
                } else if constexpr (cgui::has_handle<decltype(gui), T>) {
                  auto new_rerender = gui.handle(std::move(e));
                  to_rerender = cgui::box_add(to_rerender, new_rerender);
-               } else {
-                 // std::get<0>(hello_world_header.displays())
-                 //     .set_displayed(hello_world_header.area(),
-                 //                    typeid(T).name());
-                 // to_rerender = hello_world_header.area();
                }
                cgui::unused(e);
              }) != 0) {

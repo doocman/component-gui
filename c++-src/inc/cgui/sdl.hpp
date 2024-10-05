@@ -412,7 +412,7 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
 template <> struct extend_api<SDL_MouseButtonEvent> {
   static constexpr subset_ui_events<ui_events::mouse_button_up,
                                     ui_events::mouse_button_down>
-  event_type(SDL_MouseMotionEvent const &e) {
+  event_type(SDL_MouseButtonEvent const &e) {
     CGUI_ASSERT(e.type == SDL_MOUSEBUTTONUP || e.type == SDL_MOUSEBUTTONDOWN);
     return {e.type == SDL_MOUSEBUTTONUP ? ui_events::mouse_button_up
                                         : ui_events::mouse_button_down};
@@ -420,6 +420,9 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
 
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
     return static_cast<mouse_buttons>(e.button);
+  }
+  static constexpr default_pixel_coord position(SDL_MouseButtonEvent const &e) {
+    return {e.x, e.y};
   }
 };
 template <> struct extend_api<SDL_WindowEvent> {
