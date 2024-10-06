@@ -1172,7 +1172,7 @@ template <ui_events... evts> struct subset_ui_events {
   static_assert(sizeof...(evts) > 0, "You must at least specify 1 event type");
   ui_events val;
   constexpr explicit(false) subset_ui_events(ui_events v) noexcept : val(v) {
-    assert((v == evts) || ...);
+    CGUI_ASSERT(((v == evts) || ...));
   }
   constexpr explicit(false) operator ui_events() const noexcept { return val; }
 

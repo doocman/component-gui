@@ -17,7 +17,7 @@ constexpr bool is_increasing(std::integer_sequence<T, tVals...>) {
   if constexpr (sizeof...(tVals) < 2) {
     return true;
   } else {
-    auto constexpr val_arr[] = {tVals...};
+    T constexpr val_arr[] = {tVals...};
     return std::transform_reduce(
         std::begin(val_arr), std::end(val_arr) - 1, std::begin(val_arr) + 1,
         bool{}, std::logical_and{}, [](auto const &l, auto const &r) {
