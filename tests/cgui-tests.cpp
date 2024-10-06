@@ -5,14 +5,23 @@
 #include <cgui/std-backport/expected.hpp>
 #include <cgui/stl_extend.hpp>
 
+#include <array>
 #include <optional>
+#include <source_location>
+#include <string_view>
 #include <tuple>
+#include <typeinfo>
 
 #include <gmock/gmock.h>
 
-#include <cgui/std-backport/concepts.hpp>
+#include <dooc/named_args_tuple.hpp>
 
 namespace cgui::tests {
+static_assert(bounding_box<default_rect>);
+static_assert(requires(std::tuple<int> t) {
+  call::impl::do_apply_to{}(t, bp::no_op);
+});
+
 using namespace ::testing;
 
 static_assert(std::is_rvalue_reference_v<
@@ -23,6 +32,9 @@ static_assert(std::is_rvalue_reference_v<
               decltype(cgui::bp::details::expected_member<int, bool>::err(
                   std::declval<
                       cgui::bp::details::expected_member<int, bool> &&>()))>);
+
+static_assert(canvas<dummy_canvas>);
+static_assert(renderer<dummy_renderer>);
 
 TEST(TupleForEach, Order) // NOLINT
 {
@@ -1154,6 +1166,62 @@ struct test_renderer {
   }
 };
 
+inline void expect_box_equal(
+    bounding_box auto const &to_test, bounding_box auto const &to_expect,
+    std::source_location const &sl = std::source_location::current()) {
+  EXPECT_THAT(call::tl_x(to_test), Eq(call::tl_x(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::tl_y(to_test), Eq(call::tl_y(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::br_x(to_test), Eq(call::br_x(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+  EXPECT_THAT(call::br_y(to_test), Eq(call::br_y(to_expect)))
+      << "At " << sl.file_name() << ':' << sl.line();
+}
+
+TEST(RecursiveAreaNavigator, NavigateSimple) // NOLINT
+{
+  auto nav = recursive_area_navigator({{0, 0}, {5, 5}});
+  expect_box_equal(nav.relative_area(), default_rect{{0, 0}, {5, 5}});
+  expect_box_equal(nav.absolute_area(), default_rect{{0, 0}, {5, 5}});
+  auto sub = nav.sub({{0, 0}, {4, 4}});
+  expect_box_equal(sub.relative_area(), default_rect{{0, 0}, {4, 4}});
+  expect_box_equal(sub.absolute_area(), default_rect{{0, 0}, {4, 4}});
+  sub = nav.sub({{1, 1}, {2, 2}});
+  expect_box_equal(sub.relative_area(), default_rect{{0, 0}, {1, 1}});
+  expect_box_equal(sub.absolute_area(), default_rect{{1, 1}, {2, 2}});
+  sub = nav.sub({{0, 0}, {6, 6}});
+  expect_box_equal(sub.relative_area(), default_rect{{0, 0}, {5, 5}});
+  expect_box_equal(sub.absolute_area(), default_rect{{0, 0}, {5, 5}});
+
+  nav = recursive_area_navigator({{1, 1}, {5, 5}});
+  sub = nav.sub({{0, 2}, {4, 4}});
+  expect_box_equal(sub.relative_area(), default_rect{{1, 0}, {4, 2}});
+  expect_box_equal(sub.absolute_area(), default_rect{{1, 2}, {4, 4}});
+  auto sub2 = sub.sub({{2, 0}, {4, 3}});
+  expect_box_equal(sub2.relative_area(), default_rect{{0, 0}, {2, 2}});
+  expect_box_equal(sub2.absolute_area(), default_rect{{2, 2}, {4, 4}});
+}
+
+TEST(RecursiveAreaNavigator, Nudger) // NOLINT
+{
+  auto nav = recursive_area_navigator({{0, 0}, {5, 5}});
+  auto nudger = nav.relative_to_absolute_nudger();
+  auto xy = nudger(default_pixel_coord{0, 0});
+  auto &[x, y] = xy;
+  EXPECT_THAT(x, Eq(0));
+  EXPECT_THAT(y, Eq(0));
+  auto sub = nav.sub({{
+                          1,
+                          1,
+                      },
+                      {5, 5}});
+  nudger = sub.relative_to_absolute_nudger();
+  xy = nudger(default_pixel_coord{0, 0});
+  EXPECT_THAT(x, Eq(1));
+  EXPECT_THAT(y, Eq(1));
+}
+
 TEST(SubRenderer, DrawPixels) // NOLINT
 {
   auto r = test_renderer({{0, 0}, {6, 7}});
@@ -1415,7 +1483,7 @@ TEST(TextRender, PerfectWidthString) // NOLINT
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, 4, 1);
+  call::render(t2r, sr, widget_render_args(4, 1));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1438,7 +1506,9 @@ TEST(TextRender, CenterAligned) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "1 0");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1466,7 +1536,9 @@ TEST(TextRender, TwoLinesSpace) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "1 1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1492,7 +1564,9 @@ TEST(TextRender, TwoLinesDashDirect) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "120");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1515,7 +1589,9 @@ TEST(TextRender, TwoLinesDashIndirect) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "1001");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1539,7 +1615,9 @@ TEST(TextRender, ManualNewLine) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "1\n1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1562,7 +1640,9 @@ TEST(TextRender, ThreeLines) // NOLINT
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "10011");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1585,7 +1665,9 @@ TEST(TextRender,
   call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
                       "012");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, call::width(r.area()), call::height(r.area()));
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -1605,7 +1687,7 @@ TEST(TextRender, RefFace) // NOLINT
   auto t2r = text_renderer(std::ref(face));
   t2r.set_displayed(1, 1, "?");
   dummy_renderer r;
-  t2r.render(r, 1, 1);
+  t2r.render(r, widget_render_args(1, 1));
   EXPECT_THAT(face.faulty_glyphs, Eq(1));
 }
 struct mock_face {
@@ -1627,7 +1709,7 @@ TEST(TextRender, CachedGlyphs) // NOLINT
   auto t2r = text_renderer(std::ref(face));
   t2r.set_displayed(5, 5, "00");
   dummy_renderer r;
-  t2r.render(r, 1, 1);
+  t2r.render(r, widget_render_args(1, 1));
 }
 TEST(TextRender, CachedGlyphs4) // NOLINT
 {
@@ -1638,7 +1720,7 @@ TEST(TextRender, CachedGlyphs4) // NOLINT
   auto r = test_renderer({0, 0, 7, 1});
   auto sr = sub_renderer(r);
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(t2r, sr, 7, 1);
+  call::render(t2r, sr, widget_render_args(7, 1));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(dummy_face.faulty_glyphs, Eq(0));
@@ -1649,4 +1731,352 @@ TEST(TextRender, CachedGlyphs4) // NOLINT
   EXPECT_THAT(ic.green, Each(Eq(0)));
 }
 
+struct mock_button_callback {
+  MOCK_METHOD(void, do_on_button_hover, ());
+  MOCK_METHOD(void, do_on_button_hold, ());
+  MOCK_METHOD(void, do_on_button_click, (mouse_buttons b));
+  MOCK_METHOD(void, do_on_button_exit, ());
+
+  void handle(buttonlike_trigger::hover_event) { do_on_button_hover(); }
+  void handle(buttonlike_trigger::hold_event) { do_on_button_hold(); }
+  void handle(buttonlike_trigger::click_event const &e) {
+    do_on_button_click(e.button);
+  }
+  void handle(buttonlike_trigger::exit_event) { do_on_button_exit(); }
+};
+
+TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
+{
+  auto trig = buttonlike_trigger();
+  auto button_state = mock_button_callback();
+  auto checkpoint = MockFunction<void()>();
+  InSequence s;
+  EXPECT_CALL(button_state, do_on_button_hover());
+  EXPECT_CALL(button_state, do_on_button_hold());
+  EXPECT_CALL(checkpoint, Call());
+  EXPECT_CALL(button_state, do_on_button_click(Eq(mouse_buttons::primary)));
+  EXPECT_CALL(button_state, do_on_button_exit());
+  constexpr auto dummy_area = default_rect{{0, 0}, {4, 4}};
+  auto callback = [&button_state](auto &&evt) { button_state.handle(evt); };
+  trig.handle(dummy_area, dummy_mouse_move_event{{1, 1}}, callback);
+  trig.handle(dummy_area,
+              dummy_mouse_down_event{{1, 1}, mouse_buttons::primary}, callback);
+  checkpoint.Call();
+  trig.handle(dummy_area, dummy_mouse_up_event{{1, 1}, mouse_buttons::primary},
+              callback);
+  trig.handle(dummy_area, dummy_mouse_move_event{{-1, 1}}, callback);
+}
+
+struct mock_renderable {
+  MOCK_METHOD(void, do_render, (), (const));
+
+  void render(auto &&...) const { do_render(); }
+};
+
+TEST(WidgetBuilder, BuildRender) // NOLINT
+{
+  auto renderable = mock_renderable();
+  EXPECT_CALL(renderable, do_render());
+  auto w = widget_builder()
+               .area(default_rect{0, 0, 1, 1})
+               .display(std::ref(renderable))
+               .build();
+  call::render(w, dummy_renderer{});
+}
+
+struct mock_colourable {
+  MOCK_METHOD(void, do_render, (), (const));
+  MOCK_METHOD(void, colour, (default_colour_t const &), ());
+
+  void render(auto &&...) const { do_render(); }
+};
+
+inline auto
+expect_colour_eq(cgui::colour auto const &val,
+                 cgui::colour auto const &expected,
+                 std::source_location s = std::source_location::current()) {
+  auto [vr, vg, vb, va] = val;
+  auto [er, eg, eb, ea] = expected;
+  EXPECT_THAT((std::array{vr, vg, vb, va}),
+              ElementsAre(Eq(er), Eq(eg), Eq(eb), Eq(ea)))
+      << "Called at line " << s.line();
+}
+
+TEST(WidgetBuilder, SetColour) // NOLINT
+{
+  auto m1 = mock_colourable{};
+  auto m2 = mock_colourable{};
+  InSequence s;
+  default_colour_t m1c{}, m2c{};
+  EXPECT_CALL(m1, colour(_)).WillOnce([&](default_colour_t const &c) {
+    m1c = c;
+  });
+  EXPECT_CALL(m2, colour(_)).WillOnce([&](default_colour_t const &c) {
+    m2c = c;
+  });
+  EXPECT_CALL(m1, do_render()).Times(1);
+  EXPECT_CALL(m2, do_render()).Times(1);
+  using namespace dooc::tuple_literals;
+  auto w = widget_builder()
+               .area(default_rect{})
+               .display("text"_na = std::ref(m1), "fill"_na = std::ref(m2))
+               .build();
+  auto constexpr exp_m1c = default_colour_t{255, 0, 0, 255};
+  auto constexpr exp_m2c = default_colour_t{0, 255, 0, 255};
+  "text"_from(w.displays()).colour(exp_m1c);
+  "fill"_from(w.displays()).colour(exp_m2c);
+  expect_colour_eq(m1c, exp_m1c);
+  expect_colour_eq(m2c, exp_m2c);
+  w.render(dummy_renderer{});
+}
+
+struct mock_state_aware_renderer {
+  MOCK_METHOD(void, do_render, (int), (const));
+  MOCK_METHOD(void, do_set_state, (int), (const));
+  std::string_view mutable render_failed_type{};
+
+  void render(renderer auto &&, auto &&arg) const {
+    using state_t =
+        std::remove_cvref_t<decltype(arg.widget_state().current_state())>;
+    if constexpr (std::is_integral_v<state_t>) {
+      do_render(arg.widget_state().current_state());
+    } else {
+      render_failed_type = std::string_view(typeid(state_t).name());
+    }
+  }
+  void set_state(state_marker auto const &i,
+                 display_state_callbacks auto &&cb) {
+    do_set_state(i.current_state());
+    cb.rerender();
+  }
+};
+
+struct int_states {
+  int state_ = 0;
+  void handle(int i) {
+    CGUI_ASSERT(i == 0 || i == 1);
+    state_ = i;
+  }
+  widget_state_marker<int, 0, 1> state() const { return state_; }
+};
+
+static_assert(has_handle<int_states, int>);
+
+struct int_as_event_handler {
+  void handle(auto const &, int i, auto &&cb) { cb(i); }
+};
+
+TEST(WidgetBuilder, BuildWithState) // NOLINT
+{
+  auto state_aware_rend = mock_state_aware_renderer{};
+  MockFunction<void()> checkpoint{};
+  InSequence s;
+  EXPECT_CALL(state_aware_rend, do_render(Eq(0)));
+  EXPECT_CALL(state_aware_rend, do_set_state(Eq(1)));
+  EXPECT_CALL(checkpoint, Call());
+  EXPECT_CALL(state_aware_rend, do_render(Eq(1)));
+  auto w = widget_builder()
+               .area(default_rect{0, 0, 1, 1})
+               .state(int_states{})
+               .event(int_as_event_handler{})
+               .display(std::ref(state_aware_rend))
+               .build();
+  w.render(dummy_renderer{});
+  w.handle(1);
+  checkpoint.Call();
+  w.render(dummy_renderer{});
+  EXPECT_THAT(state_aware_rend.render_failed_type, IsEmpty());
+}
+
+TEST(WidgetBuilder, DisplayForEachState) // NOLINT
+{
+  auto w = widget_builder()
+               .area(default_rect{0, 0, 1, 1})
+               .event(int_as_event_handler{})
+               .state(int_states{})
+               .display(display_per_state(fill_rect{}))
+               .build();
+  auto &[per_state] = w.displays();
+  get<0>(per_state).colour() = default_colour_t{255, 0, 0, 255};
+  get<1>(per_state).colour() = default_colour_t{0, 255, 0, 255};
+
+  auto r = test_renderer({0, 0, 1, 1});
+  auto sr = sub_renderer(r);
+  w.render(sr);
+  ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
+  auto &[red, green, blue, alpha] = r.drawn_pixels[0];
+  EXPECT_THAT(red, Eq(255));
+  EXPECT_THAT(green, Eq(0));
+  EXPECT_THAT(blue, Eq(0));
+  EXPECT_THAT(alpha, Eq(255));
+  r.drawn_pixels[0] = {};
+  bounding_box auto new_area = w.handle(1);
+  expect_box_equal(new_area, r.area());
+  w.render(sr);
+  ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
+  EXPECT_THAT(red, Eq(0));
+  EXPECT_THAT(green, Eq(255));
+  EXPECT_THAT(blue, Eq(0));
+  EXPECT_THAT(alpha, Eq(255));
+}
+
+TEST(Widget, BasicButton) // NOLINT
+{
+  bool clicked{};
+  using enum momentary_button_states;
+  auto last_state = off;
+  int calls{};
+  auto w = widget_builder()
+               .area(default_rect{0, 0, 1, 1})
+               .event(buttonlike_trigger{})
+               .state(momentary_button{}
+                          .click([&clicked, &calls](auto &&...) {
+                            clicked = true;
+                            ++calls;
+                          })
+                          .hover([&last_state, &calls](auto &&...) {
+                            last_state = hover;
+                            ++calls;
+                          })
+                          .hold([&last_state, &calls](auto &&...) {
+                            last_state = hold;
+                            ++calls;
+                          })
+                          .exit([&last_state, &calls](auto &&...) {
+                            last_state = off;
+                            ++calls;
+                          })
+                          .build())
+               .display(display_per_state(fill_rect{}))
+               .build();
+  auto &[filler] = w.displays();
+  get<off>(filler).colour() = {0, 0, 0, 255};
+  get<hover>(filler).colour() = {1, 0, 0, 255};
+  get<hold>(filler).colour() = {2, 0, 0, 255};
+  test_renderer r{{0, 0, 1, 1}};
+  ASSERT_THAT(r.drawn_pixels, SizeIs(1));
+  auto &[red, green, blue, alpha] = r.drawn_pixels.front();
+  auto sr = sub_renderer(r);
+  auto reset = [&clicked, &calls] {
+    clicked = false;
+    calls = 0;
+  };
+
+  w.render(sr);
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
+
+  w.handle(dummy_mouse_move_event{{-1, 0}});
+  EXPECT_THAT(clicked, IsFalse());
+  EXPECT_THAT(calls, Eq(0));
+  EXPECT_THAT(last_state, Eq(off));
+  w.render(sr);
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
+  reset();
+
+  w.handle(dummy_mouse_move_event{});
+  EXPECT_THAT(clicked, IsFalse());
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_state, Eq(hover));
+  w.render(sr);
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
+  reset();
+
+  w.handle(dummy_mouse_down_event{});
+  EXPECT_THAT(clicked, IsFalse());
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_state, Eq(hold));
+  w.render(sr);
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(2, 0, 0, 255));
+  reset();
+
+  w.handle(dummy_mouse_up_event{});
+  EXPECT_THAT(clicked, IsTrue());
+  EXPECT_THAT(calls, Eq(2));
+  EXPECT_THAT(last_state, Eq(hover));
+  w.render(sr);
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
+  reset();
+
+  w.handle(dummy_mouse_move_event{{0, 2}});
+  EXPECT_THAT(clicked, IsFalse());
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_state, Eq(off));
+  w.render(sr);
+  EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
+  reset();
+}
+
+struct mock_widget_resize {
+
+  MOCK_METHOD(void, do_resize, (int w, int h));
+  void set_size(bounding_box auto const &b) {
+    do_resize(call::width(b), call::height(b));
+  }
+  void render(auto &&) const {}
+};
+
+template <typename T> struct ref_builder {
+  T *to_return_;
+
+  constexpr T &build(auto &&...) const { return *to_return_; }
+};
+
+TEST(GuiContext, BuildResize) // NOLINT
+{
+  auto w = mock_widget_resize();
+  InSequence s;
+  EXPECT_CALL(w, do_resize(2, 2));
+  EXPECT_CALL(w, do_resize(3, 3));
+  auto gui =
+      gui_context_builder()
+          .widgets(std::ref(w))
+          .on_resize([](size_wh auto const &wh, auto &&widgets) {
+            auto &[w] = widgets;
+            w.set_size(default_rect{0, 0, call::width(wh), call::height(wh)});
+          })
+          .build({{0, 0}, {2, 2}});
+  auto area = gui.handle(dummy_window_resized_event{{3, 3}});
+  expect_box_equal(area, default_rect{{0, 0}, {3, 3}});
+}
+
+struct rerender_if_state {
+  int rerender_state;
+
+  constexpr void render(auto &&...) const noexcept {}
+  constexpr void set_state(state_marker auto const &i,
+                           display_state_callbacks auto &&cb) {
+    if (i.current_state() == rerender_state) {
+      cb.rerender();
+    }
+  }
+};
+
+TEST(GuiContext, RerenderOutput) // NOLINT
+{
+  auto w1b = widget_builder()
+                 .area(default_rect{{0, 0}, {1, 1}})
+                 .event(int_as_event_handler{})
+                 .state(int_states{})
+                 .display(rerender_if_state{0});
+  auto w2b = widget_builder()
+                 .area(default_rect{{1, 0}, {2, 1}})
+                 .event(int_as_event_handler{})
+                 .state(int_states{})
+                 .display(rerender_if_state{1});
+  auto w3b = widget_builder()
+                 .area(default_rect{{2, 0}, {3, 1}})
+                 .event(int_as_event_handler{})
+                 .state(int_states{})
+                 .display(rerender_if_state{0});
+  auto r = test_renderer({{0, 0}, {3, 1}});
+  auto guic = gui_context_builder()
+                  .widgets(std::move(w1b), std::move(w2b), std::move(w3b))
+                  .build({{0, 0}, {1, 1}});
+  guic.render(r);
+  auto rarea = guic.handle(1);
+  expect_box_equal(rarea, default_rect{{1, 0}, {2, 1}});
+  rarea = guic.handle(0);
+  EXPECT_TRUE(call::box_includes_box(rarea, default_rect{{0, 0}, {1, 1}}));
+  EXPECT_TRUE(call::box_includes_box(rarea, default_rect{{2, 0}, {3, 1}}));
+}
 } // namespace cgui::tests

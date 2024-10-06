@@ -129,13 +129,13 @@ class sdl_canvas {
     }
   };
   SDL_Renderer *r_;
-  default_rect a_;
+  SDL_Rect a_;
   cleanup_object_t<decltype(cleanup), SDL_Texture *> t_{};
 
   constexpr SDL_Texture *texture() const { return t_.first_value(); }
 
 public:
-  constexpr sdl_canvas(SDL_Renderer *r, default_rect const &a) : r_(r), a_(a) {}
+  constexpr sdl_canvas(SDL_Renderer *r, SDL_Rect const &a) : r_(r), a_(a) {}
 
   void present() { SDL_RenderPresent(r_); }
 
@@ -204,7 +204,14 @@ public:
     return {};
   }
 
-  [[nodiscard]] default_rect area() const { return a_; }
+  void fill(bounding_box auto const &b, colour auto const &c) {
+    decltype(auto) sdlb = copy_box<SDL_Rect>(b);
+    SDL_SetRenderDrawColor(r_, call::red(c), call::green(c), call::blue(c),
+                           call::alpha(c));
+    SDL_RenderFillRect(r_, &sdlb);
+  }
+
+  [[nodiscard]] SDL_Rect area() const { return a_; }
 };
 
 struct sdl_display_dpi {
@@ -242,6 +249,11 @@ public:
   [[nodiscard]] std::string &ctor_string_mut() { return s_; }
   void take_ownership(SDL_Window *w) { handle_.reset(w); }
 
+  [[nodiscard]] SDL_Rect local_area() const {
+    SDL_Rect r{};
+    SDL_GetWindowSize(handle(), &r.w, &r.h);
+    return r;
+  }
   [[nodiscard]] SDL_Rect area() const {
     SDL_Rect r;
     SDL_GetWindowSize(handle(), &r.w, &r.h);
@@ -253,7 +265,7 @@ public:
     if (auto rend = SDL_GetRenderer(handle()); rend != nullptr) {
       int w, h;
       SDL_GetWindowSize(handle(), &w, &h);
-      return sdl_canvas{rend, default_rect{{0, 0}, {w, h}}};
+      return sdl_canvas{rend, SDL_Rect{0, 0, w, h}};
     }
     return unexpected(SDL_GetError());
   }
@@ -276,6 +288,7 @@ using sdl_window_flag_struct_t =
 
 inline constexpr sdl_window_flag_struct_t<SDL_WINDOW_RESIZABLE>
     sdl_window_resizable;
+inline constexpr sdl_window_flag_struct_t<SDL_WINDOW_OPENGL> sdl_window_opengl;
 
 class sdl_window_builder {
   std::string title_;
@@ -309,7 +322,8 @@ public:
       if (auto r = SDL_GetRenderer(w); r != nullptr) {
         return sdl_window(w);
       }
-      if (auto r = SDL_CreateRenderer(w, -1, SDL_RENDERER_TARGETTEXTURE);
+      if (auto r = SDL_CreateRenderer(
+              w, -1, SDL_RENDERER_TARGETTEXTURE | SDL_RENDERER_ACCELERATED);
           r != nullptr) {
         return sdl_window(w);
       }
@@ -327,8 +341,10 @@ template <> struct sdl_event_t<void> {
   SDL_Event raw_event;
 };
 
-using sdl_generic_event = sdl_event_t<void>;
-using sdl_quit_event = sdl_event_t<SDL_QuitEvent>;
+using sdl_generic_event = SDL_Event;  // sdl_event_t<void>;
+using sdl_quit_event = SDL_QuitEvent; // sdl_event_t<SDL_QuitEvent>;
+using sdl_mouse_move_event =
+    SDL_MouseMotionEvent; // sdl_event_t<SDL_MouseMotionEvent>;
 
 template <typename T>
 using sdl_event_callback_result =
@@ -355,31 +371,71 @@ inline expected<sdl_window, std::string> build(sdl_window_builder &&builder) {
   return std::move(builder).build();
 }
 
-inline auto switch_sdl_event(sdl_event_callback auto &&cb,
-                             sdl_generic_event const &e)
+inline auto switch_sdl_event(sdl_event_callback auto &&cb, SDL_Event const &e)
     -> sdl_event_callback_result<decltype(cb)> {
-  constexpr auto gen_evt = []<typename T>(T const &e) {
-    return sdl_event_t<T>{e};
-  };
-  auto &raw_evt = e.raw_event;
-  switch (static_cast<SDL_EventType>(raw_evt.type)) {
+  constexpr auto gen_evt = []<typename T>(T const &e) { return e; };
+  switch (static_cast<SDL_EventType>(e.type)) {
   case SDL_QUIT:
-    return cb(gen_evt(raw_evt.quit));
+    return cb(gen_evt(e.quit));
+  case SDL_MOUSEMOTION:
+    return cb(gen_evt(e.motion));
+  case SDL_MOUSEBUTTONUP:
+    [[fallthrough]];
+  case SDL_MOUSEBUTTONDOWN:
+    return cb(gen_evt(e.button));
+  case SDL_WINDOWEVENT:
+    return cb(gen_evt(e.window));
   default:
     return cb(e);
   }
 }
 
 inline int poll_event(sdl_context_instance &, sdl_event_callback auto &&cb) {
-  sdl_generic_event e{};
-  auto &raw_evt = e.raw_event;
-  if (SDL_PollEvent(&raw_evt) != 0) {
+  SDL_Event e;
+  if (SDL_PollEvent(&e) != 0) {
     switch_sdl_event(std::forward<decltype(cb)>(cb), e);
     return 1;
   }
   return 0;
 }
 } // namespace
+
+template <> struct extend_api<SDL_MouseMotionEvent> {
+  static constexpr subset_ui_events<ui_events::mouse_move>
+  event_type(SDL_MouseMotionEvent const &) {
+    return {};
+  }
+  static constexpr default_pixel_coord position(SDL_MouseMotionEvent const &e) {
+    return {e.x, e.y};
+  }
+};
+template <> struct extend_api<SDL_MouseButtonEvent> {
+  static constexpr subset_ui_events<ui_events::mouse_button_up,
+                                    ui_events::mouse_button_down>
+  event_type(SDL_MouseButtonEvent const &e) {
+    CGUI_ASSERT(e.type == SDL_MOUSEBUTTONUP || e.type == SDL_MOUSEBUTTONDOWN);
+    return {e.type == SDL_MOUSEBUTTONUP ? ui_events::mouse_button_up
+                                        : ui_events::mouse_button_down};
+  }
+
+  static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
+    return static_cast<mouse_buttons>(e.button);
+  }
+  static constexpr default_pixel_coord position(SDL_MouseButtonEvent const &e) {
+    return {e.x, e.y};
+  }
+};
+template <> struct extend_api<SDL_WindowEvent> {
+  static constexpr subset_ui_events<ui_events::window_resized,
+                                    ui_events::system>
+  event_type(SDL_WindowEvent const &e) {
+    return e.event == SDL_WINDOWEVENT_RESIZED ? ui_events::window_resized
+                                              : ui_events::system;
+  }
+  static constexpr default_size_wh size_of(SDL_WindowEvent const &e) {
+    return {e.data1, e.data2};
+  }
+};
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_SDL_HPP
