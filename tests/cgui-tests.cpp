@@ -1929,26 +1929,24 @@ TEST(Widget, BasicButton) // NOLINT
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
                .event(buttonlike_trigger{})
-               .state(momentary_button{.on_click =
-                                           [&clicked, &calls](auto &&...) {
-                                             clicked = true;
-                                             ++calls;
-                                           },
-                                       .on_hover =
-                                           [&last_state, &calls](auto &&...) {
-                                             last_state = hover;
-                                             ++calls;
-                                           },
-                                       .on_hold =
-                                           [&last_state, &calls](auto &&...) {
-                                             last_state = hold;
-                                             ++calls;
-                                           },
-                                       .on_exit =
-                                           [&last_state, &calls](auto &&...) {
-                                             last_state = off;
-                                             ++calls;
-                                           }})
+               .state(momentary_button{}
+                          .click([&clicked, &calls](auto &&...) {
+                            clicked = true;
+                            ++calls;
+                          })
+                          .hover([&last_state, &calls](auto &&...) {
+                            last_state = hover;
+                            ++calls;
+                          })
+                          .hold([&last_state, &calls](auto &&...) {
+                            last_state = hold;
+                            ++calls;
+                          })
+                          .exit([&last_state, &calls](auto &&...) {
+                            last_state = off;
+                            ++calls;
+                          })
+                          .build())
                .display(display_per_state(fill_rect{}))
                .build();
   auto &[filler] = w.displays();

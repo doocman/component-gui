@@ -50,7 +50,9 @@ int main(int, char **) {
                     .display(cgui::display_per_state(cgui::fill_rect()),
                              cgui::text_renderer(std::ref(cached_font)))
                     .event(cgui::buttonlike_trigger())
-                    .state(cgui::momentary_button{.on_click = [&do_exit] {do_exit = true;}}),
+                    .state(cgui::momentary_button{}
+                               .click([&do_exit] { do_exit = true; })
+                               .build()),
                 cgui::widget_builder().area(area_t{}).display(
                     cgui::text_renderer(std::ref(cached_font))) //
                 )

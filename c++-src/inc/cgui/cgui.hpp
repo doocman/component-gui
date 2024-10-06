@@ -57,7 +57,6 @@ public:
       auto y = call::tl_y(relative_area_);
       return {call::box_from_xyxy<TB>(x, y, x, y), offset_x_, offset_y_};
     }
-    return recursive_area_navigator(copy_box<TB>(b));
   }
   constexpr TB relative_area() const { return relative_area_; }
   template <typename TB2 = TB>
@@ -1121,20 +1120,40 @@ public:
 
 enum class momentary_button_states { off, hover, hold };
 
-template <std::invocable TClick, std::invocable THover = bp::no_op_t,
-          std::invocable THold = bp::no_op_t,
-          std::invocable TExit = bp::no_op_t>
-struct momentary_button {
-  TClick on_click;
-  THover on_hover;
-  THold on_hold;
-  TExit on_exit;
+template <std::invocable TClick, std::invocable THover, std::invocable THold,
+          std::invocable TExit>
+class momentary_button_impl
+    : bp::empty_structs_optimiser<TClick, THover, THold, TExit> {
 
   using state_t =
       widget_state_marker<momentary_button_states, momentary_button_states::off,
                           momentary_button_states::hover,
                           momentary_button_states::hold>;
+
+  using base_t = bp::empty_structs_optimiser<TClick, THover, THold, TExit>;
+  constexpr decltype(auto) on_click() noexcept {
+    return base_t::get(static_cast<base_t &>(*this),
+                       std::type_identity<TClick>{})();
+  }
+  constexpr decltype(auto) on_hover() noexcept {
+    return base_t::get(static_cast<base_t &>(*this),
+                       std::type_identity<THover>{})();
+  }
+  constexpr decltype(auto) on_hold() noexcept {
+    return base_t::get(static_cast<base_t &>(*this),
+                       std::type_identity<THold>{})();
+  }
+  constexpr decltype(auto) on_exit() noexcept {
+    return base_t::get(static_cast<base_t &>(*this),
+                       std::type_identity<TExit>{})();
+  }
   state_t current_state_{momentary_button_states::off};
+
+public:
+  template <typename... Ts>
+    requires(std::constructible_from<base_t, Ts && ...>)
+  constexpr explicit(sizeof...(Ts) == 1) momentary_button_impl(Ts &&...args)
+      : base_t(std::forward<Ts>(args)...) {}
 
   [[nodiscard]] constexpr state_t state() const { return current_state_; }
 
@@ -1154,6 +1173,53 @@ struct momentary_button {
   constexpr void handle(buttonlike_trigger::hover_event const &) {
     current_state_ = momentary_button_states::hover;
     on_hover();
+  }
+};
+
+template <
+    std::invocable TClick = bp::no_op_t, std::invocable THover = bp::no_op_t,
+    std::invocable THold = bp::no_op_t, std::invocable TExit = bp::no_op_t>
+struct momentary_button {
+  TClick on_click;
+  THover on_hover;
+  THold on_hold;
+  TExit on_exit;
+
+  constexpr momentary_button_impl<TClick, THover, THold, TExit> build() && {
+    return {std::move(on_click), std::move(on_hover), std::move(on_hold),
+            std::move(on_exit)};
+  }
+  template <typename T2>
+    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
+  constexpr momentary_button<std::unwrap_ref_decay_t<T2>, THover, THold, TExit>
+  click(T2 &&c) && {
+    auto self = bp::as_forward(std::move(*this));
+    return {std::forward<T2>(c), (*self).on_hover, (*self).on_hold,
+            (*self).on_exit};
+  }
+  template <typename T2>
+    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
+  constexpr momentary_button<TClick, std::unwrap_ref_decay_t<T2>, THold, TExit>
+  hover(T2 &&c) && {
+    auto self = bp::as_forward(std::move(*this));
+    return {(*self).on_click, std::forward<T2>(c), (*self).on_hold,
+            (*self).on_exit};
+  }
+  template <typename T2>
+    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
+  constexpr momentary_button<TClick, THover, std::unwrap_ref_decay_t<T2>, TExit>
+  hold(T2 &&c) && {
+    auto self = bp::as_forward(std::move(*this));
+    return {(*self).on_click, (*self).on_hover, std::forward<T2>(c),
+            (*self).on_exit};
+  }
+  template <typename T2>
+    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
+  constexpr momentary_button<TClick, THover, THold, std::unwrap_ref_decay_t<T2>>
+  exit(T2 &&c) && {
+    auto self = bp::as_forward(std::move(*this));
+    return {(*self).on_click, (*self).on_hover, (*self).on_hold,
+            std::forward<T2>(c)};
   }
 };
 
