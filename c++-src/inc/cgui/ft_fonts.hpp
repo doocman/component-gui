@@ -24,16 +24,16 @@
 
 namespace cgui {
 template <> struct extend_api<FT_BBox> {
-  static constexpr auto &&tl_x(bp::cvref_type<FT_BBox> auto &&b) noexcept {
+  static constexpr auto &&l_x(bp::cvref_type<FT_BBox> auto &&b) noexcept {
     return std::forward<decltype(b)>(b).xMin;
   }
-  static constexpr auto &&tl_y(bp::cvref_type<FT_BBox> auto &&b) noexcept {
+  static constexpr auto &&t_y(bp::cvref_type<FT_BBox> auto &&b) noexcept {
     return std::forward<decltype(b)>(b).yMin;
   }
-  static constexpr auto &&br_x(bp::cvref_type<FT_BBox> auto &&b) noexcept {
+  static constexpr auto &&r_x(bp::cvref_type<FT_BBox> auto &&b) noexcept {
     return std::forward<decltype(b)>(b).xMax;
   }
-  static constexpr auto &&br_y(bp::cvref_type<FT_BBox> auto &&b) noexcept {
+  static constexpr auto &&b_y(bp::cvref_type<FT_BBox> auto &&b) noexcept {
     return std::forward<decltype(b)>(b).yMax;
   }
 
@@ -285,8 +285,7 @@ public:
   auto ascender() const { return handle()->ascender >> 6; }
 };
 
-expected<ft_font_glyph, FT_Error> glyph(ft_font_face const &face,
-                                               char v) {
+expected<ft_font_glyph, FT_Error> glyph(ft_font_face const &face, char v) {
   auto gl_index = FT_Get_Char_Index(face.handle(), v);
   if (auto ec = FT_Load_Glyph(face.handle(), gl_index, FT_LOAD_DEFAULT);
       ec != 0) {

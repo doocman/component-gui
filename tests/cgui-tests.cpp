@@ -17,6 +17,9 @@
 #include <dooc/named_args_tuple.hpp>
 
 namespace cgui::tests {
+static_assert(std::convertible_to<not_null<int *>, int *>);
+static_assert(std::convertible_to<int *, not_null<int *>>);
+static_assert(!std::convertible_to<std::nullptr_t, not_null<int *>>);
 static_assert(bounding_box<default_rect>);
 static_assert(requires(std::tuple<int> t) {
   call::impl::do_apply_to{}(t, bp::no_op);
@@ -174,132 +177,132 @@ template <access_type tA> struct xyxy_bbox {
   int x1, x2, y1, y2;
   static constexpr auto access = tA;
 
-  constexpr auto tl_x() const
+  constexpr auto l_x() const
     requires(tA == access_type::member_set || tA == access_type::member_mut)
   {
     return x1;
   }
-  constexpr auto tl_y() const
+  constexpr auto t_y() const
     requires(tA == access_type::member_set || tA == access_type::member_mut)
   {
     return y1;
   }
-  constexpr auto br_x() const
+  constexpr auto r_x() const
     requires(tA == access_type::member_set || tA == access_type::member_mut)
   {
     return x2;
   }
-  constexpr auto br_y() const
+  constexpr auto b_y() const
     requires(tA == access_type::member_set || tA == access_type::member_mut)
   {
     return y2;
   }
-  constexpr auto &tl_x()
+  constexpr auto &l_x()
     requires(tA == access_type::member_mut)
   {
     return x1;
   }
-  constexpr auto &tl_y()
+  constexpr auto &t_y()
     requires(tA == access_type::member_mut)
   {
     return y1;
   }
-  constexpr auto &br_x()
+  constexpr auto &r_x()
     requires(tA == access_type::member_mut)
   {
     return x2;
   }
-  constexpr auto &br_y()
+  constexpr auto &b_y()
     requires(tA == access_type::member_mut)
   {
     return y2;
   }
 
-  constexpr xyxy_bbox &tl_x(int v)
+  constexpr xyxy_bbox &l_x(int v)
     requires(tA == access_type::member_set)
   {
     x1 = v;
     return *this;
   }
-  constexpr xyxy_bbox &tl_y(int v)
+  constexpr xyxy_bbox &t_y(int v)
     requires(tA == access_type::member_set)
   {
     y1 = v;
     return *this;
   }
-  constexpr xyxy_bbox &br_x(int v)
+  constexpr xyxy_bbox &r_x(int v)
     requires(tA == access_type::member_set)
   {
     x2 = v;
     return *this;
   }
-  constexpr xyxy_bbox &br_y(int v)
+  constexpr xyxy_bbox &b_y(int v)
     requires(tA == access_type::member_set)
   {
     y2 = v;
     return *this;
   }
 
-  static constexpr auto tl_x(xyxy_bbox const &t)
+  static constexpr auto l_x(xyxy_bbox const &t)
     requires(tA == access_type::static_set)
   {
     return t.x1;
   }
-  static constexpr auto tl_y(xyxy_bbox const &t)
+  static constexpr auto t_y(xyxy_bbox const &t)
     requires(tA == access_type::static_set)
   {
     return t.y1;
   }
-  static constexpr auto br_x(xyxy_bbox const &t)
+  static constexpr auto r_x(xyxy_bbox const &t)
     requires(tA == access_type::static_set)
   {
     return t.x2;
   }
-  static constexpr auto br_y(xyxy_bbox const &t)
+  static constexpr auto b_y(xyxy_bbox const &t)
     requires(tA == access_type::static_set)
   {
     return t.y2;
   }
-  static constexpr auto &&tl_x(bp::cvref_type<xyxy_bbox> auto &&t, int v)
+  static constexpr auto &&l_x(bp::cvref_type<xyxy_bbox> auto &&t, int v)
     requires(tA == access_type::static_set)
   {
     t.x1 = v;
     return std::forward<decltype(t)>(t);
   }
-  static constexpr auto &&tl_y(bp::cvref_type<xyxy_bbox> auto &&t, int v)
+  static constexpr auto &&t_y(bp::cvref_type<xyxy_bbox> auto &&t, int v)
     requires(tA == access_type::static_set)
   {
     t.y1 = v;
     return std::forward<decltype(t)>(t);
   }
-  static constexpr auto &&br_x(bp::cvref_type<xyxy_bbox> auto &&t, int v)
+  static constexpr auto &&r_x(bp::cvref_type<xyxy_bbox> auto &&t, int v)
     requires(tA == access_type::static_set)
   {
     t.x2 = v;
     return std::forward<decltype(t)>(t);
   }
-  static constexpr auto &&br_y(bp::cvref_type<xyxy_bbox> auto &&t, int v)
+  static constexpr auto &&b_y(bp::cvref_type<xyxy_bbox> auto &&t, int v)
     requires(tA == access_type::static_set)
   {
     t.y2 = v;
     return std::forward<decltype(t)>(t);
   }
-  static constexpr auto &&tl_x(bp::cvref_type<xyxy_bbox> auto &&t)
+  static constexpr auto &&l_x(bp::cvref_type<xyxy_bbox> auto &&t)
     requires(tA == access_type::static_mut)
   {
     return std::forward<decltype(t)>(t).x1;
   }
-  static constexpr auto &&tl_y(bp::cvref_type<xyxy_bbox> auto &&t)
+  static constexpr auto &&t_y(bp::cvref_type<xyxy_bbox> auto &&t)
     requires(tA == access_type::static_mut)
   {
     return std::forward<decltype(t)>(t).y1;
   }
-  static constexpr auto &&br_x(bp::cvref_type<xyxy_bbox> auto &&t)
+  static constexpr auto &&r_x(bp::cvref_type<xyxy_bbox> auto &&t)
     requires(tA == access_type::static_mut)
   {
     return std::forward<decltype(t)>(t).x2;
   }
-  static constexpr auto &&br_y(bp::cvref_type<xyxy_bbox> auto &&t)
+  static constexpr auto &&b_y(bp::cvref_type<xyxy_bbox> auto &&t)
     requires(tA == access_type::static_mut)
   {
     return std::forward<decltype(t)>(t).y2;
@@ -317,31 +320,31 @@ concept xyxy_free_set = xyxy_type<T> && free_set_access<T>;
 template <typename T>
 concept xyxy_free_mut = xyxy_type<T> && free_mut_access<T>;
 
-constexpr auto tl_x(xyxy_free_set auto const &a) { return a.x1; }
-constexpr auto tl_y(xyxy_free_set auto const &a) { return a.y1; }
-constexpr auto br_x(xyxy_free_set auto const &a) { return a.x2; }
-constexpr auto br_y(xyxy_free_set auto const &a) { return a.y2; }
-constexpr auto &&tl_x(xyxy_free_set auto &&a, int v) {
+constexpr auto l_x(xyxy_free_set auto const &a) { return a.x1; }
+constexpr auto t_y(xyxy_free_set auto const &a) { return a.y1; }
+constexpr auto r_x(xyxy_free_set auto const &a) { return a.x2; }
+constexpr auto b_y(xyxy_free_set auto const &a) { return a.y2; }
+constexpr auto &&l_x(xyxy_free_set auto &&a, int v) {
   a.x1 = v;
   return std::forward<decltype(a)>(a);
 }
-constexpr auto &&tl_y(xyxy_free_set auto &&a, int v) {
+constexpr auto &&t_y(xyxy_free_set auto &&a, int v) {
   a.y1 = v;
   return std::forward<decltype(a)>(a);
 }
-constexpr auto &&br_x(xyxy_free_set auto &&a, int v) {
+constexpr auto &&r_x(xyxy_free_set auto &&a, int v) {
   a.x2 = v;
   return std::forward<decltype(a)>(a);
 }
-constexpr auto &&br_y(xyxy_free_set auto &&a, int v) {
+constexpr auto &&b_y(xyxy_free_set auto &&a, int v) {
   a.y2 = v;
   return std::forward<decltype(a)>(a);
 }
 
-constexpr auto &&tl_x(xyxy_free_mut auto &&a) { return a.x1; }
-constexpr auto &&br_x(xyxy_free_mut auto &&a) { return a.x2; }
-constexpr auto &&tl_y(xyxy_free_mut auto &&a) { return a.y1; }
-constexpr auto &&br_y(xyxy_free_mut auto &&a) { return a.y2; }
+constexpr auto &&l_x(xyxy_free_mut auto &&a) { return a.x1; }
+constexpr auto &&r_x(xyxy_free_mut auto &&a) { return a.x2; }
+constexpr auto &&t_y(xyxy_free_mut auto &&a) { return a.y1; }
+constexpr auto &&b_y(xyxy_free_mut auto &&a) { return a.y2; }
 
 template <access_type tA> struct xywh_bbox {
   int x, y, w, h;
@@ -351,12 +354,12 @@ template <access_type tA> struct xywh_bbox {
   static constexpr bool stat_set = access == access_type::static_set;
   static constexpr bool stat_mut = access == access_type::static_mut;
 
-  constexpr auto tl_x() const
+  constexpr auto l_x() const
     requires(is_set || is_mut)
   {
     return x;
   }
-  constexpr auto tl_y() const
+  constexpr auto t_y() const
     requires(is_set || is_mut)
   {
     return y;
@@ -371,13 +374,13 @@ template <access_type tA> struct xywh_bbox {
   {
     return h;
   }
-  constexpr xywh_bbox &tl_x(int v)
+  constexpr xywh_bbox &l_x(int v)
     requires(is_set)
   {
     x = v;
     return *this;
   }
-  constexpr xywh_bbox &tl_y(int v)
+  constexpr xywh_bbox &t_y(int v)
     requires(is_set)
   {
     y = v;
@@ -395,12 +398,12 @@ template <access_type tA> struct xywh_bbox {
     h = v;
     return *this;
   }
-  constexpr auto &tl_x()
+  constexpr auto &l_x()
     requires(is_mut)
   {
     return x;
   }
-  constexpr auto &tl_y()
+  constexpr auto &t_y()
     requires(is_mut)
   {
     return y;
@@ -416,12 +419,12 @@ template <access_type tA> struct xywh_bbox {
     return h;
   }
 
-  static constexpr auto tl_x(xywh_bbox const &v)
+  static constexpr auto l_x(xywh_bbox const &v)
     requires(stat_set)
   {
     return v.x;
   }
-  static constexpr auto tl_y(xywh_bbox const &v)
+  static constexpr auto t_y(xywh_bbox const &v)
     requires(stat_set)
   {
     return v.y;
@@ -436,13 +439,13 @@ template <access_type tA> struct xywh_bbox {
   {
     return v.h;
   }
-  static constexpr auto &&tl_x(bp::cvref_type<xywh_bbox> auto &&v, int val)
+  static constexpr auto &&l_x(bp::cvref_type<xywh_bbox> auto &&v, int val)
     requires(stat_set)
   {
     v.x = val;
     return std::forward<decltype(v)>(v);
   }
-  static constexpr auto &&tl_y(bp::cvref_type<xywh_bbox> auto &&v, int val)
+  static constexpr auto &&t_y(bp::cvref_type<xywh_bbox> auto &&v, int val)
     requires(stat_set)
   {
     v.y = val;
@@ -460,12 +463,12 @@ template <access_type tA> struct xywh_bbox {
     v.h = val;
     return std::forward<decltype(v)>(v);
   }
-  static constexpr auto &&tl_x(bp::cvref_type<xywh_bbox> auto &&v)
+  static constexpr auto &&l_x(bp::cvref_type<xywh_bbox> auto &&v)
     requires(stat_mut)
   {
     return std::forward<decltype(v)>(v).x;
   }
-  static constexpr auto &&tl_y(bp::cvref_type<xywh_bbox> auto &&v)
+  static constexpr auto &&t_y(bp::cvref_type<xywh_bbox> auto &&v)
     requires(stat_mut)
   {
     return std::forward<decltype(v)>(v).y;
@@ -494,15 +497,15 @@ concept xywh_free_set = xywh_type<T> && free_set_access<T>;
 template <typename T>
 concept xywh_free_mut = xywh_type<T> && free_mut_access<T>;
 
-constexpr auto tl_x(xywh_free_set auto const &v) { return v.x; }
-constexpr auto tl_y(xywh_free_set auto const &v) { return v.y; }
+constexpr auto l_x(xywh_free_set auto const &v) { return v.x; }
+constexpr auto t_y(xywh_free_set auto const &v) { return v.y; }
 constexpr auto width(xywh_free_set auto const &v) { return v.w; }
 constexpr auto height(xywh_free_set auto const &v) { return v.h; }
-constexpr auto &&tl_x(xywh_free_set auto &&v, int val) {
+constexpr auto &&l_x(xywh_free_set auto &&v, int val) {
   v.x = val;
   return std::forward<decltype(v)>(v);
 }
-constexpr auto &&tl_y(xywh_free_set auto &&v, int val) {
+constexpr auto &&t_y(xywh_free_set auto &&v, int val) {
   v.y = val;
   return std::forward<decltype(v)>(v);
 }
@@ -514,10 +517,10 @@ constexpr auto &&height(xywh_free_set auto &&v, int val) {
   v.h = val;
   return std::forward<decltype(v)>(v);
 }
-constexpr auto &&tl_x(xywh_free_mut auto &&v) {
+constexpr auto &&l_x(xywh_free_mut auto &&v) {
   return std::forward<decltype(v)>(v).x;
 }
-constexpr auto &&tl_y(xywh_free_mut auto &&v) {
+constexpr auto &&t_y(xywh_free_mut auto &&v) {
   return std::forward<decltype(v)>(v).y;
 }
 constexpr auto &&width(xywh_free_mut auto &&v) {
@@ -565,67 +568,67 @@ struct extend_api<tests::apitests::xyxy_bbox<at>> {
     return {x1, x2, y1, y2};
   }
 
-  static constexpr auto tl_x(_type const &v)
+  static constexpr auto l_x(_type const &v)
     requires(_is_set)
   {
     return v.x1;
   }
-  static constexpr auto tl_y(_type const &v)
+  static constexpr auto t_y(_type const &v)
     requires(_is_set)
   {
     return v.y1;
   }
-  static constexpr auto br_x(_type const &v)
+  static constexpr auto r_x(_type const &v)
     requires(_is_set)
   {
     return v.x2;
   }
-  static constexpr auto br_y(_type const &v)
+  static constexpr auto b_y(_type const &v)
     requires(_is_set)
   {
     return v.y2;
   }
-  static constexpr auto &&tl_x(auto &&t, int v)
+  static constexpr auto &&l_x(auto &&t, int v)
     requires(_is_set)
   {
     t.x1 = v;
     return std::forward<decltype(t)>(t);
   }
-  static constexpr auto &&br_x(auto &&t, int v)
+  static constexpr auto &&r_x(auto &&t, int v)
     requires(_is_set)
   {
     t.x2 = v;
     return std::forward<decltype(t)>(t);
   }
-  static constexpr auto &&tl_y(auto &&t, int v)
+  static constexpr auto &&t_y(auto &&t, int v)
     requires(_is_set)
   {
     t.y1 = v;
     return std::forward<decltype(t)>(t);
   }
-  static constexpr auto &&br_y(auto &&t, int v)
+  static constexpr auto &&b_y(auto &&t, int v)
     requires(_is_set)
   {
     t.y2 = v;
     return std::forward<decltype(t)>(t);
   }
 
-  static constexpr auto &&tl_x(auto &&v)
+  static constexpr auto &&l_x(auto &&v)
     requires(_is_mut)
   {
     return std::forward<decltype(v)>(v).x1;
   }
-  static constexpr auto &&br_x(auto &&v)
+  static constexpr auto &&r_x(auto &&v)
     requires(_is_mut)
   {
     return std::forward<decltype(v)>(v).x2;
   }
-  static constexpr auto &&tl_y(auto &&v)
+  static constexpr auto &&t_y(auto &&v)
     requires(_is_mut)
   {
     return std::forward<decltype(v)>(v).y1;
   }
-  static constexpr auto &&br_y(auto &&v)
+  static constexpr auto &&b_y(auto &&v)
     requires(_is_mut)
   {
     return std::forward<decltype(v)>(v).y2;
@@ -641,12 +644,12 @@ struct extend_api<tests::apitests::xywh_bbox<at>> {
     return {x, y, w, h};
   }
 
-  static constexpr auto tl_x(_type const &v)
+  static constexpr auto l_x(_type const &v)
     requires(_is_set)
   {
     return v.x;
   }
-  static constexpr auto tl_y(_type const &v)
+  static constexpr auto t_y(_type const &v)
     requires(_is_set)
   {
     return v.y;
@@ -661,7 +664,7 @@ struct extend_api<tests::apitests::xywh_bbox<at>> {
   {
     return v.h;
   }
-  static constexpr auto &&tl_x(auto &&t, int v)
+  static constexpr auto &&l_x(auto &&t, int v)
     requires(_is_set)
   {
     t.x = v;
@@ -673,7 +676,7 @@ struct extend_api<tests::apitests::xywh_bbox<at>> {
     t.w = v;
     return std::forward<decltype(t)>(t);
   }
-  static constexpr auto &&tl_y(auto &&t, int v)
+  static constexpr auto &&t_y(auto &&t, int v)
     requires(_is_set)
   {
     t.y = v;
@@ -686,7 +689,7 @@ struct extend_api<tests::apitests::xywh_bbox<at>> {
     return std::forward<decltype(t)>(t);
   }
 
-  static constexpr auto &&tl_x(auto &&v)
+  static constexpr auto &&l_x(auto &&v)
     requires(_is_mut)
   {
     return std::forward<decltype(v)>(v).x;
@@ -696,7 +699,7 @@ struct extend_api<tests::apitests::xywh_bbox<at>> {
   {
     return std::forward<decltype(v)>(v).w;
   }
-  static constexpr auto &&tl_y(auto &&v)
+  static constexpr auto &&t_y(auto &&v)
     requires(_is_mut)
   {
     return std::forward<decltype(v)>(v).y;
@@ -761,40 +764,39 @@ TYPED_TEST(PixCoordFixture, AssignAndFetch) // NOLINT
   call::y_of(this->value, 3);
   EXPECT_THAT(call::x_of(this->value), Eq(4));
   EXPECT_THAT(call::y_of(this->value), Eq(3));
-  static_assert(extend::ns_lookup::has_set_x_of<decltype(this->value), int>);
 }
 
 TYPED_TEST(BoxApiFixture, AssignAndFetchXxyy) // NOLINT
 {
   static_assert(bounding_box<decltype(this->value)>);
-  EXPECT_THAT(call::tl_x(this->value), Eq(0));
-  EXPECT_THAT(call::tl_y(this->value), Eq(0));
-  EXPECT_THAT(call::br_x(this->value), Eq(0));
-  EXPECT_THAT(call::br_y(this->value), Eq(0));
+  EXPECT_THAT(call::l_x(this->value), Eq(0));
+  EXPECT_THAT(call::t_y(this->value), Eq(0));
+  EXPECT_THAT(call::r_x(this->value), Eq(0));
+  EXPECT_THAT(call::b_y(this->value), Eq(0));
   EXPECT_THAT(call::width(this->value), Eq(0));
   EXPECT_THAT(call::height(this->value), Eq(0));
   EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(0));
   EXPECT_THAT(call::y_of(call::top_left(this->value)), Eq(0));
   EXPECT_THAT(call::x_of(call::bottom_right(this->value)), Eq(0));
   EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(0));
-  call::tl_x(this->value, 1);
-  call::br_x(this->value, 2);
-  EXPECT_THAT(call::tl_x(this->value), Eq(1));
-  EXPECT_THAT(call::tl_y(this->value), Eq(0));
-  EXPECT_THAT(call::br_x(this->value), Eq(2));
-  EXPECT_THAT(call::br_y(this->value), Eq(0));
+  call::l_x.call(this->value, 1);
+  call::r_x(this->value, 2);
+  EXPECT_THAT(call::l_x(this->value), Eq(1));
+  EXPECT_THAT(call::t_y(this->value), Eq(0));
+  EXPECT_THAT(call::r_x(this->value), Eq(2));
+  EXPECT_THAT(call::b_y(this->value), Eq(0));
   EXPECT_THAT(call::width(this->value), Eq(1));
   EXPECT_THAT(call::height(this->value), Eq(0));
   EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(1));
   EXPECT_THAT(call::y_of(call::top_left(this->value)), Eq(0));
   EXPECT_THAT(call::x_of(call::bottom_right(this->value)), Eq(2));
   EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(0));
-  call::tl_y(this->value, 3);
-  call::br_y(this->value, 5);
-  EXPECT_THAT(call::tl_x(this->value), Eq(1));
-  EXPECT_THAT(call::tl_y(this->value), Eq(3));
-  EXPECT_THAT(call::br_x(this->value), Eq(2));
-  EXPECT_THAT(call::br_y(this->value), Eq(5));
+  call::t_y(this->value, 3);
+  call::b_y(this->value, 5);
+  EXPECT_THAT(call::l_x(this->value), Eq(1));
+  EXPECT_THAT(call::t_y(this->value), Eq(3));
+  EXPECT_THAT(call::r_x(this->value), Eq(2));
+  EXPECT_THAT(call::b_y(this->value), Eq(5));
   EXPECT_THAT(call::width(this->value), Eq(1));
   EXPECT_THAT(call::height(this->value), Eq(2));
   EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(1));
@@ -806,34 +808,34 @@ TYPED_TEST(BoxApiFixture, AssignAndFetchXxyy) // NOLINT
 TYPED_TEST(BoxApiFixture, AssignAndFetchXwyh) // NOLINT
 {
   static_assert(bounding_box<decltype(this->value)>);
-  EXPECT_THAT(call::tl_x(this->value), Eq(0));
-  EXPECT_THAT(call::tl_y(this->value), Eq(0));
-  EXPECT_THAT(call::br_x(this->value), Eq(0));
-  EXPECT_THAT(call::br_y(this->value), Eq(0));
+  EXPECT_THAT(call::l_x(this->value), Eq(0));
+  EXPECT_THAT(call::t_y(this->value), Eq(0));
+  EXPECT_THAT(call::r_x(this->value), Eq(0));
+  EXPECT_THAT(call::b_y(this->value), Eq(0));
   EXPECT_THAT(call::width(this->value), Eq(0));
   EXPECT_THAT(call::height(this->value), Eq(0));
   EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(0));
   EXPECT_THAT(call::y_of(call::top_left(this->value)), Eq(0));
   EXPECT_THAT(call::x_of(call::bottom_right(this->value)), Eq(0));
   EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(0));
-  call::tl_x(this->value, 1);
+  call::l_x(this->value, 1);
   call::width(this->value, 2);
-  EXPECT_THAT(call::tl_x(this->value), Eq(1));
-  EXPECT_THAT(call::tl_y(this->value), Eq(0));
-  EXPECT_THAT(call::br_x(this->value), Eq(3));
-  EXPECT_THAT(call::br_y(this->value), Eq(0));
+  EXPECT_THAT(call::l_x(this->value), Eq(1));
+  EXPECT_THAT(call::t_y(this->value), Eq(0));
+  EXPECT_THAT(call::r_x(this->value), Eq(3));
+  EXPECT_THAT(call::b_y(this->value), Eq(0));
   EXPECT_THAT(call::width(this->value), Eq(2));
   EXPECT_THAT(call::height(this->value), Eq(0));
   EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(1));
   EXPECT_THAT(call::y_of(call::top_left(this->value)), Eq(0));
   EXPECT_THAT(call::x_of(call::bottom_right(this->value)), Eq(3));
   EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(0));
-  call::tl_y(this->value, 3);
+  call::t_y(this->value, 3);
   call::height(this->value, 5);
-  EXPECT_THAT(call::tl_x(this->value), Eq(1));
-  EXPECT_THAT(call::tl_y(this->value), Eq(3));
-  EXPECT_THAT(call::br_x(this->value), Eq(3));
-  EXPECT_THAT(call::br_y(this->value), Eq(8));
+  EXPECT_THAT(call::l_x(this->value), Eq(1));
+  EXPECT_THAT(call::t_y(this->value), Eq(3));
+  EXPECT_THAT(call::r_x(this->value), Eq(3));
+  EXPECT_THAT(call::b_y(this->value), Eq(8));
   EXPECT_THAT(call::width(this->value), Eq(2));
   EXPECT_THAT(call::height(this->value), Eq(5));
   EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(1));
@@ -845,10 +847,10 @@ TYPED_TEST(BoxApiFixture, AssignAndFetchXwyh) // NOLINT
 TYPED_TEST(BoxApiFixture, AssignAndFetchTlBr) // NOLINT
 {
   static_assert(bounding_box<decltype(this->value)>);
-  EXPECT_THAT(call::tl_x(this->value), Eq(0));
-  EXPECT_THAT(call::tl_y(this->value), Eq(0));
-  EXPECT_THAT(call::br_x(this->value), Eq(0));
-  EXPECT_THAT(call::br_y(this->value), Eq(0));
+  EXPECT_THAT(call::l_x(this->value), Eq(0));
+  EXPECT_THAT(call::t_y(this->value), Eq(0));
+  EXPECT_THAT(call::r_x(this->value), Eq(0));
+  EXPECT_THAT(call::b_y(this->value), Eq(0));
   EXPECT_THAT(call::width(this->value), Eq(0));
   EXPECT_THAT(call::height(this->value), Eq(0));
   EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(0));
@@ -857,10 +859,10 @@ TYPED_TEST(BoxApiFixture, AssignAndFetchTlBr) // NOLINT
   EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(0));
   call::x_of(call::top_left(this->value), 1);
   call::x_of(call::bottom_right(this->value), 3);
-  EXPECT_THAT(call::tl_x(this->value), Eq(1));
-  EXPECT_THAT(call::tl_y(this->value), Eq(0));
-  EXPECT_THAT(call::br_x(this->value), Eq(3));
-  EXPECT_THAT(call::br_y(this->value), Eq(0));
+  EXPECT_THAT(call::l_x(this->value), Eq(1));
+  EXPECT_THAT(call::t_y(this->value), Eq(0));
+  EXPECT_THAT(call::r_x(this->value), Eq(3));
+  EXPECT_THAT(call::b_y(this->value), Eq(0));
   EXPECT_THAT(call::width(this->value), Eq(2));
   EXPECT_THAT(call::height(this->value), Eq(0));
   EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(1));
@@ -869,10 +871,10 @@ TYPED_TEST(BoxApiFixture, AssignAndFetchTlBr) // NOLINT
   EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(0));
   call::y_of(call::top_left(this->value), 3);
   call::y_of(call::bottom_right(this->value), 8);
-  EXPECT_THAT(call::tl_x(this->value), Eq(1));
-  EXPECT_THAT(call::tl_y(this->value), Eq(3));
-  EXPECT_THAT(call::br_x(this->value), Eq(3));
-  EXPECT_THAT(call::br_y(this->value), Eq(8));
+  EXPECT_THAT(call::l_x(this->value), Eq(1));
+  EXPECT_THAT(call::t_y(this->value), Eq(3));
+  EXPECT_THAT(call::r_x(this->value), Eq(3));
+  EXPECT_THAT(call::b_y(this->value), Eq(8));
   EXPECT_THAT(call::width(this->value), Eq(2));
   EXPECT_THAT(call::height(this->value), Eq(5));
   EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(1));
@@ -886,10 +888,10 @@ TYPED_TEST(BoxApiFixture, ConstructXYXY) // NOLINT
   using box_t = std::remove_cvref_t<decltype(this->value)>;
   auto v = call::box_from_xyxy<box_t>(1, 2, 3, 4);
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
-  EXPECT_THAT(call::tl_x(v), Eq(1));
-  EXPECT_THAT(call::tl_y(v), Eq(2));
-  EXPECT_THAT(call::br_x(v), Eq(3));
-  EXPECT_THAT(call::br_y(v), Eq(4));
+  EXPECT_THAT(call::l_x(v), Eq(1));
+  EXPECT_THAT(call::t_y(v), Eq(2));
+  EXPECT_THAT(call::r_x(v), Eq(3));
+  EXPECT_THAT(call::b_y(v), Eq(4));
 }
 
 TYPED_TEST(BoxApiFixture, ConstructXYWH) // NOLINT
@@ -897,8 +899,8 @@ TYPED_TEST(BoxApiFixture, ConstructXYWH) // NOLINT
   using box_t = std::remove_cvref_t<decltype(this->value)>;
   auto v = call::box_from_xywh<box_t>(1, 2, 3, 4);
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
-  EXPECT_THAT(call::tl_x(v), Eq(1));
-  EXPECT_THAT(call::tl_y(v), Eq(2));
+  EXPECT_THAT(call::l_x(v), Eq(1));
+  EXPECT_THAT(call::t_y(v), Eq(2));
   EXPECT_THAT(call::width(v), Eq(3));
   EXPECT_THAT(call::height(v), Eq(4));
 }
@@ -909,10 +911,10 @@ TYPED_TEST(BoxApiFixture, ConstructTLBR) // NOLINT
   auto v = call::box_from_tlbr<box_t>(default_pixel_coord{1, 2},
                                       default_pixel_coord{3, 4});
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
-  EXPECT_THAT(call::tl_x(v), Eq(1));
-  EXPECT_THAT(call::tl_y(v), Eq(2));
-  EXPECT_THAT(call::br_x(v), Eq(3));
-  EXPECT_THAT(call::br_y(v), Eq(4));
+  EXPECT_THAT(call::l_x(v), Eq(1));
+  EXPECT_THAT(call::t_y(v), Eq(2));
+  EXPECT_THAT(call::r_x(v), Eq(3));
+  EXPECT_THAT(call::b_y(v), Eq(4));
 }
 
 TYPED_TEST(BoxApiFixture, SplitBoxX) // NOLINT
@@ -920,19 +922,19 @@ TYPED_TEST(BoxApiFixture, SplitBoxX) // NOLINT
   auto &box = this->value;
   auto org_ty = 2;
   auto org_by = 55;
-  call::tl_y(box, org_ty);
-  call::br_y(box, org_by);
-  call::tl_x(box, 1);
-  call::br_x(box, 5);
+  call::t_y(box, org_ty);
+  call::b_y(box, org_by);
+  call::l_x(box, 1);
+  call::r_x(box, 5);
   auto b2 = call::split_x(&box, 3);
-  EXPECT_THAT(call::tl_x(box), Eq(1));
-  EXPECT_THAT(call::br_x(box), Eq(3));
-  EXPECT_THAT(call::tl_y(box), Eq(org_ty));
-  EXPECT_THAT(call::br_y(box), Eq(org_by));
-  EXPECT_THAT(call::tl_x(b2), Eq(3));
-  EXPECT_THAT(call::br_x(b2), Eq(5));
-  EXPECT_THAT(call::tl_y(b2), Eq(org_ty));
-  EXPECT_THAT(call::br_y(b2), Eq(org_by));
+  EXPECT_THAT(call::l_x(box), Eq(1));
+  EXPECT_THAT(call::r_x(box), Eq(3));
+  EXPECT_THAT(call::t_y(box), Eq(org_ty));
+  EXPECT_THAT(call::b_y(box), Eq(org_by));
+  EXPECT_THAT(call::l_x(b2), Eq(3));
+  EXPECT_THAT(call::r_x(b2), Eq(5));
+  EXPECT_THAT(call::t_y(b2), Eq(org_ty));
+  EXPECT_THAT(call::b_y(b2), Eq(org_by));
 }
 
 TYPED_TEST(BoxApiFixture, SplitBoxY) // NOLINT
@@ -940,123 +942,123 @@ TYPED_TEST(BoxApiFixture, SplitBoxY) // NOLINT
   auto &box = this->value;
   auto org_lx = 2;
   auto org_rx = 55;
-  call::tl_x(box, org_lx);
-  call::br_x(box, org_rx);
-  call::tl_y(box, 1);
-  call::br_y(box, 5);
+  call::l_x(box, org_lx);
+  call::r_x(box, org_rx);
+  call::t_y(box, 1);
+  call::b_y(box, 5);
   auto b2 = call::split_y(&box, 3);
-  EXPECT_THAT(call::tl_y(box), Eq(1));
-  EXPECT_THAT(call::br_y(box), Eq(3));
-  EXPECT_THAT(call::tl_x(box), Eq(org_lx));
-  EXPECT_THAT(call::br_x(box), Eq(org_rx));
-  EXPECT_THAT(call::tl_y(b2), Eq(3));
-  EXPECT_THAT(call::br_y(b2), Eq(5));
-  EXPECT_THAT(call::tl_x(b2), Eq(org_lx));
-  EXPECT_THAT(call::br_x(b2), Eq(org_rx));
+  EXPECT_THAT(call::t_y(box), Eq(1));
+  EXPECT_THAT(call::b_y(box), Eq(3));
+  EXPECT_THAT(call::l_x(box), Eq(org_lx));
+  EXPECT_THAT(call::r_x(box), Eq(org_rx));
+  EXPECT_THAT(call::t_y(b2), Eq(3));
+  EXPECT_THAT(call::b_y(b2), Eq(5));
+  EXPECT_THAT(call::l_x(b2), Eq(org_lx));
+  EXPECT_THAT(call::r_x(b2), Eq(org_rx));
 }
 
 TYPED_TEST(BoxApiFixture, TrimLeft) // NOLINT
 {
   auto &box = this->value;
-  call::tl_y(box, 4);
-  call::br_y(box, 70);
-  call::tl_x(box, 4);
-  call::br_x(box, 15);
+  call::t_y(box, 4);
+  call::b_y(box, 70);
+  call::l_x(box, 4);
+  call::r_x(box, 15);
   auto b2 = call::trim_from_left(&box, 4);
-  EXPECT_THAT(call::tl_y(box), Eq(4));
-  EXPECT_THAT(call::br_y(box), Eq(70));
-  EXPECT_THAT(call::tl_x(box), Eq(4 + 4));
-  EXPECT_THAT(call::br_x(box), Eq(15));
-  EXPECT_THAT(call::tl_y(b2), Eq(4));
-  EXPECT_THAT(call::br_y(b2), Eq(70));
-  EXPECT_THAT(call::tl_x(b2), Eq(4));
-  EXPECT_THAT(call::br_x(b2), Eq(4 + 4));
+  EXPECT_THAT(call::t_y(box), Eq(4));
+  EXPECT_THAT(call::b_y(box), Eq(70));
+  EXPECT_THAT(call::l_x(box), Eq(4 + 4));
+  EXPECT_THAT(call::r_x(box), Eq(15));
+  EXPECT_THAT(call::t_y(b2), Eq(4));
+  EXPECT_THAT(call::b_y(b2), Eq(70));
+  EXPECT_THAT(call::l_x(b2), Eq(4));
+  EXPECT_THAT(call::r_x(b2), Eq(4 + 4));
 }
 TYPED_TEST(BoxApiFixture, TrimUp) // NOLINT
 {
   auto &box = this->value;
-  call::tl_x(box, 4);
-  call::br_x(box, 70);
-  call::tl_y(box, 4);
-  call::br_y(box, 15);
+  call::l_x(box, 4);
+  call::r_x(box, 70);
+  call::t_y(box, 4);
+  call::b_y(box, 15);
   auto b2 = call::trim_from_above(&box, 4);
-  EXPECT_THAT(call::tl_x(box), Eq(4));
-  EXPECT_THAT(call::br_x(box), Eq(70));
-  EXPECT_THAT(call::tl_y(box), Eq(4 + 4));
-  EXPECT_THAT(call::br_y(box), Eq(15));
-  EXPECT_THAT(call::tl_x(b2), Eq(4));
-  EXPECT_THAT(call::br_x(b2), Eq(70));
-  EXPECT_THAT(call::tl_y(b2), Eq(4));
-  EXPECT_THAT(call::br_y(b2), Eq(4 + 4));
+  EXPECT_THAT(call::l_x(box), Eq(4));
+  EXPECT_THAT(call::r_x(box), Eq(70));
+  EXPECT_THAT(call::t_y(box), Eq(4 + 4));
+  EXPECT_THAT(call::b_y(box), Eq(15));
+  EXPECT_THAT(call::l_x(b2), Eq(4));
+  EXPECT_THAT(call::r_x(b2), Eq(70));
+  EXPECT_THAT(call::t_y(b2), Eq(4));
+  EXPECT_THAT(call::b_y(b2), Eq(4 + 4));
 }
 
 TYPED_TEST(BoxApiFixture, TrimRight) // NOLINT
 {
   auto &box = this->value;
-  call::tl_y(box, 4);
-  call::br_y(box, 70);
-  call::tl_x(box, 4);
-  call::br_x(box, 15);
+  call::t_y(box, 4);
+  call::b_y(box, 70);
+  call::l_x(box, 4);
+  call::r_x(box, 15);
   auto b2 = call::trim_from_right(&box, 4);
-  EXPECT_THAT(call::tl_y(box), Eq(4));
-  EXPECT_THAT(call::br_y(box), Eq(70));
-  EXPECT_THAT(call::tl_x(box), Eq(4));
-  EXPECT_THAT(call::br_x(box), Eq(15 - 4));
-  EXPECT_THAT(call::tl_y(b2), Eq(4));
-  EXPECT_THAT(call::br_y(b2), Eq(70));
-  EXPECT_THAT(call::tl_x(b2), Eq(15 - 4));
-  EXPECT_THAT(call::br_x(b2), Eq(15));
+  EXPECT_THAT(call::t_y(box), Eq(4));
+  EXPECT_THAT(call::b_y(box), Eq(70));
+  EXPECT_THAT(call::l_x(box), Eq(4));
+  EXPECT_THAT(call::r_x(box), Eq(15 - 4));
+  EXPECT_THAT(call::t_y(b2), Eq(4));
+  EXPECT_THAT(call::b_y(b2), Eq(70));
+  EXPECT_THAT(call::l_x(b2), Eq(15 - 4));
+  EXPECT_THAT(call::r_x(b2), Eq(15));
 }
 TYPED_TEST(BoxApiFixture, TrimDown) // NOLINT
 {
   auto &box = this->value;
-  call::tl_x(box, 4);
-  call::br_x(box, 70);
-  call::tl_y(box, 4);
-  call::br_y(box, 15);
+  call::l_x(box, 4);
+  call::r_x(box, 70);
+  call::t_y(box, 4);
+  call::b_y(box, 15);
   auto b2 = call::trim_from_below(&box, 4);
-  EXPECT_THAT(call::tl_x(box), Eq(4));
-  EXPECT_THAT(call::br_x(box), Eq(70));
-  EXPECT_THAT(call::tl_y(box), Eq(4));
-  EXPECT_THAT(call::br_y(box), Eq(15 - 4));
-  EXPECT_THAT(call::tl_x(b2), Eq(4));
-  EXPECT_THAT(call::br_x(b2), Eq(70));
-  EXPECT_THAT(call::tl_y(b2), Eq(15 - 4));
-  EXPECT_THAT(call::br_y(b2), Eq(15));
+  EXPECT_THAT(call::l_x(box), Eq(4));
+  EXPECT_THAT(call::r_x(box), Eq(70));
+  EXPECT_THAT(call::t_y(box), Eq(4));
+  EXPECT_THAT(call::b_y(box), Eq(15 - 4));
+  EXPECT_THAT(call::l_x(b2), Eq(4));
+  EXPECT_THAT(call::r_x(b2), Eq(70));
+  EXPECT_THAT(call::t_y(b2), Eq(15 - 4));
+  EXPECT_THAT(call::b_y(b2), Eq(15));
 }
 TYPED_TEST(BoxApiFixture, BoxUnion) // NOLINT
 {
   using box_t = decltype(this->value);
   auto result = call::box_union(call::box_from_xyxy<box_t>(1, 2, 3, 4),
                                 call::box_from_xyxy<box_t>(1, 2, 3, 4));
-  EXPECT_THAT(call::tl_x(result), Eq(1));
-  EXPECT_THAT(call::tl_y(result), Eq(2));
-  EXPECT_THAT(call::br_x(result), Eq(3));
-  EXPECT_THAT(call::br_y(result), Eq(4));
+  EXPECT_THAT(call::l_x(result), Eq(1));
+  EXPECT_THAT(call::t_y(result), Eq(2));
+  EXPECT_THAT(call::r_x(result), Eq(3));
+  EXPECT_THAT(call::b_y(result), Eq(4));
 
   result = call::box_union(call::box_from_xyxy<box_t>(1, 2, 3, 4),
                            call::box_from_xyxy<box_t>(2, 3, 4, 5));
-  EXPECT_THAT(call::tl_x(result), Eq(1));
-  EXPECT_THAT(call::tl_y(result), Eq(2));
-  EXPECT_THAT(call::br_x(result), Eq(4));
-  EXPECT_THAT(call::br_y(result), Eq(5));
+  EXPECT_THAT(call::l_x(result), Eq(1));
+  EXPECT_THAT(call::t_y(result), Eq(2));
+  EXPECT_THAT(call::r_x(result), Eq(4));
+  EXPECT_THAT(call::b_y(result), Eq(5));
 }
 TYPED_TEST(BoxApiFixture, BoxIntersection) // NOLINT
 {
   using box_t = decltype(this->value);
   auto result = call::box_intersection(call::box_from_xyxy<box_t>(1, 2, 3, 4),
                                        call::box_from_xyxy<box_t>(1, 2, 3, 4));
-  EXPECT_THAT(call::tl_x(result), Eq(1));
-  EXPECT_THAT(call::tl_y(result), Eq(2));
-  EXPECT_THAT(call::br_x(result), Eq(3));
-  EXPECT_THAT(call::br_y(result), Eq(4));
+  EXPECT_THAT(call::l_x(result), Eq(1));
+  EXPECT_THAT(call::t_y(result), Eq(2));
+  EXPECT_THAT(call::r_x(result), Eq(3));
+  EXPECT_THAT(call::b_y(result), Eq(4));
 
   result = call::box_intersection(call::box_from_xyxy<box_t>(1, 2, 3, 4),
                                   call::box_from_xyxy<box_t>(2, 3, 4, 5));
-  EXPECT_THAT(call::tl_x(result), Eq(2));
-  EXPECT_THAT(call::tl_y(result), Eq(3));
-  EXPECT_THAT(call::br_x(result), Eq(3));
-  EXPECT_THAT(call::br_y(result), Eq(4));
+  EXPECT_THAT(call::l_x(result), Eq(2));
+  EXPECT_THAT(call::t_y(result), Eq(3));
+  EXPECT_THAT(call::r_x(result), Eq(3));
+  EXPECT_THAT(call::b_y(result), Eq(4));
 }
 TYPED_TEST(BoxApiFixture, HitTest) // NOLINT
 {
@@ -1085,28 +1087,28 @@ TYPED_TEST(BoxApiFixture, NudgeLeft) // NOLINT
   using box_t = decltype(this->value);
   auto b = call::box_from_xyxy<box_t>(1, 2, 4, 5);
   auto b2 = call::nudge_left(b, 1);
-  EXPECT_THAT(call::tl_x(b2), Eq(0));
-  EXPECT_THAT(call::tl_y(b2), Eq(2));
-  EXPECT_THAT(call::br_x(b2), Eq(3));
-  EXPECT_THAT(call::br_y(b2), Eq(5));
+  EXPECT_THAT(call::l_x(b2), Eq(0));
+  EXPECT_THAT(call::t_y(b2), Eq(2));
+  EXPECT_THAT(call::r_x(b2), Eq(3));
+  EXPECT_THAT(call::b_y(b2), Eq(5));
 }
 TYPED_TEST(BoxApiFixture, NudgeDown) // NOLINT
 {
   using box_t = decltype(this->value);
   auto b = call::box_from_xyxy<box_t>(1, 2, 4, 5);
   auto b2 = call::nudge_down(b, 1);
-  EXPECT_THAT(call::tl_x(b2), Eq(1));
-  EXPECT_THAT(call::tl_y(b2), Eq(3));
-  EXPECT_THAT(call::br_x(b2), Eq(4));
-  EXPECT_THAT(call::br_y(b2), Eq(6));
+  EXPECT_THAT(call::l_x(b2), Eq(1));
+  EXPECT_THAT(call::t_y(b2), Eq(3));
+  EXPECT_THAT(call::r_x(b2), Eq(4));
+  EXPECT_THAT(call::b_y(b2), Eq(6));
 }
 TYPED_TEST(BoxApiFixture, MoveTlTo) // NOLINT
 {
   using box_t = decltype(this->value);
   auto b = call::box_from_xywh<box_t>(1, 2, 4, 5);
   auto b2 = call::move_tl_to(b, {0, -1});
-  EXPECT_THAT(call::tl_x(b2), Eq(0));
-  EXPECT_THAT(call::tl_y(b2), Eq(-1));
+  EXPECT_THAT(call::l_x(b2), Eq(0));
+  EXPECT_THAT(call::t_y(b2), Eq(-1));
   EXPECT_THAT(call::width(b2), Eq(4));
   EXPECT_THAT(call::height(b2), Eq(5));
 }
@@ -1146,7 +1148,7 @@ struct test_renderer {
   void draw_pixels(bounding_box auto &&b, auto &&cb) {
     if (!call::box_includes_box(area(), b)) {
       failed_calls.push_back(call::box_from_xyxy<default_rect>(
-          call::tl_x(b), call::tl_y(b), call::br_x(b), call::br_y(b)));
+          call::l_x(b), call::t_y(b), call::r_x(b), call::b_y(b)));
       return;
     }
     cb([this, &b](auto &&pos, auto &&col) {
@@ -1169,13 +1171,13 @@ struct test_renderer {
 inline void expect_box_equal(
     bounding_box auto const &to_test, bounding_box auto const &to_expect,
     std::source_location const &sl = std::source_location::current()) {
-  EXPECT_THAT(call::tl_x(to_test), Eq(call::tl_x(to_expect)))
+  EXPECT_THAT(call::l_x(to_test), Eq(call::l_x(to_expect)))
       << "At " << sl.file_name() << ':' << sl.line();
-  EXPECT_THAT(call::tl_y(to_test), Eq(call::tl_y(to_expect)))
+  EXPECT_THAT(call::t_y(to_test), Eq(call::t_y(to_expect)))
       << "At " << sl.file_name() << ':' << sl.line();
-  EXPECT_THAT(call::br_x(to_test), Eq(call::br_x(to_expect)))
+  EXPECT_THAT(call::r_x(to_test), Eq(call::r_x(to_expect)))
       << "At " << sl.file_name() << ':' << sl.line();
-  EXPECT_THAT(call::br_y(to_test), Eq(call::br_y(to_expect)))
+  EXPECT_THAT(call::b_y(to_test), Eq(call::b_y(to_expect)))
       << "At " << sl.file_name() << ':' << sl.line();
 }
 
@@ -1228,8 +1230,8 @@ TEST(SubRenderer, DrawPixels) // NOLINT
   auto sr1 = sub_renderer(r, r.area());
   sr1.draw_pixels(default_rect{{0, 0}, {6, 7}},
                   [&](bounding_box auto &&b, auto &&drawer) {
-                    EXPECT_THAT(call::tl_x(b), Eq(0));
-                    EXPECT_THAT(call::tl_y(b), Eq(0));
+                    EXPECT_THAT(call::l_x(b), Eq(0));
+                    EXPECT_THAT(call::t_y(b), Eq(0));
                     EXPECT_THAT(call::width(b), Eq(call::width(r.area())));
                     EXPECT_THAT(call::height(b), Eq(call::height(r.area())));
                     drawer(default_pixel_coord{}, default_colour_t{1, 1, 1, 1});
@@ -1254,8 +1256,8 @@ TEST(SubRenderer, DrawPixels) // NOLINT
   auto s2 = sr1.sub(default_rect{{s2_x, s2_y}, {4, 4}});
   s2.draw_pixels(default_rect{{0, 0}, {4, 4}},
                  [&](bounding_box auto &&b, auto &&drawer) {
-                   EXPECT_THAT(call::tl_x(b), Eq(0));
-                   EXPECT_THAT(call::tl_y(b), Eq(0));
+                   EXPECT_THAT(call::l_x(b), Eq(0));
+                   EXPECT_THAT(call::t_y(b), Eq(0));
                    EXPECT_THAT(call::width(b), Eq(3));
                    EXPECT_THAT(call::height(b), Eq(3));
                    drawer(default_pixel_coord{}, default_colour_t{2, 1, 1, 1});
@@ -1283,10 +1285,10 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
   auto r = test_renderer({{0, 0}, {4, 4}});
   auto s1 = sub_renderer(r, default_rect{{1, 2}, {3, 3}});
   s1.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::tl_x(b), Eq(1));
-    EXPECT_THAT(call::tl_y(b), Eq(2));
-    EXPECT_THAT(call::br_x(b), Eq(3));
-    EXPECT_THAT(call::br_y(b), Eq(3));
+    EXPECT_THAT(call::l_x(b), Eq(1));
+    EXPECT_THAT(call::t_y(b), Eq(2));
+    EXPECT_THAT(call::r_x(b), Eq(3));
+    EXPECT_THAT(call::b_y(b), Eq(3));
     drawer(call::top_left(b), default_colour_t{1, 1, 1, 255});
   });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
@@ -1320,10 +1322,10 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
 
   auto s2full = s1.sub(r.area());
   s2full.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::tl_x(b), Eq(1));
-    EXPECT_THAT(call::tl_y(b), Eq(2));
-    EXPECT_THAT(call::br_x(b), Eq(3));
-    EXPECT_THAT(call::br_y(b), Eq(3));
+    EXPECT_THAT(call::l_x(b), Eq(1));
+    EXPECT_THAT(call::t_y(b), Eq(2));
+    EXPECT_THAT(call::r_x(b), Eq(3));
+    EXPECT_THAT(call::b_y(b), Eq(3));
     drawer(call::top_left(b), default_colour_t{2, 0, 0, 255});
   });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
@@ -1338,10 +1340,10 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
 
   auto s2xid = s2full.sub(default_rect{{1, 0}, {3, 4}});
   s2xid.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::tl_x(b), Eq(0));
-    EXPECT_THAT(call::tl_y(b), Eq(2));
-    EXPECT_THAT(call::br_x(b), Eq(2));
-    EXPECT_THAT(call::br_y(b), Eq(3));
+    EXPECT_THAT(call::l_x(b), Eq(0));
+    EXPECT_THAT(call::t_y(b), Eq(2));
+    EXPECT_THAT(call::r_x(b), Eq(2));
+    EXPECT_THAT(call::b_y(b), Eq(3));
     drawer(call::top_left(b), default_colour_t{3, 0, 0, 255});
   });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
@@ -1356,10 +1358,10 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
 
   auto s3x = s2xid.sub(default_rect{{1, 0}, {3, 4}});
   s3x.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::tl_x(b), Eq(0));
-    EXPECT_THAT(call::tl_y(b), Eq(2));
-    EXPECT_THAT(call::br_x(b), Eq(1));
-    EXPECT_THAT(call::br_y(b), Eq(3));
+    EXPECT_THAT(call::l_x(b), Eq(0));
+    EXPECT_THAT(call::t_y(b), Eq(2));
+    EXPECT_THAT(call::r_x(b), Eq(1));
+    EXPECT_THAT(call::b_y(b), Eq(3));
     drawer(call::top_left(b), default_colour_t{4, 0, 0, 255});
   });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
@@ -1374,10 +1376,10 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
 
   auto s4 = s2full.sub(default_rect{{2, 2}, {4, 4}});
   s4.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::tl_x(b), Eq(0));
-    EXPECT_THAT(call::tl_y(b), Eq(0));
-    EXPECT_THAT(call::br_x(b), Eq(1));
-    EXPECT_THAT(call::br_y(b), Eq(1));
+    EXPECT_THAT(call::l_x(b), Eq(0));
+    EXPECT_THAT(call::t_y(b), Eq(0));
+    EXPECT_THAT(call::r_x(b), Eq(1));
+    EXPECT_THAT(call::b_y(b), Eq(1));
     drawer(call::top_left(b), default_colour_t{5, 0, 0, 255});
   });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
@@ -1418,8 +1420,8 @@ struct dummy_glyph {
     call::draw_alpha(
         renderer, default_rect{0, 0, length, height()},
         [alpha = alpha](bounding_box auto &&bbox, auto &&drawer) {
-          for (auto i = call::tl_x(bbox); i < call::br_x(bbox); ++i) {
-            for (auto j = call::tl_y(bbox); j < call::br_y(bbox); ++j) {
+          for (auto i = call::l_x(bbox); i < call::r_x(bbox); ++i) {
+            for (auto j = call::t_y(bbox); j < call::b_y(bbox); ++j) {
               drawer(default_pixel_coord{i, j}, alpha);
             }
           }

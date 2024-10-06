@@ -3,8 +3,11 @@
 #define COMPONENT_GUI_CGUI_CALL_HPP
 
 #include <concepts>
-#include <utility>
 #include <type_traits>
+#include <utility>
+
+#include <cgui/std-backport/concepts.hpp>
+#include <cgui/std-backport/utility.hpp>
 
 #define CGUI_CALL_CONCEPT(NAME)                                                \
   [[maybe_unused]] inline void NAME() {}                                       \
@@ -52,6 +55,33 @@
       return call(std::forward<T>(t), std::forward<Ts>(args)...);              \
     }                                                                          \
   };
+#define CGUI_CALL_CONCEPT_GETSET(NAME)                                         \
+  CGUI_CALL_CONCEPT(NAME)                                                      \
+  template <typename T, typename TVal>                                         \
+  concept has_##NAME##_assignable = has_assignable_get<T, _do_##NAME, TVal>;   \
+  struct _do_set_##NAME {                                                      \
+    template <typename TObj, typename TVal>                                    \
+      requires(has_##NAME<TObj &&, TVal &&> ||                                 \
+               has_##NAME##_assignable<TObj, TVal>)                            \
+    static constexpr decltype(auto) call(TObj &&o, TVal &&v) {                 \
+      auto of = bp::as_forward<TObj>(o);                                       \
+      auto vf = bp::as_forward<TVal>(v);                                       \
+      if constexpr (has_##NAME<TObj, TVal>) {                                  \
+        return _do_##NAME::call(*of, *vf);                                     \
+      } else {                                                                 \
+        static_assert(has_##NAME##_assignable<TObj, TVal>);                    \
+        return _do_##NAME::call(*of) = *vf;                                    \
+      }                                                                        \
+    }                                                                          \
+    static constexpr decltype(auto) call(has_##NAME auto &&t) {                \
+      return _do_##NAME::call(std::forward<decltype(t)>(t));                   \
+    }                                                                          \
+    template <typename... Ts>                                                  \
+      requires(requires(Ts &&...ts) { call(std::forward<Ts>(ts)...); })        \
+    constexpr decltype(auto) operator()(Ts &&...ts) const {                    \
+      return call(std::forward<Ts>(ts)...);                                    \
+    }                                                                          \
+  };
 
 #define CGUI_CALL_BBOX_MEMBER(NAME, CONCEPT, MUTCONCEPT)                       \
   static constexpr decltype(auto) _fallback(auto const &b);                    \
@@ -86,125 +116,107 @@
                 std::forward<decltype(vs)>(vs)...);                            \
   }
 
-#define CGUI_EXTRA_PARAMS
-#define CGUI_EXTRA_ARGS
-#define CGUI_EXTRA_ARGS_COMMA
-#define CGUI_PIX_FUNC_IMPL(NAME, CONCEPT)                                      \
-  namespace ns_lookup {                                                        \
-  inline void NAME() {}                                                        \
-                                                                               \
-  template <typename T>                                                        \
-  concept static_##NAME = requires(T &&tc CGUI_EXTRA_PARAMS) {                 \
-    {                                                                          \
-      std::remove_cvref_t<T>::NAME(tc CGUI_EXTRA_ARGS_COMMA CGUI_EXTRA_ARGS)   \
-    } -> CONCEPT;                                                              \
-  };                                                                           \
-  template <typename T>                                                        \
-  concept member_##NAME = requires(T &&tc CGUI_EXTRA_PARAMS) {                 \
-    { tc.NAME(CGUI_EXTRA_ARGS) } -> CONCEPT;                                   \
-  };                                                                           \
-  template <typename T>                                                        \
-  concept free_##NAME = requires(T &&tc CGUI_EXTRA_PARAMS) {                   \
-    { NAME(tc CGUI_EXTRA_ARGS_COMMA CGUI_EXTRA_ARGS) } -> CONCEPT;             \
-  };                                                                           \
-  template <typename TExt, typename T>                                         \
-  concept extend_##NAME = requires(T &&tc CGUI_EXTRA_PARAMS) {                 \
-    { TExt::NAME(tc CGUI_EXTRA_ARGS_COMMA CGUI_EXTRA_ARGS) } -> CONCEPT;       \
-  };                                                                           \
-  template <typename T>                                                        \
-  concept has_##NAME = member_##NAME<T> || static_##NAME<T> ||                 \
-                       free_##NAME<T> || extend_##NAME<extend_api_t<T>, T>;    \
-  constexpr decltype(auto) do_##NAME(has_##NAME auto &&t CGUI_EXTRA_PARAMS) {  \
-    using type = decltype(t);                                                  \
-    if constexpr (member_##NAME<type>) {                                       \
-      return std::forward<type>(t).NAME(CGUI_EXTRA_ARGS);                      \
-    } else if constexpr (static_##NAME<type>) {                                \
-      return std::remove_cvref_t<type>::NAME(                                  \
-          std::forward<type>(t) CGUI_EXTRA_ARGS_COMMA CGUI_EXTRA_ARGS);        \
-    } else if constexpr (extend_##NAME<extend_api_t<type>, type>) {            \
-      return extend_api_t<type>::NAME(                                         \
-          std::forward<type>(t) CGUI_EXTRA_ARGS_COMMA CGUI_EXTRA_ARGS);        \
-    } else {                                                                   \
-      static_assert(free_##NAME<type>);                                        \
-      return NAME(std::forward<type>(t)                                        \
-                      CGUI_EXTRA_ARGS_COMMA CGUI_EXTRA_ARGS);                  \
-    }                                                                          \
-  }                                                                            \
-  }                                                                            \
-  constexpr auto NAME(auto &&t)                                                \
-      -> decltype(ns_lookup::do_##NAME(std::forward<decltype(t)>(t)))          \
-    requires(                                                                  \
-        requires() { ns_lookup::do_##NAME(std::forward<decltype(t)>(t)); })    \
-  {                                                                            \
-    return ns_lookup::do_##NAME(std::forward<decltype(t)>(t));                 \
-  }
-
-#define CGUI_PIX_FUNC_IMPL_GETSET(NAME, CONCEPT)                               \
-  CGUI_PIX_FUNC_IMPL(NAME, CONCEPT)                                            \
-  namespace ns_lookup {                                                        \
-                                                                               \
-  template <typename T, typename TVal>                                         \
-  concept member_set_##NAME = requires(                                        \
-      bp::as_forward<T> tc, bp::as_forward<TVal> v) { (*tc).NAME(*v); };       \
-  template <typename T, typename TVal>                                         \
-  concept static_set_##NAME =                                                  \
-      requires(bp::as_forward<T> tc, bp::as_forward<TVal> v) {                 \
-        std::remove_cvref_t<T>::NAME(*tc, *v);                                 \
-      };                                                                       \
-  template <typename T, typename TVal>                                         \
-  concept free_set_##NAME = requires(                                          \
-      bp::as_forward<T> tc, bp::as_forward<TVal> v) { NAME(*tc, *v); };        \
-  template <typename TExt, typename T, typename TVal>                          \
-  concept extend_set_##NAME = requires(                                        \
-      bp::as_forward<T> tc, bp::as_forward<TVal> v) { TExt::NAME(*tc, *v); };  \
-  template <typename T, typename TVal>                                         \
-  concept mut_get_##NAME = has_##NAME<T> && requires(bp::as_forward<T> t) {    \
-    { ns_lookup::do_##NAME(*t) } -> std::assignable_from<TVal>;                \
-  };                                                                           \
-  template <typename T, typename TV>                                           \
-  concept has_set_##NAME =                                                     \
-      member_set_##NAME<T, TV> || static_set_##NAME<T, TV> ||                  \
-      free_set_##NAME<T, TV> || extend_set_##NAME<extend_api_t<T>, T, TV> ||   \
-      mut_get_##NAME<T, TV>;                                                   \
-                                                                               \
-  template <typename TV, has_set_##NAME<TV> T>                                 \
-  constexpr auto do_set_##NAME(T &&vorg, TV &&valorg) {                        \
-    auto v = bp::as_forward<T>(std::forward<T>(vorg));                         \
-    auto val = bp::as_forward<TV>(std::forward<TV>(valorg));                   \
-    if constexpr (member_set_##NAME<T, TV>) {                                  \
-      return (*v).NAME(*val);                                                  \
-    } else if constexpr (static_set_##NAME<T, TV>) {                           \
-      return std::remove_cvref_t<T>::NAME(*v, *val);                           \
-    } else if constexpr (extend_set_##NAME<extend_api_t<T>, T, TV>) {          \
-      return extend_api_t<T>::NAME(*v, *val);                                  \
-    } else if constexpr (free_set_##NAME<T, TV>) {                             \
-      return NAME(*v, *val);                                                   \
-    } else {                                                                   \
-      static_assert(mut_get_##NAME<T, TV>);                                    \
-      return do_##NAME(*v) = *val;                                             \
-    }                                                                          \
-  }                                                                            \
-  }                                                                            \
-  constexpr auto NAME(auto &&t, auto &&v)                                      \
-    requires(requires() {                                                      \
-      ns_lookup::do_set_##NAME(std::forward<decltype(t)>(t),                   \
-                               std::forward<decltype(v)>(v));                  \
-    })                                                                         \
-  {                                                                            \
-    return ns_lookup::do_set_##NAME(std::forward<decltype(t)>(t),              \
-                                    std::forward<decltype(v)>(v));             \
-  }
-
-
 namespace cgui {
 template <typename> struct extend_api;
 template <typename T> using extend_api_t = extend_api<std::remove_cvref_t<T>>;
 
+struct xy2wh_t {
+  static constexpr auto on_fetch(auto const &x1, auto const &x2) {
+    return x2 - x1;
+  }
+  static constexpr auto on_assign(auto const &x1, auto const &w) {
+    return x1 + w;
+  }
+};
+struct wh2xy_t {
+  static constexpr auto on_fetch(auto const &x1, auto const &w) {
+    return x1 + w;
+  }
+  static constexpr auto on_assign(auto const &x1, auto const &x2) {
+    return x2 - x1;
+  }
+};
+
+inline constexpr xy2wh_t xy2wh;
+inline constexpr wh2xy_t wh2xy;
+
+template <typename T>
+concept xxyy_xwyh_conv_policy =
+    std::is_same_v<T, xy2wh_t> || std::is_same_v<T, wh2xy_t>;
+
+template <typename TXY, typename TWH, xxyy_xwyh_conv_policy TPol>
+class xxyy_xwyh_conv {
+  TXY const *xy_{};
+  TWH *wh_{};
+  static_assert(!std::is_reference_v<TXY>);
+  static_assert(!std::is_reference_v<TWH>);
+
+public:
+  using value_type = std::common_type_t<TXY, TWH>;
+  constexpr xxyy_xwyh_conv(TXY const &xy, TWH &wh, TPol = {})
+      : xy_(&xy), wh_(&wh) {}
+
+  constexpr xxyy_xwyh_conv &operator=(value_type const &v) {
+    *wh_ = TPol::on_assign(*xy_, v);
+    return *this;
+  }
+
+  constexpr explicit(false) operator value_type() const {
+    return TPol::on_fetch(*xy_, *wh_);
+  }
+  constexpr value_type value() const { return TPol::on_fetch(*xy_, *wh_); }
+};
+
+class keep_current_t {
+
+public:
+  constexpr decltype(auto) operator()(auto &&op, auto &&obj) const {
+    return std::forward<decltype(op)>(op)(std::forward<decltype(obj)>(obj));
+  }
+};
+
+inline constexpr keep_current_t keep_current;
+
 namespace call {
+
+template <typename T, typename TOp, typename TVal>
+concept has_assignable_get =
+    requires(bp::as_forward<T> t, bp::as_forward<TOp> op) {
+      { (*op)(*t) } -> bp::is_mutable_by<TVal>;
+    };
+template <typename> constexpr bool is_placeholder_impl = false;
+template <> constexpr bool is_placeholder_impl<keep_current_t> = true;
+template <typename T>
+constexpr bool is_placeholder_v = is_placeholder_impl<std::remove_cvref_t<T>>;
+
 namespace impl {
 CGUI_CALL_CONCEPT(apply_to);
 CGUI_CALL_CONCEPT(for_each);
 CGUI_CALL_CONCEPT(build);
+CGUI_CALL_CONCEPT(size_of);
+CGUI_CALL_CONCEPT(draw_pixels)
+CGUI_CALL_CONCEPT(draw_alpha);
+CGUI_CALL_CONCEPT(fill);
+CGUI_CALL_CONCEPT(advance_x);
+CGUI_CALL_CONCEPT(advance_y);
+CGUI_CALL_CONCEPT(pixel_area);
+CGUI_CALL_CONCEPT(full_height);
+CGUI_CALL_CONCEPT(ascender);
+CGUI_CALL_CONCEPT(base_to_top);
+CGUI_CALL_CONCEPT(position);
+CGUI_CALL_CONCEPT(handle);
+CGUI_CALL_CONCEPT(set_state);
+CGUI_CALL_CONCEPT(state);
+CGUI_CALL_CONCEPT(mouse_button);
+CGUI_CALL_CONCEPT(bitmap_top);
+CGUI_CALL_CONCEPT(event_type)
+CGUI_CALL_CONCEPT(render)
+CGUI_CALL_CONCEPT(set_displayed)
+CGUI_CALL_CONCEPT(set_text)
+CGUI_CALL_CONCEPT(render_text)
+CGUI_CALL_CONCEPT(area)
+CGUI_CALL_CONCEPT(glyph)
+CGUI_CALL_CONCEPT(text_colour)
 
 template <typename T>
 concept is_tuple_like_hack =
@@ -258,12 +270,272 @@ struct do_for_each {
     }
   }
 };
+
+CGUI_CALL_CONCEPT_GETSET(x_of)
+CGUI_CALL_CONCEPT_GETSET(y_of)
+CGUI_CALL_CONCEPT_GETSET(red)
+CGUI_CALL_CONCEPT_GETSET(green)
+CGUI_CALL_CONCEPT_GETSET(blue)
+CGUI_CALL_CONCEPT_GETSET(alpha)
+
+CGUI_CALL_CONCEPT(l_x)
+CGUI_CALL_CONCEPT(t_y)
+CGUI_CALL_CONCEPT(r_x)
+CGUI_CALL_CONCEPT(b_y)
+CGUI_CALL_CONCEPT(width)
+CGUI_CALL_CONCEPT(height)
+CGUI_CALL_CONCEPT(top_left)
+CGUI_CALL_CONCEPT(bottom_right)
+
+template <typename T, typename TVal>
+concept pixel_coord_mut =
+    (has_assignable_get<T, _do_x_of, TVal> || has_x_of<T, TVal>)&&(
+        has_assignable_get<T, _do_y_of, TVal> || has_y_of<T, TVal>);
+template <typename T, typename Ts>
+concept has_mut_top_left = has_top_left<T> && requires(bp::as_forward<T> t) {
+  { _do_top_left::call(*t) } -> pixel_coord_mut<Ts>;
+};
+template <typename T, typename Ts>
+concept has_mut_bot_right = has_top_left<T> && requires(bp::as_forward<T> t) {
+  { _do_bottom_right::call(*t) } -> pixel_coord_mut<Ts>;
+};
+template <typename T, typename... Ts>
+concept has_any_tlx = has_l_x<T, Ts...> || has_top_left<T, Ts...>;
+template <typename T, typename TVal>
+concept has_any_mut_tlx =
+    has_any_tlx<T, TVal> || has_assignable_get<T, _do_l_x, TVal> ||
+    has_mut_top_left<T, TVal>;
+
+template <typename T, typename... Ts>
+concept has_any_tly = has_t_y<T, Ts...> || has_top_left<T, Ts...>;
+template <typename T, typename TVal>
+concept has_any_mut_tly =
+    has_any_tly<T, TVal> || has_assignable_get<T, _do_t_y, TVal> ||
+    has_mut_top_left<T, TVal>;
+
+template <typename T, typename... Ts>
+concept has_any_brx =
+    has_r_x<T, Ts...> || has_width<T, Ts...> || has_bottom_right<T, Ts...>;
+template <typename T, typename TVal>
+concept has_any_mut_brx =
+    has_any_brx<T, TVal> || has_assignable_get<T, _do_r_x, TVal> ||
+    has_assignable_get<T, _do_width, TVal> || has_mut_bot_right<T, TVal>;
+
+template <typename T, typename... Ts>
+concept has_any_bry =
+    has_b_y<T, Ts...> || has_height<T, Ts...> || has_bottom_right<T, Ts...>;
+template <typename T, typename TVal>
+concept has_any_mut_bry =
+    has_any_bry<T, TVal> || has_assignable_get<T, _do_b_y, TVal> ||
+    has_assignable_get<T, _do_height, TVal> || has_mut_bot_right<T, TVal>;
+
+template <typename T, typename... Ts>
+concept has_any_tl = has_any_tlx<T, Ts...> && has_any_tly<T, Ts...>;
+template <typename T, typename TVal>
+concept has_any_mut_tl = has_any_mut_tlx<T, TVal> && has_any_mut_tly<T, TVal>;
+template <typename T, typename... Ts>
+concept has_any_br = has_any_brx<T, Ts...> && has_any_bry<T, Ts...>;
+template <typename T, typename TVal>
+concept has_any_mut_br = has_any_mut_brx<T, TVal> && has_any_mut_bry<T, TVal>;
+
+struct l_x_t {
+  CGUI_CALL_BBOX_MEMBER(l_x, has_any_tlx, has_any_mut_tlx)
+};
+struct t_y_t {
+  CGUI_CALL_BBOX_MEMBER(t_y, has_any_tly, has_any_mut_tly)
+};
+struct r_x_t {
+  CGUI_CALL_BBOX_MEMBER(r_x, has_any_brx, has_any_mut_brx)
+};
+struct b_y_t {
+  CGUI_CALL_BBOX_MEMBER(b_y, has_any_bry, has_any_mut_bry)
+};
+struct width_t {
+  CGUI_CALL_BBOX_MEMBER(width, has_any_brx, has_any_mut_brx)
+};
+struct height_t {
+  CGUI_CALL_BBOX_MEMBER(height, has_any_bry, has_any_mut_bry)
+};
+struct top_left_t {
+  CGUI_CALL_BBOX_MEMBER(top_left, has_any_tl, has_any_mut_tl)
+};
+struct bottom_right_t {
+  CGUI_CALL_BBOX_MEMBER(bottom_right, has_any_br, has_any_mut_br)
+};
+
+constexpr decltype(auto) l_x_t::_fallback(auto const &b) {
+  return _do_x_of::call(_do_top_left::call(*b));
+}
+constexpr decltype(auto) l_x_t::_fallback_mut(auto &&b, auto &&v) {
+  return _do_set_x_of::call(_do_top_left::call(*b), *v);
+}
+constexpr decltype(auto) t_y_t::_fallback(auto const &b) {
+  return _do_y_of::call(_do_top_left::call(*b));
+}
+constexpr decltype(auto) t_y_t::_fallback_mut(auto &&b, auto &&v) {
+  return _do_set_y_of::call(_do_top_left::call(*b), *v);
+}
+constexpr decltype(auto) r_x_t::_fallback(auto const &b) {
+  if constexpr (requires() { _do_bottom_right::call(*b); }) {
+    return _do_x_of::call(_do_bottom_right::call(*b));
+  } else {
+    return l_x_t{}(*b) + _do_width::call(*b);
+  }
+}
+constexpr decltype(auto) r_x_t::_fallback_mut(auto &&b, auto &&v) {
+  if constexpr (requires() {
+                  {
+                    _do_bottom_right::call(*b)
+                  } -> pixel_coord_mut<decltype(*v)>;
+                }) {
+    return _do_set_x_of::call(_do_bottom_right::call(*b), *v);
+  } else {
+    return width_t::call(*b, *v - l_x_t{}(*b));
+  }
+}
+constexpr decltype(auto) b_y_t::_fallback(auto const &b) {
+  if constexpr (requires() { _do_bottom_right::call(*b); }) {
+    return _do_y_of::call(_do_bottom_right::call(*b));
+  } else {
+    return t_y_t{}(*b) + _do_height::call(*b);
+  }
+}
+constexpr decltype(auto) b_y_t::_fallback_mut(auto &&b, auto &&v) {
+  if constexpr (requires() {
+                  {
+                    _do_bottom_right::call(*b)
+                  } -> pixel_coord_mut<decltype(*v)>;
+                }) {
+    return _do_set_y_of::call(_do_bottom_right::call(*b), *v);
+  } else {
+    return height_t::call(*b, *v - t_y_t{}(*b));
+  }
+}
+constexpr decltype(auto) width_t::_fallback(auto const &b) {
+  return r_x_t{}(*b) - l_x_t{}(*b);
+}
+constexpr decltype(auto) width_t::_fallback_mut(auto &&b, auto &&v) {
+  if constexpr (requires() {
+                  _do_bottom_right::call(*b);
+                  _do_x_of::call(_do_top_left::call(*b));
+                  _do_set_x_of::call(_do_bottom_right::call(*b),
+                                     _do_x_of::call(_do_top_left::call(*b)) +
+                                         *v);
+                }) {
+    return _do_set_x_of::call(_do_bottom_right::call(*b),
+                              _do_x_of::call(_do_top_left::call(*b)) + *v);
+  } else {
+    return r_x_t::call(*b, _do_l_x::call(*b) + *v);
+  }
+}
+constexpr decltype(auto) height_t::_fallback(auto const &b) {
+  return b_y_t{}(*b) - t_y_t{}(*b);
+}
+constexpr decltype(auto) height_t::_fallback_mut(auto &&b, auto &&v) {
+  if constexpr (requires() {
+                  _do_bottom_right::call(*b);
+                  _do_y_of::call(_do_top_left::call(*b));
+                  _do_set_y_of::call(_do_bottom_right::call(*b),
+                                     _do_y_of::call(_do_top_left::call(*b)) +
+                                         *v);
+                }) {
+    return _do_set_y_of::call(_do_bottom_right::call(*b),
+                              _do_y_of::call(_do_top_left::call(*b)) + *v);
+  } else {
+    return b_y_t::call(*b, _do_t_y::call(*b) + *v);
+  }
+}
+
+template <typename T, typename TX, typename TY> class tlbr_wh_conv {
+  T val_;
+
+public:
+  constexpr tlbr_wh_conv(T &&v, TX, TY) : val_(std::forward<T>(v)) {}
+
+  constexpr tlbr_wh_conv(tlbr_wh_conv &&) = delete;
+  constexpr tlbr_wh_conv &operator=(tlbr_wh_conv &&) = delete;
+
+  constexpr T &&ref() && { return std::forward<T>(val_); }
+  constexpr tlbr_wh_conv force_copy() && {
+    return {std::forward<T>(val_), TX{}, TY{}};
+  }
+
+  constexpr decltype(auto) x_of() const { return TX{}(val_); }
+  constexpr decltype(auto) x_of(auto &&v)
+    requires(std::invocable<TX, T &, decltype(v)>)
+  {
+    return TX{}(val_, std::forward<decltype(v)>(v));
+  }
+  constexpr decltype(auto) y_of() const { return TY{}(val_); }
+  constexpr decltype(auto) y_of(auto &&v)
+    requires(std::invocable<TY, T &, decltype(v)>)
+  {
+    return TY{}(val_, std::forward<decltype(v)>(v));
+  }
+};
+
+template <typename T, typename TX, typename TY>
+tlbr_wh_conv(T &&, TX, TY) -> tlbr_wh_conv<T, TX, TY>;
+
+constexpr decltype(auto) top_left_t::_fallback(auto const &b) {
+  return tlbr_wh_conv(*b, l_x_t{}, t_y_t{});
+}
+constexpr decltype(auto) top_left_t::_fallback_mut(auto &&b, auto &&v) {
+  auto val = _fallback(b);
+  _do_set_x_of::call(val, _do_x_of::call(*v));
+  _do_set_y_of::call(val, _do_y_of::call(*v));
+  return val;
+}
+constexpr decltype(auto) bottom_right_t::_fallback(auto const &b) {
+  return tlbr_wh_conv(*b, r_x_t{}, b_y_t{});
+}
+constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
+  auto val = _fallback(b);
+  _do_set_x_of::call(val, _do_x_of::call(*v));
+  _do_set_y_of::call(val, _do_y_of::call(*v));
+  return val;
+}
+
 } // namespace impl
 inline constexpr impl::do_apply_to apply_to;
 inline constexpr impl::do_for_each for_each;
 inline constexpr impl::_do_build build;
+inline constexpr impl::_do_set_red red;
+inline constexpr impl::_do_set_green green;
+inline constexpr impl::_do_set_blue blue;
+inline constexpr impl::_do_set_alpha alpha;
+inline constexpr impl::_do_set_x_of x_of;
+inline constexpr impl::_do_set_y_of y_of;
+inline constexpr impl::_do_size_of size_of;
+inline constexpr impl::_do_draw_pixels draw_pixels;
+inline constexpr impl::_do_draw_alpha draw_alpha;
+inline constexpr impl::_do_advance_x advance_x;
+inline constexpr impl::_do_advance_y advance_y;
+inline constexpr impl::_do_pixel_area pixel_area;
+inline constexpr impl::_do_full_height full_height;
+inline constexpr impl::_do_ascender ascender;
+inline constexpr impl::_do_base_to_top base_to_top;
+inline constexpr impl::_do_bitmap_top bitmap_top;
+inline constexpr impl::_do_set_state set_state;
+inline constexpr impl::_do_state state;
+inline constexpr impl::_do_handle handle;
+inline constexpr impl::_do_position position;
+inline constexpr impl::_do_fill fill;
+inline constexpr impl::_do_area area;
+inline constexpr impl::_do_render render;
+inline constexpr impl::_do_glyph glyph;
+inline constexpr impl::_do_set_displayed set_displayed;
+inline constexpr impl::_do_text_colour text_colour;
+inline constexpr impl::l_x_t l_x;
+inline constexpr impl::t_y_t t_y;
+inline constexpr impl::r_x_t r_x;
+inline constexpr impl::b_y_t b_y;
+inline constexpr impl::width_t width;
+inline constexpr impl::height_t height;
+inline constexpr impl::top_left_t top_left;
+inline constexpr impl::bottom_right_t bottom_right;
 } // namespace call
-}
+} // namespace cgui
 
 #undef CGUI_PIX_FUNC_IMPL
 #undef CGUI_EXTRA_PARAMS

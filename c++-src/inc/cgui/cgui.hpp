@@ -34,8 +34,8 @@ public:
 
 template <bounding_box TB = default_rect> class recursive_area_navigator {
   TB relative_area_;
-  using x_t = std::remove_cvref_t<decltype(call::tl_x(relative_area_))>;
-  using y_t = std::remove_cvref_t<decltype(call::tl_y(relative_area_))>;
+  using x_t = std::remove_cvref_t<decltype(call::l_x(relative_area_))>;
+  using y_t = std::remove_cvref_t<decltype(call::t_y(relative_area_))>;
   x_t offset_x_{};
   y_t offset_y_{};
 
@@ -49,20 +49,20 @@ public:
   constexpr recursive_area_navigator sub(TB2 const &b) const {
     auto intersection = call::box_intersection<TB>(b, relative_area_);
     if (call::valid_box(intersection)) {
-      return {call::nudge_up(call::nudge_left(intersection, call::tl_x(b)),
-                             call::tl_y(b)),
-              offset_x_ + call::tl_x(b), offset_y_ + call::tl_y(b)};
+      return {call::nudge_up(call::nudge_left(intersection, call::l_x(b)),
+                             call::t_y(b)),
+              offset_x_ + call::l_x(b), offset_y_ + call::t_y(b)};
     } else {
-      auto x = call::tl_x(relative_area_);
-      auto y = call::tl_y(relative_area_);
+      auto x = call::l_x(relative_area_);
+      auto y = call::t_y(relative_area_);
       return {call::box_from_xyxy<TB>(x, y, x, y), offset_x_, offset_y_};
     }
   }
   constexpr TB relative_area() const { return relative_area_; }
   template <typename TB2 = TB>
   constexpr TB2 move_to_absolute(TB2 const &b) const {
-    return call::box_from_xywh<TB2>(call::tl_x(b) + offset_x_,
-                                    call::tl_y(b) + offset_y_, call::width(b),
+    return call::box_from_xywh<TB2>(call::l_x(b) + offset_x_,
+                                    call::t_y(b) + offset_y_, call::width(b),
                                     call::height(b));
   }
   constexpr TB absolute_area() const {
@@ -856,10 +856,10 @@ public:
     auto do_new_area = [w = call::width(args),
                         base_y2 = call::height(args) + 2 * call::ascender(f_),
                         fh, count = line_count_](newline_entry nl) mutable {
-      auto tl_y = (base_y2 - fh * count) / 2;
+      auto t_y = (base_y2 - fh * count) / 2;
       count -= 2;
       auto x = (w - nl.length) / 2;
-      return call::box_from_xywh<default_rect>(x, tl_y, nl.length, fh);
+      return call::box_from_xywh<default_rect>(x, t_y, nl.length, fh);
     };
     decltype(do_new_area(newline_entry{})) area;
     for (auto const &t : tokens_) {
@@ -870,7 +870,7 @@ public:
             if constexpr (std::is_same_v<T, glyph_entry>) {
               assert(_area_initialised);
               auto a2 = area;
-              call::tl_y(a2, call::tl_y(a2) - call::base_to_top(tok.g));
+              call::t_y(a2, call::t_y(a2) - call::base_to_top(tok.g));
               assert(call::valid_box(a2));
               call::render(tok.g, r.sub(a2));
               call::trim_from_left(&area, call::advance_x(tok.g));

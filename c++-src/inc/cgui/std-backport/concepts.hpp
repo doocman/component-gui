@@ -27,6 +27,10 @@ concept has_pointer_op = requires(T &&t) {
 };
 template <typename T>
 concept pointer_type = std::is_pointer_v<T> && !cvref_type<T, std::nullptr_t>;
+
+template <typename T, typename TFrom>
+concept is_mutable_by =
+    std::is_lvalue_reference_v<T> && std::is_assignable_v<T, TFrom>;
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_CONCEPTS_HPP
