@@ -119,7 +119,6 @@
 /// Primary CGUI namespace
 namespace cgui {
 
-///
 /// @brief Customisation point. Users may specialise this class to provide an
 /// API for new types.
 ///
@@ -130,14 +129,12 @@ template <typename T> struct extend_api {};
 /// @brief tyoe alias that removes extents not relevant for the extend_api
 template <typename T> using extend_api_t = extend_api<std::remove_cvref_t<T>>;
 
-///
 /// @brief Conversion policy for transforming XY coordinates to Width and
 /// Height.
 ///
 /// The `xy2wh_t` structure provides static methods for converting XY
 /// coordinates to width and height. This is achieved through a fetch and assign
 /// operation using the difference or sum of two coordinates.
-///
 struct xy2wh_t {
   /// Calculates width/height from two X/Y coordinates.
   static constexpr auto on_fetch(auto const &x1, auto const &x2) {
@@ -148,14 +145,13 @@ struct xy2wh_t {
     return x1 + w;
   }
 };
-///
+
 /// @brief Conversion policy for transforming Width and Height to XY
 /// coordinates.
 ///
 /// The `wh2xy_t` structure provides static methods for converting width and
 /// height to XY coordinates. This is achieved by adding width to an X
 /// coordinate or assigning it as a difference.
-///
 struct wh2xy_t {
   /// Calculates the ending X/Y coordinate based on the starting X/Y and
   /// width/height.
@@ -172,15 +168,12 @@ struct wh2xy_t {
 inline constexpr xy2wh_t xy2wh; ///< Instance of the XY to WH conversion policy.
 inline constexpr wh2xy_t wh2xy; ///< Instance of the WH to XY conversion policy.
 
-///
 /// @brief Concept enforcing a valid conversion policy for coordinate
 /// transformations.
-///
 template <typename T>
 concept xxyy_xwyh_conv_policy =
     std::is_same_v<T, xy2wh_t> || std::is_same_v<T, wh2xy_t>;
 
-///
 /// @brief Provides a conversion interface between two coordinate systems.
 ///
 /// This template class uses a conversion policy to convert between two
@@ -189,7 +182,6 @@ concept xxyy_xwyh_conv_policy =
 /// @tparam TStartCoord The start coordinate type.
 /// @tparam TTo The output coordinate type.
 /// @tparam TPol The conversion policy type (either `xy2wh_t` or `wh2xy_t`).
-///
 template <typename TStartCoord, typename TTo, xxyy_xwyh_conv_policy TPol>
 class xxyy_xwyh_conv {
   TStartCoord const *tl_{};
@@ -200,27 +192,36 @@ class xxyy_xwyh_conv {
 public:
   using value_type = std::common_type_t<TStartCoord, TTo>;
 
-  ///
   /// @brief Constructor that initializes the XY and WH values.
   ///
   /// @param tl Reference to the top left coordinate value.
   /// @param br Reference to the mutable bottom right value.
-  /// @param policy Optional conversion policy.
-  ///
+  /// @param policy.
   constexpr xxyy_xwyh_conv(TStartCoord const &tl, TTo &br, TPol = {})
       : tl_(&tl), br_(&br) {}
 
+  /// @brief Assigns a value after converting based on the conversion policy.
+  ///
+  /// @param v The value to assign.
+  /// @return Reference to the updated *this object.
   constexpr xxyy_xwyh_conv &operator=(value_type const &v) {
     *br_ = TPol::on_assign(*tl_, v);
     return *this;
   }
 
+  /// @brief Implicit conversion operator to the common value type.
+  ///
+  /// @return The converted value from XY/WH policy.
   constexpr explicit(false) operator value_type() const {
     return TPol::on_fetch(*tl_, *br_);
   }
   constexpr value_type value() const { return TPol::on_fetch(*tl_, *br_); }
 };
 
+/// @brief Placeholder in various setters
+///
+/// Used to indicate that a certain value (like an x/y or width/height) are to
+/// remain the same during an operation.
 class keep_current_t {
 
 public:
@@ -229,8 +230,17 @@ public:
   }
 };
 
-inline constexpr keep_current_t keep_current;
+inline constexpr keep_current_t
+    keep_current; ///< Instance of the keep_current_t placeholder.
 
+/// @brief Generalized object API invocation namespace.
+///
+/// Namespace to make robust calls to various methods associated with a type
+/// (much like std::ranges::begin). It checks for member functions and static
+/// member functions, free functions and static extend_api_t<T> functions taking
+/// the object as the first parameter. It may also even resolve to other
+/// functions if it gives the same result (for example fill may fall back to
+/// calling draw_pixels if no appropriate fill-function exists for the object)
 namespace call {
 
 template <typename T, typename TOp, typename TVal>
@@ -243,6 +253,7 @@ template <> constexpr bool is_placeholder_impl<keep_current_t> = true;
 template <typename T>
 constexpr bool is_placeholder_v = is_placeholder_impl<std::remove_cvref_t<T>>;
 
+/// @cond
 namespace impl {
 CGUI_CALL_CONCEPT(apply_to);
 CGUI_CALL_CONCEPT(for_each);
@@ -551,7 +562,12 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
 }
 
 } // namespace impl
+/// @endcond
+
+/// Calls apply_to or fallbacks to std::apply if it seems appropriate. Also
+/// dooc::apply may be called if dooc-np is included in the translation unit.
 inline constexpr impl::do_apply_to apply_to;
+/// Calls for_each or fallbacks to apply_to together with bp::for_each
 inline constexpr impl::do_for_each for_each;
 inline constexpr impl::_do_build build;
 inline constexpr impl::_do_set_red red;
@@ -574,19 +590,43 @@ inline constexpr impl::_do_set_state set_state;
 inline constexpr impl::_do_state state;
 inline constexpr impl::_do_handle handle;
 inline constexpr impl::_do_position position;
+
+/// Calls fill or fall backs to calling draw_pixels to fill the area in
+/// software.
 inline constexpr impl::_do_fill fill;
 inline constexpr impl::_do_area area;
 inline constexpr impl::_do_render render;
 inline constexpr impl::_do_glyph glyph;
 inline constexpr impl::_do_set_displayed set_displayed;
 inline constexpr impl::_do_text_colour text_colour;
+
+/// Get or set left x (x = 0). May use the other geometric functions to achieve
+/// the desired result. Width and right x are undetermined after using this to
+/// set the value.
 inline constexpr impl::l_x_t l_x;
+/// Get or set top y (y = 0). May use the other geometric functions to achieve
+/// the desired result. Height and bottom y are undetermined after using this to
+/// set the value.
 inline constexpr impl::t_y_t t_y;
+/// Get or set right x. May use the other geometric functions to achieve the
+/// desired result. This should never change the left x.
 inline constexpr impl::r_x_t r_x;
+/// Get or set bottom y. May use the other geometric functions to achieve the
+/// desired result. This should never change the top y.
 inline constexpr impl::b_y_t b_y;
+/// Get or set width. May use the other geometric functions to achieve the
+/// desired result. This should never change the left x.
 inline constexpr impl::width_t width;
+/// Get or set height. May use the other geometric functions to achieve the
+/// desired result. This should never change the top y.
 inline constexpr impl::height_t height;
+/// Get or set left x (x = 0) and top y (y = 0) as a coordinate type. May use
+/// the other geometric functions to achieve the desired result. Right/Bottom xy
+/// and width/height are undetermined after using this to set the value.
 inline constexpr impl::top_left_t top_left;
+/// Get or set right x and bottom y. May use the other geometric functions to
+/// achieve the desired result. This should never change the left x nor the top
+/// y.
 inline constexpr impl::bottom_right_t bottom_right;
 } // namespace call
 } // namespace cgui
