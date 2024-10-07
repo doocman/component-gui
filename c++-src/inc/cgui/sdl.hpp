@@ -16,10 +16,10 @@
 
 namespace cgui {
 template <> struct extend_api<SDL_Rect> {
-  static constexpr auto &&tl_x(bp::cvref_type<SDL_Rect> auto &&r) {
+  static constexpr auto &&l_x(bp::cvref_type<SDL_Rect> auto &&r) {
     return std::forward<decltype(r)>(r).x;
   }
-  static constexpr auto &&tl_y(bp::cvref_type<SDL_Rect> auto &&r) {
+  static constexpr auto &&t_y(bp::cvref_type<SDL_Rect> auto &&r) {
     return std::forward<decltype(r)>(r).y;
   }
   static constexpr auto &&width(bp::cvref_type<SDL_Rect> auto &&r) {
@@ -47,10 +47,10 @@ template <typename T> struct sdl_rect_wrapper {
     }
   }
 
-  template <typename T2> static constexpr decltype(auto) tl_x(T2 &&r) {
+  template <typename T2> static constexpr decltype(auto) l_x(T2 &&r) {
     return handle(std::forward<T2>(r)).x;
   }
-  template <typename T2> static constexpr decltype(auto) tl_y(T2 &&r) {
+  template <typename T2> static constexpr decltype(auto) t_y(T2 &&r) {
     return handle(std::forward<T2>(r)).y;
   }
   template <typename T2> static constexpr decltype(auto) width(T2 &&r) {
@@ -71,7 +71,7 @@ template <> constexpr bool to_sdl_rect_simple<SDL_Rect> = true;
 template <bounding_box T>
   requires(!details::to_sdl_rect_simple<std::remove_cvref_t<T>>)
 constexpr SDL_Rect to_sdl_rect(T &&v) {
-  return {call::tl_x(v), call::tl_y(v), call::width(v), call::height(v)};
+  return {call::l_x(v), call::t_y(v), call::width(v), call::height(v)};
 }
 constexpr auto &&to_sdl_rect(bp::cvref_type<SDL_Rect> auto &&v) {
   return std::forward<decltype(v)>(v);
@@ -182,7 +182,7 @@ public:
     auto pitch = pitch_bytes / 4;
 
     cb([raw_pixels, pitch, &dest_sz,
-        backstep = call::tl_x(dest_sz) + call::tl_y(dest_sz) * pitch_bytes / 4](
+        backstep = call::l_x(dest_sz) + call::t_y(dest_sz) * pitch_bytes / 4](
            pixel_coord auto &&coord, colour auto &&c) {
       auto x = call::x_of(coord);
       auto y = call::y_of(coord);

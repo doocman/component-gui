@@ -7,6 +7,8 @@
 
 #include <functional>
 
+#include <cgui/std-backport/utility.hpp>
+
 namespace cgui::bp {
 struct no_op_t {
   constexpr void operator()(auto &&...) const noexcept {}
@@ -39,6 +41,41 @@ trailing_curried(TF &&, TArgs &&...)
     -> trailing_curried<std::unwrap_ref_decay_t<TF>,
                         std::unwrap_ref_decay_t<TArgs>...>;
 
+template <typename T, typename... Ts>
+class invoke_if_applicable : empty_structs_optimiser<T> {
+  using base_t = empty_structs_optimiser<T>;
+  static constexpr decltype(auto) get_f(auto &&self) {
+    using self_t = decltype(self);
+    if constexpr (std::is_const_v<std::remove_reference_t<self_t>>) {
+      return bp::forward_like<self_t>(static_cast<base_t const &>(self));
+    } else {
+      return bp::forward_like<self_t>(static_cast<base_t &>(self));
+    }
+  }
+  std::tuple<Ts...> args_;
+public:
+  constexpr explicit invoke_if_applicable(T t, Ts &&...args)
+      : base_t(std::move(t)), args_(std::forward<Ts>(args)...) {}
+
+  // disable copy/move semantics, because this class should not be "saved".
+  invoke_if_applicable(invoke_if_applicable const &) = delete;
+  invoke_if_applicable &operator=(invoke_if_applicable const &) = delete;
+
+  constexpr void operator()(auto &&cur_sub, auto &&...subjects) && {
+    if constexpr (std::invocable<T, decltype(cur_sub),
+                                 std::remove_reference_t<Ts> &...>) {
+      std::apply(
+          [this, &cur_sub](auto &&...args) {
+            std::invoke(get_f(std::move(*this)),
+                        std::forward<decltype(cur_sub)>(cur_sub), args...);
+          },
+          args_);
+    }
+    if constexpr (sizeof...(subjects) > 0) {
+      std::move (*this)(std::forward<decltype(subjects)>(subjects)...);
+    }
+  }
+};
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_FUNCTIONAL_HPP

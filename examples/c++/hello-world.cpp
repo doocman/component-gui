@@ -59,15 +59,15 @@ int main(int, char **) {
             .on_resize([](cgui::size_wh auto const &sz, auto &&widgets) {
               using namespace cgui;
               auto &[hello_world_header, quit_button, lorum_ipsum] = widgets;
-              auto full_area = cgui::call::box_from_xywh<area_t>(
+              auto full_area = cgui::box_from_xywh<area_t>(
                   0, 0, call::width(sz), call::height(sz));
-              hello_world_header.area(call::trim_from_above(
+              hello_world_header.area(trim_from_above(
                   &full_area,
                   std::min<int>(cgui::call::height(full_area), 128)));
               std::get<0>(hello_world_header.displays())
                   .set_displayed(hello_world_header.area(), "Hello World!")
                   .text_colour({255, 255, 255, 255});
-              auto button_bar_area = cgui::call::trim_from_below(
+              auto button_bar_area = cgui::trim_from_below(
                   &full_area,
                   std::min<int>(cgui::call::height(full_area), 128));
               {
@@ -77,7 +77,7 @@ int main(int, char **) {
                 get<hover>(background).colour() = {190, 190, 190, 255};
                 get<hold>(background).colour() = {63, 63, 63, 255};
               }
-              quit_button.area(cgui::call::trim_from_left(
+              quit_button.area(cgui::trim_from_left(
                   &button_bar_area, cgui::call::width(button_bar_area) / 2));
 
               std::get<1>(quit_button.displays())
