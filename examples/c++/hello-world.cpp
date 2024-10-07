@@ -67,7 +67,7 @@ int main(int, char **) {
               std::get<0>(hello_world_header.displays())
                   .set_displayed(hello_world_header.area(), "Hello World!")
                   .text_colour({255, 255, 255, 255});
-              auto button_bar_area = cgui::call::trim_from_below(
+              auto button_bar_area = cgui::trim_from_below(
                   &full_area,
                   std::min<int>(cgui::call::height(full_area), 128));
               {
