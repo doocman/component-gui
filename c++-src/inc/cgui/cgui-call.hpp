@@ -116,55 +116,109 @@
                 std::forward<decltype(vs)>(vs)...);                            \
   }
 
+/// Primary CGUI namespace
 namespace cgui {
-template <typename> struct extend_api;
+
+///
+/// @brief Customisation point. Users may specialise this class to provide an
+/// API for new types.
+///
+/// @see cgui/sdl.hpp for an example.
+/// @tparam T type to provide interface for.
+template <typename T> struct extend_api {};
+
+/// @brief tyoe alias that removes extents not relevant for the extend_api
 template <typename T> using extend_api_t = extend_api<std::remove_cvref_t<T>>;
 
+///
+/// @brief Conversion policy for transforming XY coordinates to Width and
+/// Height.
+///
+/// The `xy2wh_t` structure provides static methods for converting XY
+/// coordinates to width and height. This is achieved through a fetch and assign
+/// operation using the difference or sum of two coordinates.
+///
 struct xy2wh_t {
+  /// Calculates width/height from two X/Y coordinates.
   static constexpr auto on_fetch(auto const &x1, auto const &x2) {
     return x2 - x1;
   }
+  /// Assigns ending X/Y based on starting X/Y and width/height.
   static constexpr auto on_assign(auto const &x1, auto const &w) {
     return x1 + w;
   }
 };
+///
+/// @brief Conversion policy for transforming Width and Height to XY
+/// coordinates.
+///
+/// The `wh2xy_t` structure provides static methods for converting width and
+/// height to XY coordinates. This is achieved by adding width to an X
+/// coordinate or assigning it as a difference.
+///
 struct wh2xy_t {
+  /// Calculates the ending X/Y coordinate based on the starting X/Y and
+  /// width/height.
   static constexpr auto on_fetch(auto const &x1, auto const &w) {
     return x1 + w;
   }
+  /// Assigns the width/height by subtracting ending X/Y from the starting X/Y
+  /// coordinate.
   static constexpr auto on_assign(auto const &x1, auto const &x2) {
     return x2 - x1;
   }
 };
 
-inline constexpr xy2wh_t xy2wh;
-inline constexpr wh2xy_t wh2xy;
+inline constexpr xy2wh_t xy2wh; ///< Instance of the XY to WH conversion policy.
+inline constexpr wh2xy_t wh2xy; ///< Instance of the WH to XY conversion policy.
 
+///
+/// @brief Concept enforcing a valid conversion policy for coordinate
+/// transformations.
+///
 template <typename T>
 concept xxyy_xwyh_conv_policy =
     std::is_same_v<T, xy2wh_t> || std::is_same_v<T, wh2xy_t>;
 
-template <typename TXY, typename TWH, xxyy_xwyh_conv_policy TPol>
+///
+/// @brief Provides a conversion interface between two coordinate systems.
+///
+/// This template class uses a conversion policy to convert between two
+/// coordinate types.
+///
+/// @tparam TStartCoord The start coordinate type.
+/// @tparam TTo The output coordinate type.
+/// @tparam TPol The conversion policy type (either `xy2wh_t` or `wh2xy_t`).
+///
+template <typename TStartCoord, typename TTo, xxyy_xwyh_conv_policy TPol>
 class xxyy_xwyh_conv {
-  TXY const *xy_{};
-  TWH *wh_{};
-  static_assert(!std::is_reference_v<TXY>);
-  static_assert(!std::is_reference_v<TWH>);
+  TStartCoord const *tl_{};
+  TTo *br_{};
+  static_assert(!std::is_reference_v<TStartCoord>);
+  static_assert(!std::is_reference_v<TTo>);
 
 public:
-  using value_type = std::common_type_t<TXY, TWH>;
-  constexpr xxyy_xwyh_conv(TXY const &xy, TWH &wh, TPol = {})
-      : xy_(&xy), wh_(&wh) {}
+  using value_type = std::common_type_t<TStartCoord, TTo>;
+
+  ///
+  /// @brief Constructor that initializes the XY and WH values.
+  ///
+  /// @param tl Reference to the top left coordinate value.
+  /// @param br Reference to the mutable bottom right value.
+  /// @param policy Optional conversion policy.
+  ///
+  constexpr xxyy_xwyh_conv(TStartCoord const &tl, TTo &br, TPol = {})
+      : tl_(&tl), br_(&br) {}
 
   constexpr xxyy_xwyh_conv &operator=(value_type const &v) {
-    *wh_ = TPol::on_assign(*xy_, v);
+    *br_ = TPol::on_assign(*tl_, v);
     return *this;
   }
 
   constexpr explicit(false) operator value_type() const {
-    return TPol::on_fetch(*xy_, *wh_);
+    return TPol::on_fetch(*tl_, *br_);
   }
-  constexpr value_type value() const { return TPol::on_fetch(*xy_, *wh_); }
+  constexpr value_type value() const { return TPol::on_fetch(*tl_, *br_); }
 };
 
 class keep_current_t {
