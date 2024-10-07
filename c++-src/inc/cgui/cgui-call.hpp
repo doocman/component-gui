@@ -6,6 +6,11 @@
 #include <type_traits>
 #include <utility>
 
+#if __has_include("dooc/named_args_tuple.hpp")
+#include <dooc/named_args_tuple.hpp>
+#define CGUI_HAS_NAMED_ARGS 1
+#endif
+
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/utility.hpp>
 
@@ -233,16 +238,6 @@ public:
 inline constexpr keep_current_t
     keep_current; ///< Instance of the keep_current_t placeholder.
 
-/// @brief Generalized object API invocation namespace.
-///
-/// Namespace to make robust calls to various methods associated with a type
-/// (much like std::ranges::begin). It checks for member functions and static
-/// member functions, free functions and static extend_api_t<T> functions taking
-/// the object as the first parameter. It may also even resolve to other
-/// functions if it gives the same result (for example fill may fall back to
-/// calling draw_pixels if no appropriate fill-function exists for the object)
-namespace call {
-
 template <typename T, typename TOp, typename TVal>
 concept has_assignable_get =
     requires(bp::as_forward<T> t, bp::as_forward<TOp> op) {
@@ -252,6 +247,16 @@ template <typename> constexpr bool is_placeholder_impl = false;
 template <> constexpr bool is_placeholder_impl<keep_current_t> = true;
 template <typename T>
 constexpr bool is_placeholder_v = is_placeholder_impl<std::remove_cvref_t<T>>;
+
+/// @brief Generalized object API invocation namespace.
+///
+/// Namespace to make robust calls to various methods associated with a type
+/// (much like std::ranges::begin). It checks for member functions and static
+/// member functions, free functions and static extend_api_t<T> functions taking
+/// the object as the first parameter. It may also even resolve to other
+/// functions if it gives the same result (for example fill may fall back to
+/// calling draw_pixels if no appropriate fill-function exists for the object)
+namespace call {
 
 /// @cond
 namespace impl {
@@ -321,7 +326,6 @@ struct do_for_each {
       _do_for_each{}(*tf, *cbf);
     } else if constexpr (std::ranges::input_range<T>) {
       std::ranges::for_each(*tf, *cbf);
-      // TODO: See if we can get rid of this ifdef...
 #ifdef CGUI_HAS_NAMED_ARGS
     } else if constexpr (dooc::named_tuple_like<T>) {
       dooc::tuple_for_each(

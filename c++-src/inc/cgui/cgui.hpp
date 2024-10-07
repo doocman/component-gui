@@ -24,11 +24,11 @@ public:
 
   constexpr pixel_coord auto operator()(auto &&in) const
     requires(requires() {
-      call::nudge_down(in, y_);
-      call::nudge_right(in, x_);
+      nudge_down(in, y_);
+      nudge_right(in, x_);
     })
   {
-    return call::nudge_down(call::nudge_right(in, x_), y_);
+    return nudge_down(nudge_right(in, x_), y_);
   }
 };
 
@@ -47,23 +47,22 @@ public:
       : relative_area_(b) {}
   template <bounding_box TB2 = TB>
   constexpr recursive_area_navigator sub(TB2 const &b) const {
-    auto intersection = call::box_intersection<TB>(b, relative_area_);
-    if (call::valid_box(intersection)) {
-      return {call::nudge_up(call::nudge_left(intersection, call::l_x(b)),
-                             call::t_y(b)),
+    auto intersection = box_intersection<TB>(b, relative_area_);
+    if (valid_box(intersection)) {
+      return {nudge_up(nudge_left(intersection, call::l_x(b)), call::t_y(b)),
               offset_x_ + call::l_x(b), offset_y_ + call::t_y(b)};
     } else {
       auto x = call::l_x(relative_area_);
       auto y = call::t_y(relative_area_);
-      return {call::box_from_xyxy<TB>(x, y, x, y), offset_x_, offset_y_};
+      return {box_from_xyxy<TB>(x, y, x, y), offset_x_, offset_y_};
     }
   }
   constexpr TB relative_area() const { return relative_area_; }
   template <typename TB2 = TB>
   constexpr TB2 move_to_absolute(TB2 const &b) const {
-    return call::box_from_xywh<TB2>(call::l_x(b) + offset_x_,
-                                    call::t_y(b) + offset_y_, call::width(b),
-                                    call::height(b));
+    return box_from_xywh<TB2>(call::l_x(b) + offset_x_,
+                              call::t_y(b) + offset_y_, call::width(b),
+                              call::height(b));
   }
   constexpr TB absolute_area() const {
     return move_to_absolute(relative_area_);
@@ -80,17 +79,17 @@ template <canvas T, bounding_box TB> class sub_renderer {
   default_colour_t set_colour_{};
 
   static constexpr TB bound_area(TB a) {
-    if (!call::valid_box(a)) {
+    if (!valid_box(a)) {
       call::height(a, 0);
       call::width(a, 0);
-      assert(call::valid_box(a));
+      assert(valid_box(a));
     }
     return a;
   }
 
   template <typename TB2>
   constexpr TB2 to_relative_dest(TB2 const &input_dest) const {
-    return call::box_intersection<TB2>(input_dest, area_.relative_area());
+    return box_intersection<TB2>(input_dest, area_.relative_area());
   }
   template <typename TB2>
   constexpr TB2 to_absolute(TB2 const &relative_dest) const {
@@ -99,7 +98,7 @@ template <canvas T, bounding_box TB> class sub_renderer {
   constexpr sub_renderer(T &c, recursive_area_navigator<TB> a,
                          default_colour_t sc)
       : c_(std::addressof(c)), area_(a), set_colour_(sc) {
-    assert(call::valid_box(area_.relative_area()));
+    assert(valid_box(area_.relative_area()));
   }
 
 public:
@@ -194,10 +193,9 @@ public:
   constexpr void rerender() { to_rerender_ = full_area_.relative_area(); }
   constexpr void rerender(bounding_box auto part_area) {
     if (!empty_box(to_rerender_)) {
-      part_area = call::box_union(part_area, to_rerender_);
+      part_area = box_union(part_area, to_rerender_);
     }
-    to_rerender_ =
-        call::box_intersection(part_area, full_area_.relative_area());
+    to_rerender_ = box_intersection(part_area, full_area_.relative_area());
   }
   TArea result_area() const {
     return full_area_.move_to_absolute(to_rerender_);
@@ -370,13 +368,13 @@ public:
       if (is_event<ui_events::window_resized>(evt)) {
         auto sz = call::size_of(evt);
         call_on_resize(sz);
-        auto ret_box = call::box_from_xyxy<native_box_t>(0, 0, call::width(sz),
-                                                         call::height(sz));
+        auto ret_box = box_from_xyxy<native_box_t>(0, 0, call::width(sz),
+                                                   call::height(sz));
         return ret_box;
       }
     }
-    auto b = widget_display_state_callbacks(call::box_from_xyxy<native_box_t>(
-        0, 0, highest_possible, highest_possible));
+    auto b = widget_display_state_callbacks(
+        box_from_xyxy<native_box_t>(0, 0, highest_possible, highest_possible));
     call::for_each(widgets_, [&evt, &b]<typename TW>(TW &w) {
       if constexpr (has_handle<TW &, decltype(evt)>) {
         auto s = b.sub(w.area());
@@ -859,7 +857,7 @@ public:
       auto t_y = (base_y2 - fh * count) / 2;
       count -= 2;
       auto x = (w - nl.length) / 2;
-      return call::box_from_xywh<default_rect>(x, t_y, nl.length, fh);
+      return box_from_xywh<default_rect>(x, t_y, nl.length, fh);
     };
     decltype(do_new_area(newline_entry{})) area;
     for (auto const &t : tokens_) {
@@ -871,10 +869,10 @@ public:
               assert(_area_initialised);
               auto a2 = area;
               call::t_y(a2, call::t_y(a2) - call::base_to_top(tok.g));
-              assert(call::valid_box(a2));
+              assert(valid_box(a2));
               call::render(tok.g, r.sub(a2));
-              call::trim_from_left(&area, call::advance_x(tok.g));
-              call::trim_from_above(&area, call::advance_y(tok.g));
+              trim_from_left(&area, call::advance_x(tok.g));
+              trim_from_above(&area, call::advance_y(tok.g));
             } else if constexpr (std::is_same_v<T, newline_entry>) {
               area = do_new_area(tok);
               CGUI_DEBUG_ONLY(_area_initialised = true;)
@@ -1085,7 +1083,7 @@ public:
     if constexpr (can_be_event<mouse_move, evt_t>()) {
       if (is_event<mouse_move>(evt)) {
         // do_stuff;
-        auto is_now_inside = call::hit_box(area, call::position(evt));
+        auto is_now_inside = hit_box(area, call::position(evt));
         if (is_now_inside != mouse_inside_) {
           if (mouse_inside_) {
             trigger_callback(exit_event{});
@@ -1099,7 +1097,7 @@ public:
     }
     if constexpr (can_be_event<mouse_button_down, evt_t>()) {
       if (is_event<mouse_button_down>(evt)) {
-        if (!mouse_down_ && call::hit_box(area, call::position(evt))) {
+        if (!mouse_down_ && hit_box(area, call::position(evt))) {
           trigger_callback(hold_event{});
         }
         mouse_down_ = true;
@@ -1108,7 +1106,7 @@ public:
     }
     if constexpr (can_be_event<mouse_button_up, evt_t>()) {
       if (is_event<mouse_button_up>(evt)) {
-        if (call::hit_box(area, call::position(evt))) {
+        if (hit_box(area, call::position(evt))) {
           trigger_callback(click_event{call::mouse_button(evt)});
         }
         mouse_down_ = false;

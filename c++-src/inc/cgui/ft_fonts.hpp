@@ -18,6 +18,7 @@
 #include FT_GLYPH_H
 
 #include <cgui/cgui-types.hpp>
+#include <cgui/geometry.hpp>
 #include <cgui/stl_extend.hpp>
 
 #define CGUI_USE_BM_GLYPH 1
@@ -107,7 +108,7 @@ class ft_font_glyph {
     return (glyph() != nullptr) && (glyph()->format == FT_GLYPH_FORMAT_BITMAP);
   }
   FT_BitmapGlyph bitmap_glyph() const {
-    assert(has_bitmap_glyph());
+    CGUI_ASSERT(has_bitmap_glyph());
     return std::bit_cast<FT_BitmapGlyph>(glyph());
   }
 #endif
@@ -120,14 +121,14 @@ public:
   ft_font_glyph(FT_Glyph g, FT_Int top) : g_(g), top_(top) {
 
     auto &bitmap_gl = glyph();
-    assert(bitmap_gl != nullptr);
+    CGUI_ASSERT(bitmap_gl != nullptr);
     constexpr auto org = FT_Vector{};
     if (auto ec =
             FT_Glyph_To_Bitmap(&bitmap_gl, FT_RENDER_MODE_NORMAL, &org, true);
         ec != FT_Error{}) {
       return;
     }
-    assert(bitmap_gl->format == FT_GLYPH_FORMAT_BITMAP);
+    CGUI_ASSERT(bitmap_gl->format == FT_GLYPH_FORMAT_BITMAP);
   }
 #else
   explicit ft_font_glyph(FT_Face f) {
@@ -156,27 +157,27 @@ public:
     }
     auto bmg = bitmap_glyph();
     auto &bitmap = bmg->bitmap;
-    call::draw_alpha(rend,
-                     default_rect{{},
-                                  {static_cast<int>(bitmap.width),
-                                   static_cast<int>(bitmap.rows)}},
-                     [&](bounding_box auto const &b, auto &&px_rend) {
-                       assert(call::box_includes_box(
-                           default_rect{{},
-                                        {static_cast<int>(bitmap.width),
-                                         static_cast<int>(bitmap.rows)}},
-                           b));
-                       assert(bitmap.pitch >= 0);
-                       assert(static_cast<unsigned int>(bitmap.pitch) <=
-                              bitmap.width);
-                       for (auto y : cgui::y_view(b)) {
-                         for (auto x : cgui::x_view(b)) {
-                           px_rend(default_pixel_coord{static_cast<int>(x),
-                                                       static_cast<int>(y)},
-                                   bitmap.buffer[y * bitmap.pitch + x]);
-                         }
-                       }
-                     });
+    call::draw_alpha(
+        rend,
+        default_rect{
+            {},
+            {static_cast<int>(bitmap.width), static_cast<int>(bitmap.rows)}},
+        [&](bounding_box auto const &b, auto &&px_rend) {
+          CGUI_ASSERT(
+              box_includes_box(default_rect{{},
+                                            {static_cast<int>(bitmap.width),
+                                             static_cast<int>(bitmap.rows)}},
+                               b));
+          CGUI_ASSERT(bitmap.pitch >= 0);
+          CGUI_ASSERT(static_cast<unsigned int>(bitmap.pitch) <= bitmap.width);
+          for (auto y : cgui::y_view(b)) {
+            for (auto x : cgui::x_view(b)) {
+              px_rend(
+                  default_pixel_coord{static_cast<int>(x), static_cast<int>(y)},
+                  bitmap.buffer[y * bitmap.pitch + x]);
+            }
+          }
+        });
 #else
     call::draw_alpha(
         rend,
@@ -208,7 +209,7 @@ public:
   [[nodiscard]] constexpr auto advance_x() const { return adv_x; }
   [[nodiscard]] constexpr auto advance_y() const { return adv_y; }
   [[nodiscard]] constexpr default_rect pixel_area() const noexcept {
-    return call::box_from_xywh<default_rect>(0, 0, bm_w_, bm_h_);
+    return box_from_xywh<default_rect>(0, 0, bm_w_, bm_h_);
   }
 #endif
 };

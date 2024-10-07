@@ -744,11 +744,10 @@ public:
 using RectApiTypes = concat_types_t<::testing::Types<tlbr_mut, tlbr_static_set>,
                                     apitests::for_each_access<xyxy_bbox>,
                                     apitests::for_each_access<xywh_bbox>>;
-static_assert(bounding_box_coord<tlbr_static_set>);
 static_assert(mutable_bounding_box<tlbr_mut, int>);
 static_assert(mutable_bounding_box<tlbr_static_set, int>);
 
-static_assert(call::has_assignable_get<xywh_bbox<access_type::extend_mut> &,
+static_assert(has_assignable_get<xywh_bbox<access_type::extend_mut> &,
                                        call::impl::_do_width, int>);
 
 TYPED_TEST_SUITE(PixCoordFixture, PixCoordTypes);
@@ -886,7 +885,7 @@ TYPED_TEST(BoxApiFixture, AssignAndFetchTlBr) // NOLINT
 TYPED_TEST(BoxApiFixture, ConstructXYXY) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
-  auto v = call::box_from_xyxy<box_t>(1, 2, 3, 4);
+  auto v = box_from_xyxy<box_t>(1, 2, 3, 4);
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
   EXPECT_THAT(call::l_x(v), Eq(1));
   EXPECT_THAT(call::t_y(v), Eq(2));
@@ -897,7 +896,7 @@ TYPED_TEST(BoxApiFixture, ConstructXYXY) // NOLINT
 TYPED_TEST(BoxApiFixture, ConstructXYWH) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
-  auto v = call::box_from_xywh<box_t>(1, 2, 3, 4);
+  auto v = box_from_xywh<box_t>(1, 2, 3, 4);
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
   EXPECT_THAT(call::l_x(v), Eq(1));
   EXPECT_THAT(call::t_y(v), Eq(2));
@@ -908,7 +907,7 @@ TYPED_TEST(BoxApiFixture, ConstructXYWH) // NOLINT
 TYPED_TEST(BoxApiFixture, ConstructTLBR) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
-  auto v = call::box_from_tlbr<box_t>(default_pixel_coord{1, 2},
+  auto v = box_from_tlbr<box_t>(default_pixel_coord{1, 2},
                                       default_pixel_coord{3, 4});
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
   EXPECT_THAT(call::l_x(v), Eq(1));
@@ -926,7 +925,7 @@ TYPED_TEST(BoxApiFixture, SplitBoxX) // NOLINT
   call::b_y(box, org_by);
   call::l_x(box, 1);
   call::r_x(box, 5);
-  auto b2 = call::split_x(&box, 3);
+  auto b2 = split_x(&box, 3);
   EXPECT_THAT(call::l_x(box), Eq(1));
   EXPECT_THAT(call::r_x(box), Eq(3));
   EXPECT_THAT(call::t_y(box), Eq(org_ty));
@@ -946,7 +945,7 @@ TYPED_TEST(BoxApiFixture, SplitBoxY) // NOLINT
   call::r_x(box, org_rx);
   call::t_y(box, 1);
   call::b_y(box, 5);
-  auto b2 = call::split_y(&box, 3);
+  auto b2 = split_y(&box, 3);
   EXPECT_THAT(call::t_y(box), Eq(1));
   EXPECT_THAT(call::b_y(box), Eq(3));
   EXPECT_THAT(call::l_x(box), Eq(org_lx));
@@ -964,7 +963,7 @@ TYPED_TEST(BoxApiFixture, TrimLeft) // NOLINT
   call::b_y(box, 70);
   call::l_x(box, 4);
   call::r_x(box, 15);
-  auto b2 = call::trim_from_left(&box, 4);
+  auto b2 = trim_from_left(&box, 4);
   EXPECT_THAT(call::t_y(box), Eq(4));
   EXPECT_THAT(call::b_y(box), Eq(70));
   EXPECT_THAT(call::l_x(box), Eq(4 + 4));
@@ -981,7 +980,7 @@ TYPED_TEST(BoxApiFixture, TrimUp) // NOLINT
   call::r_x(box, 70);
   call::t_y(box, 4);
   call::b_y(box, 15);
-  auto b2 = call::trim_from_above(&box, 4);
+  auto b2 = trim_from_above(&box, 4);
   EXPECT_THAT(call::l_x(box), Eq(4));
   EXPECT_THAT(call::r_x(box), Eq(70));
   EXPECT_THAT(call::t_y(box), Eq(4 + 4));
@@ -999,7 +998,7 @@ TYPED_TEST(BoxApiFixture, TrimRight) // NOLINT
   call::b_y(box, 70);
   call::l_x(box, 4);
   call::r_x(box, 15);
-  auto b2 = call::trim_from_right(&box, 4);
+  auto b2 = trim_from_right(&box, 4);
   EXPECT_THAT(call::t_y(box), Eq(4));
   EXPECT_THAT(call::b_y(box), Eq(70));
   EXPECT_THAT(call::l_x(box), Eq(4));
@@ -1016,7 +1015,7 @@ TYPED_TEST(BoxApiFixture, TrimDown) // NOLINT
   call::r_x(box, 70);
   call::t_y(box, 4);
   call::b_y(box, 15);
-  auto b2 = call::trim_from_below(&box, 4);
+  auto b2 = trim_from_below(&box, 4);
   EXPECT_THAT(call::l_x(box), Eq(4));
   EXPECT_THAT(call::r_x(box), Eq(70));
   EXPECT_THAT(call::t_y(box), Eq(4));
@@ -1029,15 +1028,15 @@ TYPED_TEST(BoxApiFixture, TrimDown) // NOLINT
 TYPED_TEST(BoxApiFixture, BoxUnion) // NOLINT
 {
   using box_t = decltype(this->value);
-  auto result = call::box_union(call::box_from_xyxy<box_t>(1, 2, 3, 4),
-                                call::box_from_xyxy<box_t>(1, 2, 3, 4));
+  auto result = box_union(box_from_xyxy<box_t>(1, 2, 3, 4),
+                                box_from_xyxy<box_t>(1, 2, 3, 4));
   EXPECT_THAT(call::l_x(result), Eq(1));
   EXPECT_THAT(call::t_y(result), Eq(2));
   EXPECT_THAT(call::r_x(result), Eq(3));
   EXPECT_THAT(call::b_y(result), Eq(4));
 
-  result = call::box_union(call::box_from_xyxy<box_t>(1, 2, 3, 4),
-                           call::box_from_xyxy<box_t>(2, 3, 4, 5));
+  result = box_union(box_from_xyxy<box_t>(1, 2, 3, 4),
+                           box_from_xyxy<box_t>(2, 3, 4, 5));
   EXPECT_THAT(call::l_x(result), Eq(1));
   EXPECT_THAT(call::t_y(result), Eq(2));
   EXPECT_THAT(call::r_x(result), Eq(4));
@@ -1046,15 +1045,15 @@ TYPED_TEST(BoxApiFixture, BoxUnion) // NOLINT
 TYPED_TEST(BoxApiFixture, BoxIntersection) // NOLINT
 {
   using box_t = decltype(this->value);
-  auto result = call::box_intersection(call::box_from_xyxy<box_t>(1, 2, 3, 4),
-                                       call::box_from_xyxy<box_t>(1, 2, 3, 4));
+  auto result = box_intersection(box_from_xyxy<box_t>(1, 2, 3, 4),
+                                       box_from_xyxy<box_t>(1, 2, 3, 4));
   EXPECT_THAT(call::l_x(result), Eq(1));
   EXPECT_THAT(call::t_y(result), Eq(2));
   EXPECT_THAT(call::r_x(result), Eq(3));
   EXPECT_THAT(call::b_y(result), Eq(4));
 
-  result = call::box_intersection(call::box_from_xyxy<box_t>(1, 2, 3, 4),
-                                  call::box_from_xyxy<box_t>(2, 3, 4, 5));
+  result = box_intersection(box_from_xyxy<box_t>(1, 2, 3, 4),
+                                  box_from_xyxy<box_t>(2, 3, 4, 5));
   EXPECT_THAT(call::l_x(result), Eq(2));
   EXPECT_THAT(call::t_y(result), Eq(3));
   EXPECT_THAT(call::r_x(result), Eq(3));
@@ -1063,30 +1062,30 @@ TYPED_TEST(BoxApiFixture, BoxIntersection) // NOLINT
 TYPED_TEST(BoxApiFixture, HitTest) // NOLINT
 {
   using box_t = decltype(this->value);
-  auto b = call::box_from_xyxy<box_t>(1, 2, 3, 4);
-  EXPECT_TRUE(call::hit_box(b, {1, 2}));
-  EXPECT_TRUE(call::hit_box(b, {2, 3}));
-  EXPECT_FALSE(call::hit_box(b, {0, 3}));
-  EXPECT_FALSE(call::hit_box(b, {2, 1}));
-  EXPECT_FALSE(call::hit_box(b, {3, 4}));
+  auto b = box_from_xyxy<box_t>(1, 2, 3, 4);
+  EXPECT_TRUE(hit_box(b, {1, 2}));
+  EXPECT_TRUE(hit_box(b, {2, 3}));
+  EXPECT_FALSE(hit_box(b, {0, 3}));
+  EXPECT_FALSE(hit_box(b, {2, 1}));
+  EXPECT_FALSE(hit_box(b, {3, 4}));
 }
 TYPED_TEST(BoxApiFixture, BoxIncludesBox) // NOLINT
 {
   using box_t = decltype(this->value);
-  auto b = call::box_from_xyxy<box_t>(1, 2, 4, 5);
+  auto b = box_from_xyxy<box_t>(1, 2, 4, 5);
   EXPECT_TRUE(
-      call::box_includes_box(b, call::box_from_xyxy<box_t>(1, 2, 2, 3)));
+      box_includes_box(b, box_from_xyxy<box_t>(1, 2, 2, 3)));
   EXPECT_FALSE(
-      call::box_includes_box(b, call::box_from_xyxy<box_t>(0, 2, 2, 3)));
+      box_includes_box(b, box_from_xyxy<box_t>(0, 2, 2, 3)));
   EXPECT_TRUE(
-      call::box_includes_box(b, call::box_from_xyxy<default_rect>(1, 2, 2, 3)));
-  EXPECT_TRUE(call::box_includes_box(b, b));
+      box_includes_box(b, box_from_xyxy<default_rect>(1, 2, 2, 3)));
+  EXPECT_TRUE(box_includes_box(b, b));
 }
 TYPED_TEST(BoxApiFixture, NudgeLeft) // NOLINT
 {
   using box_t = decltype(this->value);
-  auto b = call::box_from_xyxy<box_t>(1, 2, 4, 5);
-  auto b2 = call::nudge_left(b, 1);
+  auto b = box_from_xyxy<box_t>(1, 2, 4, 5);
+  auto b2 = nudge_left(b, 1);
   EXPECT_THAT(call::l_x(b2), Eq(0));
   EXPECT_THAT(call::t_y(b2), Eq(2));
   EXPECT_THAT(call::r_x(b2), Eq(3));
@@ -1095,8 +1094,8 @@ TYPED_TEST(BoxApiFixture, NudgeLeft) // NOLINT
 TYPED_TEST(BoxApiFixture, NudgeDown) // NOLINT
 {
   using box_t = decltype(this->value);
-  auto b = call::box_from_xyxy<box_t>(1, 2, 4, 5);
-  auto b2 = call::nudge_down(b, 1);
+  auto b = box_from_xyxy<box_t>(1, 2, 4, 5);
+  auto b2 = nudge_down(b, 1);
   EXPECT_THAT(call::l_x(b2), Eq(1));
   EXPECT_THAT(call::t_y(b2), Eq(3));
   EXPECT_THAT(call::r_x(b2), Eq(4));
@@ -1105,8 +1104,8 @@ TYPED_TEST(BoxApiFixture, NudgeDown) // NOLINT
 TYPED_TEST(BoxApiFixture, MoveTlTo) // NOLINT
 {
   using box_t = decltype(this->value);
-  auto b = call::box_from_xywh<box_t>(1, 2, 4, 5);
-  auto b2 = call::move_tl_to(b, {0, -1});
+  auto b = box_from_xywh<box_t>(1, 2, 4, 5);
+  auto b2 = move_tl_to(b, {0, -1});
   EXPECT_THAT(call::l_x(b2), Eq(0));
   EXPECT_THAT(call::t_y(b2), Eq(-1));
   EXPECT_THAT(call::width(b2), Eq(4));
@@ -1146,13 +1145,13 @@ struct test_renderer {
   }
 
   void draw_pixels(bounding_box auto &&b, auto &&cb) {
-    if (!call::box_includes_box(area(), b)) {
-      failed_calls.push_back(call::box_from_xyxy<default_rect>(
+    if (!box_includes_box(area(), b)) {
+      failed_calls.push_back(box_from_xyxy<default_rect>(
           call::l_x(b), call::t_y(b), call::r_x(b), call::b_y(b)));
       return;
     }
     cb([this, &b](auto &&pos, auto &&col) {
-      if (!call::hit_box(b, pos)) {
+      if (!hit_box(b, pos)) {
         failed_pixel_draws.emplace_back(call::x_of(pos), call::y_of(pos));
         return;
       }
@@ -2078,7 +2077,7 @@ TEST(GuiContext, RerenderOutput) // NOLINT
   auto rarea = guic.handle(1);
   expect_box_equal(rarea, default_rect{{1, 0}, {2, 1}});
   rarea = guic.handle(0);
-  EXPECT_TRUE(call::box_includes_box(rarea, default_rect{{0, 0}, {1, 1}}));
-  EXPECT_TRUE(call::box_includes_box(rarea, default_rect{{2, 0}, {3, 1}}));
+  EXPECT_TRUE(box_includes_box(rarea, default_rect{{0, 0}, {1, 1}}));
+  EXPECT_TRUE(box_includes_box(rarea, default_rect{{2, 0}, {3, 1}}));
 }
 } // namespace cgui::tests
