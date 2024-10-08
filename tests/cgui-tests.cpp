@@ -748,7 +748,7 @@ static_assert(mutable_bounding_box<tlbr_mut, int>);
 static_assert(mutable_bounding_box<tlbr_static_set, int>);
 
 static_assert(has_assignable_get<xywh_bbox<access_type::extend_mut> &,
-                                       call::impl::_do_width, int>);
+                                 call::impl::_do_width, int>);
 
 TYPED_TEST_SUITE(PixCoordFixture, PixCoordTypes);
 TYPED_TEST_SUITE(BoxApiFixture, RectApiTypes);
@@ -908,7 +908,7 @@ TYPED_TEST(BoxApiFixture, ConstructTLBR) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
   auto v = box_from_tlbr<box_t>(default_pixel_coord{1, 2},
-                                      default_pixel_coord{3, 4});
+                                default_pixel_coord{3, 4});
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
   EXPECT_THAT(call::l_x(v), Eq(1));
   EXPECT_THAT(call::t_y(v), Eq(2));
@@ -1029,14 +1029,14 @@ TYPED_TEST(BoxApiFixture, BoxUnion) // NOLINT
 {
   using box_t = decltype(this->value);
   auto result = box_union(box_from_xyxy<box_t>(1, 2, 3, 4),
-                                box_from_xyxy<box_t>(1, 2, 3, 4));
+                          box_from_xyxy<box_t>(1, 2, 3, 4));
   EXPECT_THAT(call::l_x(result), Eq(1));
   EXPECT_THAT(call::t_y(result), Eq(2));
   EXPECT_THAT(call::r_x(result), Eq(3));
   EXPECT_THAT(call::b_y(result), Eq(4));
 
   result = box_union(box_from_xyxy<box_t>(1, 2, 3, 4),
-                           box_from_xyxy<box_t>(2, 3, 4, 5));
+                     box_from_xyxy<box_t>(2, 3, 4, 5));
   EXPECT_THAT(call::l_x(result), Eq(1));
   EXPECT_THAT(call::t_y(result), Eq(2));
   EXPECT_THAT(call::r_x(result), Eq(4));
@@ -1046,14 +1046,14 @@ TYPED_TEST(BoxApiFixture, BoxIntersection) // NOLINT
 {
   using box_t = decltype(this->value);
   auto result = box_intersection(box_from_xyxy<box_t>(1, 2, 3, 4),
-                                       box_from_xyxy<box_t>(1, 2, 3, 4));
+                                 box_from_xyxy<box_t>(1, 2, 3, 4));
   EXPECT_THAT(call::l_x(result), Eq(1));
   EXPECT_THAT(call::t_y(result), Eq(2));
   EXPECT_THAT(call::r_x(result), Eq(3));
   EXPECT_THAT(call::b_y(result), Eq(4));
 
   result = box_intersection(box_from_xyxy<box_t>(1, 2, 3, 4),
-                                  box_from_xyxy<box_t>(2, 3, 4, 5));
+                            box_from_xyxy<box_t>(2, 3, 4, 5));
   EXPECT_THAT(call::l_x(result), Eq(2));
   EXPECT_THAT(call::t_y(result), Eq(3));
   EXPECT_THAT(call::r_x(result), Eq(3));
@@ -1073,12 +1073,9 @@ TYPED_TEST(BoxApiFixture, BoxIncludesBox) // NOLINT
 {
   using box_t = decltype(this->value);
   auto b = box_from_xyxy<box_t>(1, 2, 4, 5);
-  EXPECT_TRUE(
-      box_includes_box(b, box_from_xyxy<box_t>(1, 2, 2, 3)));
-  EXPECT_FALSE(
-      box_includes_box(b, box_from_xyxy<box_t>(0, 2, 2, 3)));
-  EXPECT_TRUE(
-      box_includes_box(b, box_from_xyxy<default_rect>(1, 2, 2, 3)));
+  EXPECT_TRUE(box_includes_box(b, box_from_xyxy<box_t>(1, 2, 2, 3)));
+  EXPECT_FALSE(box_includes_box(b, box_from_xyxy<box_t>(0, 2, 2, 3)));
+  EXPECT_TRUE(box_includes_box(b, box_from_xyxy<default_rect>(1, 2, 2, 3)));
   EXPECT_TRUE(box_includes_box(b, b));
 }
 TYPED_TEST(BoxApiFixture, NudgeLeft) // NOLINT
@@ -2005,6 +2002,36 @@ TEST(Widget, BasicButton) // NOLINT
   w.render(sr);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
   reset();
+}
+
+struct mock_widget {
+  MOCK_METHOD(void, do_area, (default_rect const &));
+
+  void area(default_rect const &a) { do_area(a); }
+  void render(auto &&...) const {}
+};
+
+TEST(WidgetBuilder, SubcomponentsBasic) // NOLINT
+{
+  mock_widget subw;
+  int mock_calls{};
+  auto sc_area = default_rect{};
+  EXPECT_CALL(subw, do_area(_)).WillRepeatedly([&mock_calls, &sc_area](auto const &a) {
+    ++mock_calls;
+    sc_area = a;
+  });
+  auto w = widget_builder()
+               .area(default_rect{{0, 1}, {3, 4}})
+               .subcomponent(std::ref(sc_area))
+               .on_resize([](auto &self, bounding_box auto const &new_area) {
+                 self.subcomponent().area(new_area);
+               })
+               .build();
+  EXPECT_THAT(mock_calls, Eq(1)) << "Should be called once on creation";
+  expect_box_equal(sc_area, w.area());
+  w.area({{0, 2}, { 4, 5}});
+  EXPECT_THAT(mock_calls, Eq(2));
+  expect_box_equal(sc_area, w.area());
 }
 
 struct mock_widget_resize {
