@@ -479,12 +479,12 @@ struct widget_mono_state {
 struct widget_no_event_handler {};
 
 template <bounding_box TArea, typename TDisplay, typename TState,
-          typename TEventHandler>
-class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
+          typename TEventHandler, typename TSubs, typename TOnResize>
+class widget : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
   using display_state_callbacks_t = widget_display_state_callbacks<TArea>;
   TArea area_{};
   TDisplay display_;
-  using base_t = bp::empty_structs_optimiser<TState, TEventHandler>;
+  using base_t = bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize>;
   static constexpr decltype(auto) state(auto &&self) noexcept {
     return base_t::get(
         static_cast<bp::copy_cvref_t<base_t, decltype(self)>>(self),
@@ -522,12 +522,14 @@ public:
   template <typename... Ts>
     requires(std::constructible_from<TDisplay, Ts && ...>)
   constexpr explicit widget(Ts &&...d) : display_(std::forward<Ts>(d)...) {}
-  template <typename TD, typename TS, typename TE>
+  template <typename TD, typename TS, typename TE, typename TSC, typename TRSZ>
     requires(std::constructible_from<TDisplay, TD &&> &&
              std::constructible_from<TEventHandler, TE &&> &&
-             std::constructible_from<TState, TS &&>)
-  constexpr widget(TArea const &a, TD &&d, TS &&s, TE &&e)
-      : base_t(std::forward<TS>(s), std::forward<TE>(e)), area_(a),
+             std::constructible_from<TState, TS &&> &&
+             std::constructible_from<TSubs, TSC &&> &&
+             std::constructible_from<TOnResize, TRSZ &&>)
+  constexpr widget(TArea const &a, TD &&d, TS &&s, TE &&e, TSC&& sc, TRSZ&& rsz)
+      : base_t(std::forward<TS>(s), std::forward<TE>(e), std::forward<TSC>(sc), std::forward<TRSZ>(rsz)), area_(a),
         display_(std::forward<TD>(d)) {}
 
   [[nodiscard]] TArea const &area() const { return area_; }
@@ -580,12 +582,14 @@ public:
 };
 
 template <typename TArea, typename TDisplay, widget_states_aspect TState,
-          typename TEventHandler>
+          typename TEventHandler, typename TSubs, typename TOnResize>
 class widget_builder_impl {
   TArea area_;
   TDisplay displays_;
   TState state_;
   TEventHandler event_;
+  TSubs subs_;
+  TOnResize on_resize_;
 
   using state_wrapper = widget_state_wrapper<TState>;
   using state_arg_t = typename state_wrapper::template arg_t<int>;
@@ -594,31 +598,36 @@ public:
   static constexpr bool contract_fulfilled = bounding_box<TArea>;
 
   constexpr widget_builder_impl() = default;
-  template <typename TUs, typename TS, typename TE>
+  template <typename TUs, typename TS, typename TE, typename TSC, typename TRSZ>
     requires(std::constructible_from<TDisplay, TUs &&> &&
              std::constructible_from<TState, TS &&> &&
-             std::constructible_from<TEventHandler, TE &&>)
+             std::constructible_from<TEventHandler, TE &&> &&
+             std::constructible_from<TSubs, TSC> &&
+             std::constructible_from<TOnResize, TRSZ>)
   constexpr explicit widget_builder_impl(TArea const &a, TUs &&displ, TS &&s,
-                                         TE &&e)
+                                         TE &&e, TSC &&sc, TRSZ &&rsz)
       : area_(a), displays_(std::forward<TUs>(displ)),
-        state_(std::forward<TS>(s)), event_(std::forward<TE>(e)) {}
+        state_(std::forward<TS>(s)), event_(std::forward<TE>(e)),
+        subs_(std::forward<TSC>(sc)), on_resize_(std::forward<TRSZ>(rsz)) {}
 
   template <widget_states_aspect TS2,
-            typename TRes = widget_builder_impl<
-                TArea, TDisplay, std::remove_cvref_t<TS2>, TEventHandler>>
+            typename TRes =
+                widget_builder_impl<TArea, TDisplay, std::remove_cvref_t<TS2>,
+                                    TEventHandler, TSubs, TOnResize>>
   TRes state(TS2 &&s) && {
     return TRes(std::move(area_), std::move(displays_), std::forward<TS2>(s),
-                std::move(event_));
+                std::move(event_), std::move(subs_), std::move(on_resize_));
   }
 
-  template <
-      typename... TD2,
-      typename TTuple = std::tuple<std::unwrap_ref_decay_t<TD2>...>,
-      typename TRes = widget_builder_impl<TArea, TTuple, TState, TEventHandler>>
+  template <typename... TD2,
+            typename TTuple = std::tuple<std::unwrap_ref_decay_t<TD2>...>,
+            typename TRes = widget_builder_impl<
+                TArea, TTuple, TState, TEventHandler, TSubs, TOnResize>>
     requires((builder_display_args<TD2, dummy_renderer, state_arg_t>) && ...)
   TRes display(TD2 &&...d2) && {
     return TRes(std::move(area_), TTuple(std::forward<decltype(d2)>(d2)...),
-                std::move(state_), std::move(event_));
+                std::move(state_), std::move(event_), std::move(subs_),
+                std::move(on_resize_));
   }
 
   template <display_component_range<dummy_renderer,
@@ -626,10 +635,11 @@ public:
                 TTupleLike,
             typename TRes = widget_builder_impl<
                 TArea, std::unwrap_reference_t<std::remove_cvref_t<TTupleLike>>,
-                state_wrapper, TEventHandler>>
+                state_wrapper, TEventHandler, TSubs, TOnResize>>
   TRes display(TTupleLike &&displays) && {
     return TRes(std::move(area_), std::forward<TTupleLike>(displays),
-                std::move(state_), std::move(event_));
+                std::move(state_), std::move(event_), std::move(subs_),
+                std::move(on_resize_));
   }
 
 #if CGUI_HAS_NAMED_ARGS
@@ -640,9 +650,11 @@ public:
         ...)
   constexpr auto display(TArgs &&...args) && {
     using tuple_t = dooc::named_tuple<std::remove_cvref_t<TArgs>...>;
-    return widget_builder_impl<TArea, tuple_t, TState, TEventHandler>(
+    return widget_builder_impl<TArea, tuple_t, TState, TEventHandler, TSubs,
+                               TOnResize>(
         std::move(area_), tuple_t(std::forward<TArgs>(args)...),
-        std::move(state_), std::move(event_));
+        std::move(state_), std::move(event_), std::move(subs_),
+        std::move(on_resize_));
   }
 #endif
 
@@ -654,28 +666,53 @@ public:
     static_assert(contract_fulfilled);
     using display_t = decltype(impl::build_displays(
         std::move(displays_), state_wrapper::all_states()));
-    return widget<TArea, display_t, state_wrapper, TEventHandler>(
+    using subs_t = decltype(impl::build_gui_context_widgets(std::move(subs_)));
+    return widget<TArea, display_t, state_wrapper, TEventHandler, subs_t, TOnResize>(
         std::move(area_),
         impl::build_displays(std::move(displays_), state_wrapper::all_states()),
-        state_wrapper(std::move(state_)), std::move(event_));
+        state_wrapper(std::move(state_)), std::move(event_), impl::build_gui_context_widgets(std::move(subs_)),
+        std::move(on_resize_));
   }
-  template <typename TE2,
-            typename TRes = widget_builder_impl<TArea, TDisplay, TState,
-                                                std::remove_cvref_t<TE2>>>
+  template <typename TE2, typename TRes = widget_builder_impl<
+                              TArea, TDisplay, TState, std::remove_cvref_t<TE2>,
+                              TSubs, TOnResize>>
   TRes event(TE2 &&e) && {
     return TRes(std::move(area_), std::move(displays_), std::move(state_),
-                std::forward<TE2>(e));
+                std::forward<TE2>(e), std::move(subs_), std::move(on_resize_));
   }
 
-  template <bounding_box TA, typename TRes = widget_builder_impl<
-                                 TA, TDisplay, TState, TEventHandler>>
+  template <bounding_box TA,
+            typename TRes = widget_builder_impl<
+                TA, TDisplay, TState, TEventHandler, TSubs, TOnResize>>
   TRes area(TA const &a) && {
-    return TRes(a, std::move(displays_), std::move(state_), std::move(event_));
+    return TRes(a, std::move(displays_), std::move(state_), std::move(event_),
+                std::move(subs_), std::move(on_resize_));
+  }
+
+  template <widget_display_args... Ts,
+            typename TTuple = std::tuple<std::unwrap_ref_decay_t<Ts>...>,
+            typename TRes = widget_builder_impl<
+                TArea, TDisplay, TState, TEventHandler, TTuple, TOnResize>>
+  TRes subcomponents(Ts &&...args) && {
+    return {std::move(area_),
+            std::move(displays_),
+            std::move(state_),
+            std::move(event_),
+            TTuple(std::forward<Ts>(args)...),
+            std::move(on_resize_)};
+  }
+  template <typename T, typename TRes = widget_builder_impl<
+                            TArea, TDisplay, TState, TEventHandler, TSubs,
+                            std::unwrap_ref_decay_t<T>>>
+  TRes on_resize(T &&rsz) && {
+    return {std::move(area_),  std::move(displays_), std::move(state_),
+            std::move(event_), std::move(subs_),     std::forward<T>(rsz)};
   }
 };
 
 constexpr widget_builder_impl<default_rect, std::tuple<>, widget_mono_state,
-                              widget_no_event_handler>
+                              widget_no_event_handler, std::tuple<>,
+                              bp::no_op_t>
 widget_builder() {
   return {};
 }

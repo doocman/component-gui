@@ -2022,7 +2022,7 @@ TEST(WidgetBuilder, SubcomponentsBasic) // NOLINT
   });
   auto w = widget_builder()
                .area(default_rect{{0, 1}, {3, 4}})
-               .subcomponent(std::ref(sc_area))
+               .subcomponents(std::ref(subw))
                .on_resize([](auto &self, bounding_box auto const &new_area) {
                  self.subcomponent().area(new_area);
                })
