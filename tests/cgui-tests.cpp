@@ -2005,10 +2005,16 @@ TEST(Widget, BasicButton) // NOLINT
 }
 
 struct mock_widget {
+  default_rect a_{};
   MOCK_METHOD(void, do_area, (default_rect const &));
+  MOCK_METHOD(void, do_render, (), (const));
 
-  void area(default_rect const &a) { do_area(a); }
-  void render(auto &&...) const {}
+  default_rect const &area() const { return a_; }
+  void area(bounding_box auto const &a) {
+    a_ = copy_box<default_rect>(a);
+    do_area(a_);
+  }
+  void render(auto &&...) const { do_render(); }
 };
 
 TEST(WidgetBuilder, SubcomponentsResize) // NOLINT
@@ -2037,7 +2043,25 @@ TEST(WidgetBuilder, SubcomponentsResize) // NOLINT
 
 TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
 {
-  FAIL() << "Not yet implemented";
+  auto s1 = NiceMock<mock_widget>{};
+  auto s2 = NiceMock<mock_widget>{};
+  EXPECT_CALL(s1, do_area(_)).Times(1);
+  EXPECT_CALL(s2, do_area(_)).Times(1);
+  {
+    InSequence s;
+    EXPECT_CALL(s1, do_render()).Times(1);
+    EXPECT_CALL(s2, do_render()).Times(1);
+  }
+  auto w = widget_builder()
+               .area(default_rect{{0, 0}, {3, 3}})
+               .subcomponents(std::ref(s1), std::ref(s2))
+               .on_resize([](auto &&self, bounding_box auto b) {
+                 auto &[s1, s2] = self.subcomponents();
+                 s1.area(trim_from_left(&b, 1));
+                 s2.area(b);
+               })
+               .build();
+  w.render(dummy_renderer{});
 }
 
 struct mock_widget_resize {

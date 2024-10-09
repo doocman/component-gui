@@ -581,6 +581,10 @@ public:
     auto h = call::height(area_);
     auto render_callback = state(*this)(r.sub(area_), w, h);
     call::for_each(display_, std::move(render_callback));
+    if constexpr (!std::is_empty_v<TSubs>) {
+      call::for_each(subs(*this),
+                     [&r](auto &&sub_w) { sub_w.render(r.sub(sub_w.area())); });
+    }
   }
   template <typename TEvt, display_state_callbacks TCallback>
   constexpr void handle(TEvt &&evt, TCallback &&display_callbacks)
