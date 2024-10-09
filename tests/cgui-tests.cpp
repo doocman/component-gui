@@ -2016,20 +2016,21 @@ TEST(WidgetBuilder, SubcomponentsBasic) // NOLINT
   mock_widget subw;
   int mock_calls{};
   auto sc_area = default_rect{};
-  EXPECT_CALL(subw, do_area(_)).WillRepeatedly([&mock_calls, &sc_area](auto const &a) {
-    ++mock_calls;
-    sc_area = a;
-  });
+  EXPECT_CALL(subw, do_area(_))
+      .WillRepeatedly([&mock_calls, &sc_area](auto const &a) {
+        ++mock_calls;
+        sc_area = a;
+      });
   auto w = widget_builder()
                .area(default_rect{{0, 1}, {3, 4}})
                .subcomponents(std::ref(subw))
-               .on_resize([](auto &self, bounding_box auto const &new_area) {
+               .on_resize([](auto &&self, bounding_box auto const &new_area) {
                  self.subcomponent().area(new_area);
                })
                .build();
   EXPECT_THAT(mock_calls, Eq(1)) << "Should be called once on creation";
   expect_box_equal(sc_area, w.area());
-  w.area({{0, 2}, { 4, 5}});
+  w.area({{0, 2}, {4, 5}});
   EXPECT_THAT(mock_calls, Eq(2));
   expect_box_equal(sc_area, w.area());
 }
