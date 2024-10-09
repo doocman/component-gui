@@ -456,11 +456,8 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
   constexpr auto operator()(TR &&r, TWH w, TWH h) const {
     auto arg = arg_t<TWH>(w, h, call::state(base(*this)));
     return [r = std::forward<TR>(r),
-            arg = std::move(arg)]<typename
-                                  // display_component<TR, arg_t<TWH>>
-                                  TD>(TD &&display) mutable {
-      call::render(display, r, arg);
-    };
+            arg = std::move(arg)]<display_component<TR, arg_t<TWH>> TD>(
+               TD &&display) mutable { call::render(display, r, arg); };
   }
   static constexpr decltype(auto)
   handle(bp::cvref_type<widget_state_wrapper> auto &&self, auto &&evt)
