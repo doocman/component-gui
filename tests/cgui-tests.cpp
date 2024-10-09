@@ -2011,7 +2011,7 @@ struct mock_widget {
   void render(auto &&...) const {}
 };
 
-TEST(WidgetBuilder, SubcomponentsBasic) // NOLINT
+TEST(WidgetBuilder, SubcomponentsResize) // NOLINT
 {
   mock_widget subw;
   int mock_calls{};
@@ -2033,6 +2033,11 @@ TEST(WidgetBuilder, SubcomponentsBasic) // NOLINT
   w.area({{0, 2}, {4, 5}});
   EXPECT_THAT(mock_calls, Eq(2));
   expect_box_equal(sc_area, w.area());
+}
+
+TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
+{
+  FAIL() << "Not yet implemented";
 }
 
 struct mock_widget_resize {
