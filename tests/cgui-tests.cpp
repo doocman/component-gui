@@ -2064,10 +2064,15 @@ TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
   w.render(dummy_renderer{});
 }
 
+TEST(WidgetBuilder, SubcomponentsSetState) // NOLINT
+{
+  FAIL() << "Not yet implemented";
+}
+
 struct mock_widget_resize {
 
   MOCK_METHOD(void, do_resize, (int w, int h));
-  void set_size(bounding_box auto const &b) {
+  void area(bounding_box auto const &b) {
     do_resize(call::width(b), call::height(b));
   }
   void render(auto &&) const {}
@@ -2090,7 +2095,7 @@ TEST(GuiContext, BuildResize) // NOLINT
           .widgets(std::ref(w))
           .on_resize([](size_wh auto const &wh, auto &&widgets) {
             auto &[w] = widgets;
-            w.set_size(default_rect{0, 0, call::width(wh), call::height(wh)});
+            w.area(default_rect{0, 0, call::width(wh), call::height(wh)});
           })
           .build({{0, 0}, {2, 2}});
   auto area = gui.handle(dummy_window_resized_event{{3, 3}});
