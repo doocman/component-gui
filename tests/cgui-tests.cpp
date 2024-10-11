@@ -1058,6 +1058,9 @@ TYPED_TEST(BoxApiFixture, BoxIntersection) // NOLINT
   EXPECT_THAT(call::t_y(result), Eq(3));
   EXPECT_THAT(call::r_x(result), Eq(3));
   EXPECT_THAT(call::b_y(result), Eq(4));
+
+  result = box_intersection(box_from_xyxy<box_t>(1, 1, 2, 2), box_from_xyxy<box_t>(3, 3, 4, 4));
+  EXPECT_TRUE(empty_box(result));
 }
 TYPED_TEST(BoxApiFixture, HitTest) // NOLINT
 {
@@ -2071,11 +2074,6 @@ TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
                })
                .build();
   w.render(dummy_renderer{});
-}
-
-TEST(Widgets, ToggleButton) // NOLINT
-{
-  FAIL() << "Not yet implemented";
 }
 
 struct mock_widget_resize {

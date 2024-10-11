@@ -11,6 +11,7 @@
 #include <tuple>
 #include <utility>
 
+#include <cgui/std-backport/algorithm.hpp>
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/functional.hpp>
 #include <cgui/std-backport/tuple.hpp>
@@ -571,9 +572,13 @@ template <typename T, T... values>
 constexpr std::size_t state2index(widget_state_marker<T, values...> const &v) {
   if constexpr (sizeof...(values) < 2) {
     return 0;
+  } else if constexpr(bp::is_sequential(values...)){
+    auto const i = static_cast<std::size_t>(v.current_state()) - static_cast<std::size_t>(bp::first_of(values...));
+    CGUI_ASSERT(static_cast<std::size_t>(i) < sizeof...(values));
+    return i;
   } else {
-    auto const i = static_cast<std::size_t>(v.current_state());
-    CGUI_ASSERT(i < sizeof...(values));
+    auto i = bp::find_template_index<T, values...>(v.current_state());
+    CGUI_ASSERT(static_cast<std::size_t>(i) < sizeof...(values));
     return i;
   }
 }

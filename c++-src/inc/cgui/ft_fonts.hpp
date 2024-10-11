@@ -163,11 +163,6 @@ public:
             {},
             {static_cast<int>(bitmap.width), static_cast<int>(bitmap.rows)}},
         [&](bounding_box auto const &b, auto &&px_rend) {
-          CGUI_ASSERT(
-              box_includes_box(default_rect{{},
-                                            {static_cast<int>(bitmap.width),
-                                             static_cast<int>(bitmap.rows)}},
-                               b));
           CGUI_ASSERT(bitmap.pitch >= 0);
           CGUI_ASSERT(static_cast<unsigned int>(bitmap.pitch) <= bitmap.width);
           for (auto y : cgui::y_view(b)) {

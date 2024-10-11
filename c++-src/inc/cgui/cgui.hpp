@@ -108,7 +108,9 @@ public:
 
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
+    CGUI_ASSERT(valid_box(dest));
     auto relative_dest = to_relative_dest(dest);
+    CGUI_ASSERT(valid_box(relative_dest));
     if (empty_box(relative_dest)) {
       using return_type =
           decltype(call::draw_pixels(*c_, dest, [](auto &&...) {}));
@@ -119,6 +121,7 @@ public:
       }
     }
     auto absolute_dest = to_absolute(relative_dest);
+    CGUI_ASSERT(valid_box(absolute_dest));
     return call::draw_pixels(
         *c_, absolute_dest,
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
@@ -139,6 +142,7 @@ public:
     }
     draw_pixels(std::forward<decltype(b)>(b),
                 [this, &cb](auto &&bbox, auto &&drawer) {
+                  CGUI_ASSERT(valid_box(bbox));
                   cb(bbox, [this, &drawer](auto &&point, auto &&alpha) {
                     drawer(point, multiply_alpha(set_colour_, alpha));
                   });
@@ -1310,6 +1314,87 @@ struct momentary_button {
             std::forward<T2>(c)};
   }
 };
+
+enum class toggle_button_states {
+  off = 0, hover_off = 1, hold_off = 2,
+  on = 4, hover_on = 5, hold_on = 6
+};
+template <std::invocable TToOn, std::invocable TToOff>
+class toggle_button_impl : bp::empty_structs_optimiser<TToOn, TToOff>{
+
+  using state_t =
+      widget_state_marker<toggle_button_states, toggle_button_states::off,
+                          toggle_button_states::hover_off,
+                          toggle_button_states::hold_off, toggle_button_states::on, toggle_button_states::hover_on, toggle_button_states::hold_on>;
+
+  using base_t = bp::empty_structs_optimiser<TToOn, TToOff>;
+  template <typename T>
+  constexpr decltype(auto) call() noexcept {
+    return base_t::get(static_cast<base_t &>(*this),
+                       std::type_identity<T>{})();
+  }
+  //state_t current_state_{toggle_button_states::off};
+  bool on_ : 1 = {};
+  bool hover_ : 1 = {};
+  bool hold_ : 1 = {};
+
+  using underlying_int = std::underlying_type_t<toggle_button_states>;
+
+
+public:
+  template <typename... Ts>
+    requires(std::constructible_from<base_t, Ts && ...>)
+  constexpr explicit(sizeof...(Ts) == 1) toggle_button_impl(Ts &&...args)
+      : base_t(std::forward<Ts>(args)...) {}
+
+  [[nodiscard]] constexpr state_t state() const {
+    using enum toggle_button_states;
+    auto on_part = on_ ? underlying_int{} : static_cast<underlying_int>(on);
+    auto hover_hold_part = underlying_int{};
+    if (hold_) {
+      hover_hold_part = static_cast<underlying_int>(hold_off);
+    } else if (hover_) {
+      hover_hold_part = static_cast<underlying_int>(hover_off);
+    }
+    return static_cast<toggle_button_states>(on_part + hover_hold_part);
+  }
+
+  constexpr void handle(buttonlike_trigger::click_event const &) {
+    if (on_) {
+      call<TToOff>();
+    } else {
+      call<TToOn>();
+    }
+    on_ = !on_;
+  }
+  constexpr void handle(buttonlike_trigger::exit_event const &) {
+    hover_ = false;
+    hold_ = false;
+  }
+  constexpr void handle(buttonlike_trigger::hold_event const &) {
+    hold_ = true;
+  }
+  constexpr void handle(buttonlike_trigger::hover_event const &) {
+    hover_ = true;
+  }
+};
+
+template <std::invocable TToOn = bp::no_op_t, std::invocable TToOff = bp::no_op_t>
+class toggle_button {
+  TToOn to_on_{};
+  TToOff to_off_{};
+
+public:
+  constexpr toggle_button() = default;
+  template <typename TON, typename TOFF>
+   requires(std::constructible_from<TToOn, TON&&> && std::constructible_from<TToOff, TOFF&&>)
+  constexpr toggle_button(TON&& on, TToOff&& off) : to_on_(std::forward<TON>(on)), to_off_(std::forward<TOFF>(off)) {}
+
+  constexpr toggle_button_impl<TToOn, TToOff> build() && {
+    return {std::move(to_on_), std::move(to_off_)};
+  }
+};
+
 
 } // namespace cgui
 
