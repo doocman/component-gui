@@ -481,6 +481,8 @@ template <typename T> class widget_ref_no_set_area {
 public:
   constexpr explicit widget_ref_no_set_area(T &t) : t_(&t) {}
 
+  constexpr bounding_box decltype(auto) area() const { return t_->area(); }
+
   constexpr decltype(auto) subcomponents() const
     requires(requires() { t_->subcomponents(); })
   {
@@ -498,6 +500,7 @@ template <bounding_box TArea, typename TDisplay, typename TState,
 class widget
     : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
   using display_state_callbacks_t = widget_display_state_callbacks<TArea>;
+  using widget_ref_t = widget_ref_no_set_area<widget>;
   TArea area_{};
   TDisplay display_;
   using base_t =
@@ -585,13 +588,13 @@ public:
   }
   template <typename TEvt, display_state_callbacks TCallback>
   constexpr void handle(TEvt &&evt, TCallback &&display_callbacks)
-    requires(has_handle<TEventHandler, TArea const &, TEvt,
+    requires(has_handle<TEventHandler, widget_ref_t const&, TEvt,
                         decltype(set_state_callback(display_callbacks))>)
   {
     // We expect that all default-constructed areas are empty.
     // First level: we call the event handler that takes input events and
     // translates it to a component state change.
-    call::handle(event_handler(*this), area(), std::forward<decltype(evt)>(evt),
+    call::handle(event_handler(*this), widget_ref_no_set_area(*this), std::forward<decltype(evt)>(evt),
                  [this, &display_callbacks]<typename TStateEvent>(
                      TStateEvent &&state_event) {
                    // Second level: event handler has taken the event input and
@@ -607,7 +610,7 @@ public:
                  });
   }
   constexpr bounding_box auto handle(auto &&evt)
-    requires(has_handle<TEventHandler, TArea const &, decltype(evt),
+    requires(has_handle<TEventHandler, widget_ref_t const&, decltype(evt),
                         decltype(set_state_callback(
                             std::declval<display_state_callbacks_t &>()))>)
   {
@@ -1153,8 +1156,9 @@ public:
     mouse_buttons button;
   };
 
+  template <typename T>
   void handle(
-      bounding_box auto &&area,
+      widget_ref_no_set_area<T> const& widget,
       event_types<ui_events::mouse_move, ui_events::mouse_button_down,
                   ui_events::mouse_button_up, ui_events::mouse_exit> auto &&evt,
       auto &&trigger_callback) {
@@ -1169,7 +1173,7 @@ public:
     if constexpr (can_be_event<mouse_move, evt_t>()) {
       if (is_event<mouse_move>(evt)) {
         // do_stuff;
-        auto is_now_inside = hit_box(area, call::position(evt));
+        auto is_now_inside = hit_box(widget.area(), call::position(evt));
         if (is_now_inside != mouse_inside_) {
           if (mouse_inside_) {
             trigger_callback(exit_event{});
@@ -1183,7 +1187,7 @@ public:
     }
     if constexpr (can_be_event<mouse_button_down, evt_t>()) {
       if (is_event<mouse_button_down>(evt)) {
-        if (!mouse_down_ && hit_box(area, call::position(evt))) {
+        if (!mouse_down_ && hit_box(widget.area(), call::position(evt))) {
           trigger_callback(hold_event{});
         }
         mouse_down_ = true;
@@ -1192,7 +1196,7 @@ public:
     }
     if constexpr (can_be_event<mouse_button_up, evt_t>()) {
       if (is_event<mouse_button_up>(evt)) {
-        if (hit_box(area, call::position(evt))) {
+        if (hit_box(widget.area(), call::position(evt))) {
           trigger_callback(click_event{call::mouse_button(evt)});
         }
         mouse_down_ = false;

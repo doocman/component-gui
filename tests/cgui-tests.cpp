@@ -1743,6 +1743,14 @@ struct mock_button_callback {
   void handle(buttonlike_trigger::exit_event) { do_on_button_exit(); }
 };
 
+struct dummy_widget {
+  default_rect a;
+
+  constexpr default_rect const& area() const {
+    return a;
+  }
+};
+
 TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
 {
   auto trig = buttonlike_trigger();
@@ -1754,15 +1762,16 @@ TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
   EXPECT_CALL(checkpoint, Call());
   EXPECT_CALL(button_state, do_on_button_click(Eq(mouse_buttons::primary)));
   EXPECT_CALL(button_state, do_on_button_exit());
-  constexpr auto dummy_area = default_rect{{0, 0}, {4, 4}};
+  constexpr auto dummy_w = dummy_widget{default_rect{{0, 0}, {4, 4}}};
+  auto dummy_wref = widget_ref_no_set_area(dummy_w);
   auto callback = [&button_state](auto &&evt) { button_state.handle(evt); };
-  trig.handle(dummy_area, dummy_mouse_move_event{{1, 1}}, callback);
-  trig.handle(dummy_area,
+  trig.handle(dummy_wref, dummy_mouse_move_event{{1, 1}}, callback);
+  trig.handle(dummy_wref,
               dummy_mouse_down_event{{1, 1}, mouse_buttons::primary}, callback);
   checkpoint.Call();
-  trig.handle(dummy_area, dummy_mouse_up_event{{1, 1}, mouse_buttons::primary},
+  trig.handle(dummy_wref, dummy_mouse_up_event{{1, 1}, mouse_buttons::primary},
               callback);
-  trig.handle(dummy_area, dummy_mouse_move_event{{-1, 1}}, callback);
+  trig.handle(dummy_wref, dummy_mouse_move_event{{-1, 1}}, callback);
 }
 
 struct mock_renderable {
@@ -2064,7 +2073,7 @@ TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
   w.render(dummy_renderer{});
 }
 
-TEST(WidgetBuilder, SubcomponentsSetState) // NOLINT
+TEST(Widgets, ToggleButton) // NOLINT
 {
   FAIL() << "Not yet implemented";
 }
