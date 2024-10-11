@@ -1,13 +1,13 @@
 
-#include <stdexcept>
 #include <iostream>
+#include <stdexcept>
 
 #include <cgui/cgui.hpp>
-#include <cgui/sdl.hpp>
-#include <cgui/ft_fonts.hpp>
 #include <cgui/embedded/cgui_example_font.hpp>
+#include <cgui/ft_fonts.hpp>
+#include <cgui/sdl.hpp>
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
   try {
     auto sdl_context = build(cgui::sdl_context()).value();
     auto video_subsystem = video(sdl_context).value();
@@ -33,10 +33,22 @@ int main(int argc, char** argv) {
 
     using area_t = decltype(full_area);
 
+    auto gui =
+        cgui::gui_context_builder()
+            .widgets(cgui::widget_builder()
+                         .area(area_t{})
+                         .event(button_list_trigger())
+                         .state(radio_button_state())
+                         .subcomponents(vertical_widget_list<std::vector>(
+                             cgui::widget_builder().display()) //
+                             )
+                         .build())
+            .on_resize([]() {})
+            .build();
 
- } catch (std::exception const& e) {
+  } catch (std::exception const &e) {
     std::cout << "Uncaught exception: " << e.what() << '\n';
- } catch (...) {
+  } catch (...) {
     std::cout << "Uncaught exception UNKNOWN\n";
- }
+  }
 }

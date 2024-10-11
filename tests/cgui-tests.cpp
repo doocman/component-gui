@@ -1059,7 +1059,8 @@ TYPED_TEST(BoxApiFixture, BoxIntersection) // NOLINT
   EXPECT_THAT(call::r_x(result), Eq(3));
   EXPECT_THAT(call::b_y(result), Eq(4));
 
-  result = box_intersection(box_from_xyxy<box_t>(1, 1, 2, 2), box_from_xyxy<box_t>(3, 3, 4, 4));
+  result = box_intersection(box_from_xyxy<box_t>(1, 1, 2, 2),
+                            box_from_xyxy<box_t>(3, 3, 4, 4));
   EXPECT_TRUE(empty_box(result));
 }
 TYPED_TEST(BoxApiFixture, HitTest) // NOLINT
@@ -1749,9 +1750,7 @@ struct mock_button_callback {
 struct dummy_widget {
   default_rect a;
 
-  constexpr default_rect const& area() const {
-    return a;
-  }
+  constexpr default_rect const &area() const { return a; }
 };
 
 TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
