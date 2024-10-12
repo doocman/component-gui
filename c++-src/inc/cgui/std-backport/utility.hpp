@@ -62,14 +62,16 @@ constexpr auto forward_cast(TIn &&arg)
       arg);
 }
 
+namespace impl {
 template <typename T, typename Type, std::size_t index>
 concept get_arg = std::is_same_v<T, std::type_identity<Type>> ||
                   std::is_same_v<T, std::integral_constant<std::size_t, index>>;
 template <typename T, typename Tag>
 concept member_get = requires(T &&t, Tag tag) { std::forward<T>(t).get(tag); };
-template <typename T, typename TQual, typename Tag>
-concept static_get =
-    requires(TQual &&t, Tag tag) { T::get(std::forward<TQual>(t), tag); };
+template <typename T, typename Tag>
+concept static_get = requires(T &&t, Tag tag) {
+  std::remove_cvref_t<T>::get(std::forward<T>(t), tag);
+};
 
 template <std::size_t tIndex, typename... Ts>
 struct empty_structs_optimiser_impl;
@@ -81,6 +83,7 @@ template <std::size_t tIndex, typename T, typename... Ts>
 struct empty_structs_optimiser_impl<tIndex, T, Ts...>
     : empty_structs_optimiser_impl<tIndex + 1, Ts...> {
   using _base_t = empty_structs_optimiser_impl<tIndex + 1, Ts...>;
+  using _this_t = empty_structs_optimiser_impl;
   constexpr empty_structs_optimiser_impl() noexcept(
       std::is_nothrow_default_constructible_v<T> &&
       std::is_nothrow_default_constructible_v<_base_t>) = default;
@@ -89,17 +92,40 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
   constexpr explicit empty_structs_optimiser_impl(TArg &&, TArgs &&...to_base)
       : _base_t(std::forward<TArgs>(to_base)...) {}
 
-  template <typename Tag>
-    requires(get_arg<Tag, T, tIndex> || member_get<_base_t, Tag>)
-  static constexpr T get(Tag) {
-    return T{};
-  }
   template <bp::cvref_type<empty_structs_optimiser_impl> TSelf, typename Tag>
-    requires(get_arg<Tag, T, tIndex> || member_get<_base_t, Tag>)
+    requires(get_arg<Tag, T, tIndex>)
   static constexpr T get(TSelf &&, Tag) {
+    static_assert(!static_get<copy_cvref_t<_base_t, TSelf>, Tag>,
+                  "Ambigouos get");
     return T{};
   }
-  using _base_t::get;
+  template <bp::cvref_type<empty_structs_optimiser_impl> TSelf, typename Tag,
+            typename TBase = copy_cvref_t<_base_t, TSelf>>
+    requires(static_get<TBase, Tag>)
+  static constexpr decltype(auto) get(TSelf &&self, Tag tag) {
+    return _base_t::get(static_cast<TBase>(self), tag);
+  }
+
+  template <typename Tag>
+    requires(static_get<_this_t, Tag>)
+  constexpr decltype(auto) get(Tag tag) && {
+    return _this_t::get(std::move(*this), tag);
+  }
+  template <typename Tag>
+    requires(static_get<_this_t &, Tag>)
+  constexpr decltype(auto) get(Tag tag) & {
+    return _this_t::get(*this, tag);
+  }
+  template <typename Tag>
+    requires(static_get<_this_t const, Tag>)
+  constexpr decltype(auto) get(Tag tag) const && {
+    return _this_t::get(std::move(*this), tag);
+  }
+  template <typename Tag>
+    requires(static_get<_this_t const &, Tag>)
+  constexpr decltype(auto) get(Tag tag) const & {
+    return _this_t::get(*this, tag);
+  }
 };
 
 template <std::size_t tIndex, typename T, typename... Ts>
@@ -120,43 +146,53 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
       : _base_t(std::forward<TArgs>(to_base)...),
         val_(std::forward<TArg>(arg)) {}
 
-  template <bp::cvref_type<empty_structs_optimiser_impl> TSelf, typename Tag>
-    requires(get_arg<Tag, T, tIndex> || static_get<_base_t, _base_t, Tag>)
-  static constexpr auto && get(TSelf &&self, Tag tag) {
-    auto s =
-        bp::as_forward(forward_cast<empty_structs_optimiser_impl, TSelf>(self));
-    if constexpr (get_arg<Tag, T, tIndex>) {
-      static_assert(!member_get<_base_t, Tag>, "Ambigouos get");
-      return (*s).val_;
-    } else {
-      return _base_t::get(*s, tag);
-    }
+  template <bp::cvref_type<empty_structs_optimiser_impl> TSelf, typename Tag,
+            typename TBase = copy_cvref_t<_base_t, TSelf>>
+    requires(static_get<TBase, Tag>)
+  static constexpr decltype(auto) get(TSelf &&self, Tag tag) {
+    return _base_t::get(static_cast<TBase>(self), tag);
+  }
+
+  template <typename TSelf, typename Tag>
+    requires(get_arg<Tag, T, tIndex>)
+  static constexpr auto &&get(TSelf &&self, Tag) {
+    static_assert(!static_get<copy_cvref_t<_base_t, TSelf>, Tag>,
+                  "Ambigouos get");
+    using this_t = copy_cvref_t<_this_t, TSelf &&>;
+    return static_cast<this_t>(self).val_;
   }
 
   template <typename Tag>
-    requires(static_get<_this_t, _this_t &&, Tag>)
-  constexpr auto &&get(Tag tag) && {
+    requires(static_get<_this_t, Tag>)
+  constexpr decltype(auto) get(Tag tag) && {
     return _this_t::get(std::move(*this), tag);
   }
   template <typename Tag>
-    requires(static_get<_this_t, _this_t &, Tag>)
-  constexpr auto &get(Tag tag) & {
+    requires(static_get<_this_t &, Tag>)
+  constexpr decltype(auto) get(Tag tag) & {
     return _this_t::get(*this, tag);
   }
-  template <get_arg<T, tIndex> Tag>
-    requires(static_get<_this_t, _this_t const &&, Tag>)
-  constexpr T const &&get(Tag tag) const && {
+  template <typename Tag>
+    requires(static_get<_this_t const, Tag>)
+  constexpr decltype(auto) get(Tag tag) const && {
     return _this_t::get(std::move(*this), tag);
   }
-  template <get_arg<T, tIndex> Tag>
-    requires(static_get<_this_t, _this_t const &, Tag>)
-  constexpr T const &get(Tag tag) const & {
+  template <typename Tag>
+    requires(static_get<_this_t const &, Tag>)
+  constexpr decltype(auto) get(Tag tag) const & {
     return _this_t::get(*this, tag);
   }
 };
 
+template <std::size_t tI, typename T>
+  requires(impl::static_get<T, std::integral_constant<std::size_t, tI>>)
+constexpr decltype(auto) get(T &&t) {
+  return std::remove_cvref_t<T>::get(std::forward<T>(t),
+                                     std::integral_constant<std::size_t, tI>{});
+}
+} // namespace impl
 template <typename... Ts>
-using empty_structs_optimiser = empty_structs_optimiser_impl<0u, Ts...>;
+using empty_structs_optimiser = impl::empty_structs_optimiser_impl<0u, Ts...>;
 
 template <typename T> class deferred {
   T val_;

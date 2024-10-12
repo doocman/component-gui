@@ -96,13 +96,23 @@ TEST(EtdEmptyBaseOptimiser, Empty) // NOLINT
 TEST(EtdEmptyBaseOptimiser, GetType) // NOLINT
 {
   auto tested = bp::empty_structs_optimiser<int, float, double>();
-  auto &tested_i = tested.get(std::type_identity<int>{});
   tested.get(std::type_identity<int>{}) = 1;
   tested.get(std::type_identity<float>{}) = 2.f;
   tested.get(std::type_identity<double>{}) = 3.;
   EXPECT_THAT(tested.get(std::type_identity<int>{}), Eq(1));
   EXPECT_THAT(tested.get(std::type_identity<float>{}), Eq(2.f));
   EXPECT_THAT(tested.get(std::type_identity<double>{}), Eq(3.));
+}
+TEST(EtdEmptyBaseOptimiser, GetIndex) // NOLINT
+{
+  auto tested = bp::empty_structs_optimiser<int, int, empty_state, int>();
+  get<0>(tested) = 1;
+  get<1>(tested) = 2;
+  get<3>(tested) = 3;
+  EXPECT_THAT(sizeof(tested), Eq(sizeof(int) * 3));
+  EXPECT_THAT(get<0>(tested), Eq(1));
+  EXPECT_THAT(get<1>(tested), Eq(2));
+  EXPECT_THAT(get<3>(tested), Eq(3));
 }
 
 TEST(XxWh, BasicXy2Wh) // NOLINT
