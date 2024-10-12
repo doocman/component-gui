@@ -14,7 +14,6 @@
 #include <cgui/stl_extend.hpp>
 
 namespace cgui {
-
 template <typename TX, typename TY> class nudger {
   TX x_;
   TY y_;
@@ -236,7 +235,7 @@ constexpr auto build_context_display_tuple(std::tuple<Ts...> &&t,
                                            std::index_sequence<tIs...>) {
   return std::tuple<bp::remove_rvalue_reference_t<
       decltype(gui_context_build_or_forward(std::declval<Ts &&>()))>...>{
-      gui_context_build_or_forward(std::forward<Ts>(std::get<tIs>(t)))...};
+        gui_context_build_or_forward(std::forward<Ts>(std::get<tIs>(t)))...};
 }
 
 constexpr decltype(auto) widget_build_or_forward(auto &&v, auto const &states) {
@@ -253,7 +252,7 @@ constexpr auto build_tuple(std::tuple<Ts...> &&t, TStates const &states,
     -> std::tuple<bp::remove_rvalue_reference_t<
         decltype(widget_build_or_forward(std::declval<Ts &&>(), states))>...> {
   return {
-      widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)), states)...};
+    widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)), states)...};
 }
 #if CGUI_HAS_NAMED_ARGS
 template <typename... Ts>
@@ -707,22 +706,22 @@ public:
 
   auto build() &&
       requires(contract_fulfilled) {
-        static_assert(
-            bounding_box<TArea>,
-            "You must set an area to the widget before constructing it!");
-        static_assert(contract_fulfilled);
-        using display_t = decltype(impl::build_displays(
-            std::move(displays_), state_wrapper::all_states()));
-        using subs_t =
-            decltype(impl::build_gui_context_widgets(std::move(subs_)));
-        return widget<TArea, display_t, state_wrapper, TEventHandler, subs_t,
-                      TOnResize>(
-            std::move(area_),
-            impl::build_displays(std::move(displays_),
-                                 state_wrapper::all_states()),
-            state_wrapper(std::move(state_)), std::move(event_),
-            impl::build_gui_context_widgets(std::move(subs_)),
-            std::move(on_resize_));
+    static_assert(
+        bounding_box<TArea>,
+        "You must set an area to the widget before constructing it!");
+    static_assert(contract_fulfilled);
+    using display_t = decltype(impl::build_displays(
+        std::move(displays_), state_wrapper::all_states()));
+    using subs_t =
+        decltype(impl::build_gui_context_widgets(std::move(subs_)));
+    return widget<TArea, display_t, state_wrapper, TEventHandler, subs_t,
+                  TOnResize>(
+        std::move(area_),
+        impl::build_displays(std::move(displays_),
+                             state_wrapper::all_states()),
+        state_wrapper(std::move(state_)), std::move(event_),
+        impl::build_gui_context_widgets(std::move(subs_)),
+        std::move(on_resize_));
       } template <typename TE2,
                   typename TRes = widget_builder_impl<TArea, TDisplay, TState,
                                                       std::remove_cvref_t<TE2>,
@@ -811,7 +810,7 @@ public:
     }
     tokens_.reserve(std::ranges::ssize(t) +
                     1); // This may be slightly less than actual used depending
-                        // on line breaks.
+    // on line breaks.
     std::size_t cur_line_index{};
     auto current_line = [this, &cur_line_index]() -> newline_entry & {
       assert(cur_line_index < size(tokens_));
@@ -833,10 +832,10 @@ public:
     auto add_line_at =
         [this, &cur_line_index](
             iterator_t pos) -> std::pair<newline_entry &, iterator_t> {
-      ++line_count_;
-      cur_line_index = std::distance(begin(tokens_), pos);
-      auto new_pos = tokens_.emplace(pos, std::in_place_type<newline_entry>);
-      return {std::get<newline_entry>(*new_pos), new_pos};
+          ++line_count_;
+          cur_line_index = std::distance(begin(tokens_), pos);
+          auto new_pos = tokens_.emplace(pos, std::in_place_type<newline_entry>);
+          return {std::get<newline_entry>(*new_pos), new_pos};
     };
     add_line();
     std::size_t last_ws{};
@@ -890,7 +889,7 @@ public:
                       if (dash_pos != rev_toks.end() &&
                           std::holds_alternative<newline_entry>(*dash_pos)) {
                         dash_pos = rev_toks.end();
-                      }
+                          }
                       break;
                     }
                     ++dash_pos;
@@ -1213,6 +1212,11 @@ template <typename TState, bp::invocable_or_invocable_args<TState> TClick,
           bp::invocable_or_invocable_args<TState> TExit>
 class momentary_button_impl
     : bp::empty_structs_optimiser<TState, TClick, THover, THold, TExit> {
+  static constexpr std::size_t state_i = 0;
+  static constexpr std::size_t click_i = 1;
+  static constexpr std::size_t hover_i = 2;
+  static constexpr std::size_t hold_i = 3;
+  static constexpr std::size_t exit_i = 4;
 
   using state_t =
       widget_state_marker<momentary_button_states, momentary_button_states::off,
@@ -1221,18 +1225,19 @@ class momentary_button_impl
 
   using base_t =
       bp::empty_structs_optimiser<TState, TClick, THover, THold, TExit>;
-  template <typename TBase> constexpr void _call() {
-    decltype(auto) b = bp::as_forward(this->get(std::type_identity<TBase>{}));
-    if constexpr (std::invocable<TBase &>) {
+
+  template <std::size_t tI> constexpr void _call() {
+    decltype(auto) b = bp::as_forward(this->get(bp::index_constant<tI>{}));
+    if constexpr (std::invocable<decltype(*b)>) {
       std::invoke(*b);
     } else {
-      std::invoke(*b, this->get(std::type_identity<TState>{}));
+      std::invoke(*b, this->get(bp::index_constant<state_i>{}));
     }
   }
-  constexpr void on_click() noexcept { _call<TClick>(); }
-  constexpr decltype(auto) on_hover() noexcept { _call<THover>(); }
-  constexpr decltype(auto) on_hold() noexcept { _call<THold>(); }
-  constexpr decltype(auto) on_exit() noexcept { _call<TExit>(); }
+  constexpr void on_click() noexcept { _call<click_i>(); }
+  constexpr decltype(auto) on_hover() noexcept { _call<hover_i>(); }
+  constexpr decltype(auto) on_hold() noexcept { _call<hold_i>(); }
+  constexpr decltype(auto) on_exit() noexcept { _call<exit_i>(); }
   state_t current_state_{momentary_button_states::off};
 
 public:
@@ -1324,14 +1329,6 @@ struct momentary_button {
             (*self).on_hold, (*self).on_exit};
   }
 };
-
-/*
-template <typename, bp::value_type_pair... >
-class invoke_on_state_change;
-
-template <typename TEnum, TEnum... values, typename... Ts>
-class invoke_on_state_change<TEnum, bp::value_type_pair<values, Ts>...> {};
-*/
 
 enum class toggle_button_states {
   off = 0,

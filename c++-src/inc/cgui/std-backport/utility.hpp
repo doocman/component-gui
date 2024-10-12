@@ -41,6 +41,9 @@ template <class T, class U> constexpr auto &&forward_like(U &&x) noexcept {
 template <typename T, typename TToCopy>
 using copy_cvref_t = decltype(bp::forward_like<TToCopy>(std::declval<T>()));
 
+template <std::size_t tI>
+using index_constant = std::integral_constant<std::size_t, tI>;
+
 template <typename T> struct as_forward {
   T &&val_;
 
@@ -65,7 +68,7 @@ constexpr auto forward_cast(TIn &&arg)
 namespace impl {
 template <typename T, typename Type, std::size_t index>
 concept get_arg = std::is_same_v<T, std::type_identity<Type>> ||
-                  std::is_same_v<T, std::integral_constant<std::size_t, index>>;
+                  std::is_same_v<T, index_constant<index>>;
 template <typename T, typename Tag>
 concept member_get = requires(T &&t, Tag tag) { std::forward<T>(t).get(tag); };
 template <typename T, typename Tag>
@@ -185,10 +188,9 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
 };
 
 template <std::size_t tI, typename T>
-  requires(impl::static_get<T, std::integral_constant<std::size_t, tI>>)
+  requires(impl::static_get<T, index_constant<tI>>)
 constexpr decltype(auto) get(T &&t) {
-  return std::remove_cvref_t<T>::get(std::forward<T>(t),
-                                     std::integral_constant<std::size_t, tI>{});
+  return std::remove_cvref_t<T>::get(std::forward<T>(t), index_constant<tI>{});
 }
 } // namespace impl
 template <typename... Ts>
