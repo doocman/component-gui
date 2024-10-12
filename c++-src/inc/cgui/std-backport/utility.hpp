@@ -62,7 +62,7 @@ struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
     requires(std::constructible_from<_base_t, TArgs && ...>)
   constexpr explicit empty_structs_optimiser(TArg &&, TArgs &&...to_base)
       : _base_t(std::forward<TArgs>(to_base)...) {}
-  static constexpr T get(auto &&, std::type_identity<T>) { return T{}; }
+  static constexpr T get(std::type_identity<T>) { return T{}; }
   using _base_t::get;
 };
 template <typename T, typename... Ts>
@@ -79,13 +79,12 @@ struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
   constexpr explicit empty_structs_optimiser(TArg &&arg, TArgs &&...to_base)
       : _base_t(std::forward<TArgs>(to_base)...),
         val_(std::forward<TArg>(arg)) {}
-  static constexpr auto &&get(auto &&self, std::type_identity<T>) {
-    using this_t = decltype(bp::forward_like<decltype(self)>(
-        std::declval<empty_structs_optimiser &>()));
-    return static_cast<this_t>(self).val_;
-    // return bp::forward_cast<empty_structs_optimiser>(self).val_;
-    // //bp::forward_like<decltype(self)>();
+  constexpr T &&get(std::type_identity<T>) && { return std::move(*this).val_; }
+  constexpr T &get(std::type_identity<T>) & { return val_; }
+  constexpr T const &&get(std::type_identity<T>) const && {
+    return std::move(*this).val_;
   }
+  constexpr T const &get(std::type_identity<T>) const & { return val_; }
   using _base_t::get;
 };
 
@@ -123,8 +122,6 @@ constexpr void run_for_each(auto &&cb, auto &&...vals)
   using expander = char const[sizeof...(vals)];
   unused(expander{cb_return(std::forward<decltype(vals)>(vals))...});
 }
-
-
 
 } // namespace cgui::bp
 

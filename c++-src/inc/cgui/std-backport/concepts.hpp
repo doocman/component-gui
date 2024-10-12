@@ -31,6 +31,10 @@ concept pointer_type = std::is_pointer_v<T> && !cvref_type<T, std::nullptr_t>;
 template <typename T, typename TFrom>
 concept is_mutable_by =
     std::is_lvalue_reference_v<T> && std::is_assignable_v<T, TFrom>;
+
+template <typename T, typename... TArgs>
+concept invocable_or_invocable_args =
+    std::invocable<T> || std::invocable<T, TArgs...>;
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_CONCEPTS_HPP

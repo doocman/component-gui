@@ -79,6 +79,8 @@ public:
 
 template <typename T> not_null(T *) -> not_null<T *>;
 
+struct empty_state {};
+
 template <typename T>
 concept colour = requires(T &&t) {
   { call::red(t) } -> pixel_coord_value_cv_t;
@@ -354,9 +356,7 @@ template <ui_events evt> struct subset_ui_events<evt> {
 };
 
 template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
-  requires()
-{
+concept subset_ui_event_c = std::convertible_to<T, ui_events> && requires() {
   {
     std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
   } -> std::convertible_to<bool>;
@@ -572,8 +572,9 @@ template <typename T, T... values>
 constexpr std::size_t state2index(widget_state_marker<T, values...> const &v) {
   if constexpr (sizeof...(values) < 2) {
     return 0;
-  } else if constexpr(bp::is_sequential(values...)){
-    auto const i = static_cast<std::size_t>(v.current_state()) - static_cast<std::size_t>(bp::first_of(values...));
+  } else if constexpr (bp::is_sequential(values...)) {
+    auto const i = static_cast<std::size_t>(v.current_state()) -
+                   static_cast<std::size_t>(bp::first_of(values...));
     CGUI_ASSERT(static_cast<std::size_t>(i) < sizeof...(values));
     return i;
   } else {

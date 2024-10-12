@@ -1929,6 +1929,66 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   EXPECT_THAT(alpha, Eq(255));
 }
 
+struct mock_widget {
+  default_rect a_{};
+  MOCK_METHOD(void, do_area, (default_rect const &));
+  MOCK_METHOD(void, do_render, (), (const));
+
+  default_rect const &area() const { return a_; }
+  void area(bounding_box auto const &a) {
+    a_ = copy_box<default_rect>(a);
+    do_area(a_);
+  }
+  void render(auto &&...) const { do_render(); }
+};
+
+TEST(WidgetBuilder, SubcomponentsResize) // NOLINT
+{
+  mock_widget subw;
+  int mock_calls{};
+  auto sc_area = default_rect{};
+  EXPECT_CALL(subw, do_area(_))
+      .WillRepeatedly([&mock_calls, &sc_area](auto const &a) {
+        ++mock_calls;
+        sc_area = a;
+      });
+  auto w = widget_builder()
+               .area(default_rect{{0, 1}, {3, 4}})
+               .subcomponents(std::ref(subw))
+               .on_resize([](auto &&self, bounding_box auto const &new_area) {
+                 self.subcomponent().area(new_area);
+               })
+               .build();
+  EXPECT_THAT(mock_calls, Eq(1)) << "Should be called once on creation";
+  expect_box_equal(sc_area, w.area());
+  w.area({{0, 2}, {4, 5}});
+  EXPECT_THAT(mock_calls, Eq(2));
+  expect_box_equal(sc_area, w.area());
+}
+
+TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
+{
+  auto s1 = NiceMock<mock_widget>{};
+  auto s2 = NiceMock<mock_widget>{};
+  EXPECT_CALL(s1, do_area(_)).Times(1);
+  EXPECT_CALL(s2, do_area(_)).Times(1);
+  {
+    InSequence s;
+    EXPECT_CALL(s1, do_render()).Times(1);
+    EXPECT_CALL(s2, do_render()).Times(1);
+  }
+  auto w = widget_builder()
+               .area(default_rect{{0, 0}, {3, 3}})
+               .subcomponents(std::ref(s1), std::ref(s2))
+               .on_resize([](auto &&self, bounding_box auto b) {
+                 auto &[s1, s2] = self.subcomponents();
+                 s1.area(trim_from_left(&b, 1));
+                 s2.area(b);
+               })
+               .build();
+  w.render(dummy_renderer{});
+}
+
 TEST(Widget, BasicButton) // NOLINT
 {
   bool clicked{};
@@ -2015,65 +2075,45 @@ TEST(Widget, BasicButton) // NOLINT
   reset();
 }
 
-struct mock_widget {
-  default_rect a_{};
-  MOCK_METHOD(void, do_area, (default_rect const &));
-  MOCK_METHOD(void, do_render, (), (const));
-
-  default_rect const &area() const { return a_; }
-  void area(bounding_box auto const &a) {
-    a_ = copy_box<default_rect>(a);
-    do_area(a_);
-  }
-  void render(auto &&...) const { do_render(); }
-};
-
-TEST(WidgetBuilder, SubcomponentsResize) // NOLINT
+TEST(Widget, ButtonSharedStateCallback) // NOLINT
 {
-  mock_widget subw;
-  int mock_calls{};
-  auto sc_area = default_rect{};
-  EXPECT_CALL(subw, do_area(_))
-      .WillRepeatedly([&mock_calls, &sc_area](auto const &a) {
-        ++mock_calls;
-        sc_area = a;
-      });
+  int i{};
   auto w = widget_builder()
-               .area(default_rect{{0, 1}, {3, 4}})
-               .subcomponents(std::ref(subw))
-               .on_resize([](auto &&self, bounding_box auto const &new_area) {
-                 self.subcomponent().area(new_area);
-               })
+               .area(default_rect{{0, 0}, {2, 2}})
+               .event(buttonlike_trigger())
+               .state(momentary_button()
+                          .callback_state(std::ref(i))
+                          .click([](int &i_in) { ++i_in; })
+                          .build())
                .build();
-  EXPECT_THAT(mock_calls, Eq(1)) << "Should be called once on creation";
-  expect_box_equal(sc_area, w.area());
-  w.area({{0, 2}, {4, 5}});
-  EXPECT_THAT(mock_calls, Eq(2));
-  expect_box_equal(sc_area, w.area());
+  EXPECT_THAT(i, Eq(0));
+  w.handle(dummy_mouse_down_event{});
+  w.handle(dummy_mouse_up_event{});
+  EXPECT_THAT(i, Eq(1));
 }
 
-TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
+#if 0
+TEST(Widget, BasicList) // NOLINT
 {
-  auto s1 = NiceMock<mock_widget>{};
-  auto s2 = NiceMock<mock_widget>{};
-  EXPECT_CALL(s1, do_area(_)).Times(1);
-  EXPECT_CALL(s2, do_area(_)).Times(1);
-  {
-    InSequence s;
-    EXPECT_CALL(s1, do_render()).Times(1);
-    EXPECT_CALL(s2, do_render()).Times(1);
-  }
-  auto w = widget_builder()
-               .area(default_rect{{0, 0}, {3, 3}})
-               .subcomponents(std::ref(s1), std::ref(s2))
-               .on_resize([](auto &&self, bounding_box auto b) {
-                 auto &[s1, s2] = self.subcomponents();
-                 s1.area(trim_from_left(&b, 1));
-                 s2.area(b);
-               })
-               .build();
-  w.render(dummy_renderer{});
+  int current_element = lowest_possible;
+  auto constexpr full_area = default_rect{0, 0, 16, 10};
+  toggle_button_states button_states[4]{};
+  auto constexpr button_builder = [](default_rect const &r,
+                                     toggle_button_states &state_set) {
+    return widget_builder()
+        .area(r)
+        .event(buttonlike_trigger())
+        .state(toggle_button().on_state_change(
+            [&state_set](toggle_button_states s) { state_set = s; }));
+  };
+  auto list = widget_builder()
+                  .area(full_area)
+                  .event(button_list_trigger())
+                  .state(radio_button_state())
+                  .subcomponents()
+                  .build();
 }
+#endif
 
 struct mock_widget_resize {
 

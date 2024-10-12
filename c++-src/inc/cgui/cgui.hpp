@@ -313,8 +313,7 @@ class gui_context : bp::empty_structs_optimiser<TOnResize> {
   TWidgets widgets_;
 
   constexpr void call_on_resize(size_wh auto const &sz) {
-    _base_t::get(static_cast<_base_t &>(*this),
-                 std::type_identity<TOnResize>{})(sz, widgets_);
+    gui_context::get(std::type_identity<TOnResize>{})(sz, widgets_);
   }
 
 public:
@@ -509,25 +508,18 @@ class widget
   TDisplay display_;
   using base_t =
       bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize>;
-  template <typename TSelf>
-  static constexpr bp::cvref_type<base_t> auto &&to_base(auto &&self) noexcept {
-    return static_cast<bp::copy_cvref_t<base_t, TSelf>>(self);
-  }
+
   static constexpr decltype(auto) state(auto &&self) noexcept {
-    return base_t::get(to_base<decltype(self)>(self),
-                       std::type_identity<TState>{});
+    return self.get(std::type_identity<TState>{});
   }
   static constexpr decltype(auto) event_handler(auto &&self) noexcept {
-    return base_t::get(to_base<decltype(self)>(self),
-                       std::type_identity<TEventHandler>{});
+    return self.get(std::type_identity<TEventHandler>{});
   }
   static constexpr decltype(auto) subs(auto &&self) noexcept {
-    return base_t::get(to_base<decltype(self)>(self),
-                       std::type_identity<TSubs>{});
+    return self.get(std::type_identity<TSubs>{});
   }
   static constexpr decltype(auto) on_resize(auto &&self) noexcept {
-    return base_t::get(to_base<decltype(self)>(self),
-                       std::type_identity<TOnResize>{});
+    return self.get(std::type_identity<TOnResize>{});
   }
 
   constexpr auto set_state_callback(display_state_callbacks auto &display_cb) {
@@ -1215,33 +1207,32 @@ public:
 
 enum class momentary_button_states { off, hover, hold };
 
-template <std::invocable TClick, std::invocable THover, std::invocable THold,
-          std::invocable TExit>
+template <typename TState, bp::invocable_or_invocable_args<TState> TClick,
+          bp::invocable_or_invocable_args<TState> THover,
+          bp::invocable_or_invocable_args<TState> THold,
+          bp::invocable_or_invocable_args<TState> TExit>
 class momentary_button_impl
-    : bp::empty_structs_optimiser<TClick, THover, THold, TExit> {
+    : bp::empty_structs_optimiser<TState, TClick, THover, THold, TExit> {
 
   using state_t =
       widget_state_marker<momentary_button_states, momentary_button_states::off,
                           momentary_button_states::hover,
                           momentary_button_states::hold>;
 
-  using base_t = bp::empty_structs_optimiser<TClick, THover, THold, TExit>;
-  constexpr decltype(auto) on_click() noexcept {
-    return base_t::get(static_cast<base_t &>(*this),
-                       std::type_identity<TClick>{})();
+  using base_t =
+      bp::empty_structs_optimiser<TState, TClick, THover, THold, TExit>;
+  template <typename TBase> constexpr void _call() {
+    decltype(auto) b = bp::as_forward(this->get(std::type_identity<TBase>{}));
+    if constexpr (std::invocable<TBase &>) {
+      std::invoke(*b);
+    } else {
+      std::invoke(*b, this->get(std::type_identity<TState>{}));
+    }
   }
-  constexpr decltype(auto) on_hover() noexcept {
-    return base_t::get(static_cast<base_t &>(*this),
-                       std::type_identity<THover>{})();
-  }
-  constexpr decltype(auto) on_hold() noexcept {
-    return base_t::get(static_cast<base_t &>(*this),
-                       std::type_identity<THold>{})();
-  }
-  constexpr decltype(auto) on_exit() noexcept {
-    return base_t::get(static_cast<base_t &>(*this),
-                       std::type_identity<TExit>{})();
-  }
+  constexpr void on_click() noexcept { _call<TClick>(); }
+  constexpr decltype(auto) on_hover() noexcept { _call<THover>(); }
+  constexpr decltype(auto) on_hold() noexcept { _call<THold>(); }
+  constexpr decltype(auto) on_exit() noexcept { _call<TExit>(); }
   state_t current_state_{momentary_button_states::off};
 
 public:
@@ -1271,50 +1262,66 @@ public:
   }
 };
 
-template <
-    std::invocable TClick = bp::no_op_t, std::invocable THover = bp::no_op_t,
-    std::invocable THold = bp::no_op_t, std::invocable TExit = bp::no_op_t>
+template <typename TState = empty_state, typename TClick = bp::no_op_t,
+          typename THover = bp::no_op_t, typename THold = bp::no_op_t,
+          typename TExit = bp::no_op_t>
 struct momentary_button {
+  TState state;
   TClick on_click;
   THover on_hover;
   THold on_hold;
   TExit on_exit;
 
-  constexpr momentary_button_impl<TClick, THover, THold, TExit> build() && {
-    return {std::move(on_click), std::move(on_hover), std::move(on_hold),
-            std::move(on_exit)};
+  constexpr momentary_button_impl<TState, TClick, THover, THold, TExit>
+  build() &&
+    requires bp::invocable_or_invocable_args<TClick, TState &> && //
+             bp::invocable_or_invocable_args<THover, TState &> && //
+             bp::invocable_or_invocable_args<THold, TState &> &&  //
+             bp::invocable_or_invocable_args<TExit, TState &>     //
+  {
+    auto self = bp::as_forward(std::move(*this));
+    return {(*self).state, (*self).on_click, (*self).on_hover, (*self).on_hold,
+            (*self).on_exit};
   }
   template <typename T2>
-    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
-  constexpr momentary_button<std::unwrap_ref_decay_t<T2>, THover, THold, TExit>
+  constexpr momentary_button<TState, std::unwrap_ref_decay_t<T2>, THover, THold,
+                             TExit>
   click(T2 &&c) && {
     auto self = bp::as_forward(std::move(*this));
-    return {std::forward<T2>(c), (*self).on_hover, (*self).on_hold,
-            (*self).on_exit};
+    return {(*self).state, std::forward<T2>(c), (*self).on_hover,
+            (*self).on_hold, (*self).on_exit};
   }
   template <typename T2>
-    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
-  constexpr momentary_button<TClick, std::unwrap_ref_decay_t<T2>, THold, TExit>
+  constexpr momentary_button<TState, TClick, std::unwrap_ref_decay_t<T2>, THold,
+                             TExit>
   hover(T2 &&c) && {
     auto self = bp::as_forward(std::move(*this));
-    return {(*self).on_click, std::forward<T2>(c), (*self).on_hold,
-            (*self).on_exit};
+    return {(*self).state, (*self).on_click, std::forward<T2>(c),
+            (*self).on_hold, (*self).on_exit};
   }
   template <typename T2>
-    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
-  constexpr momentary_button<TClick, THover, std::unwrap_ref_decay_t<T2>, TExit>
+  constexpr momentary_button<TState, TClick, THover,
+                             std::unwrap_ref_decay_t<T2>, TExit>
   hold(T2 &&c) && {
     auto self = bp::as_forward(std::move(*this));
-    return {(*self).on_click, (*self).on_hover, std::forward<T2>(c),
-            (*self).on_exit};
+    return {(*self).state, (*self).on_click, (*self).on_hover,
+            std::forward<T2>(c), (*self).on_exit};
   }
   template <typename T2>
-    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
-  constexpr momentary_button<TClick, THover, THold, std::unwrap_ref_decay_t<T2>>
+  constexpr momentary_button<TState, TClick, THover, THold,
+                             std::unwrap_ref_decay_t<T2>>
   exit(T2 &&c) && {
     auto self = bp::as_forward(std::move(*this));
-    return {(*self).on_click, (*self).on_hover, (*self).on_hold,
+    return {(*self).state, (*self).on_click, (*self).on_hover, (*self).on_hold,
             std::forward<T2>(c)};
+  }
+  template <typename T2>
+  constexpr momentary_button<std::unwrap_ref_decay_t<T2>, TClick, THover, THold,
+                             TExit>
+  callback_state(T2 &&c) && {
+    auto self = bp::as_forward(std::move(*this));
+    return {std::forward<T2>(c), (*self).on_click, (*self).on_hover,
+            (*self).on_hold, (*self).on_exit};
   }
 };
 
@@ -1337,9 +1344,8 @@ class toggle_button_impl : bp::empty_structs_optimiser<TToOn, TToOff> {
 
   using base_t = bp::empty_structs_optimiser<TToOn, TToOff>;
   template <typename T> constexpr decltype(auto) call() noexcept {
-    return base_t::get(static_cast<base_t &>(*this), std::type_identity<T>{})();
+    return this->get(std::type_identity<T>{})();
   }
-  // state_t current_state_{toggle_button_states::off};
   bool on_ : 1 = {};
   bool hover_ : 1 = {};
   bool hold_ : 1 = {};
