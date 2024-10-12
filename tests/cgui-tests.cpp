@@ -2132,7 +2132,6 @@ TEST(Widget, ButtonSharedStateCallback) // NOLINT
   EXPECT_THAT(i, Eq(1));
 }
 
-#if 0
 TEST(Widget, BasicList) // NOLINT
 {
   int current_element = lowest_possible;
@@ -2154,7 +2153,6 @@ TEST(Widget, BasicList) // NOLINT
                   .subcomponents()
                   .build();
 }
-#endif
 
 struct mock_widget_resize {
 
