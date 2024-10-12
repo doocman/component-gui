@@ -7,6 +7,7 @@
 
 #include <utility>
 
+#include <cgui/std-backport/concepts.hpp>
 #include <cgui/warnings.hpp>
 
 namespace cgui::bp {
@@ -40,54 +41,6 @@ template <class T, class U> constexpr auto &&forward_like(U &&x) noexcept {
 template <typename T, typename TToCopy>
 using copy_cvref_t = decltype(bp::forward_like<TToCopy>(std::declval<T>()));
 
-template <typename T, typename TArg>
-constexpr auto forward_cast(TArg &&arg)
-    -> decltype(bp::forward_like<TArg>(std::declval<T &>())) {
-  return static_cast<decltype(bp::forward_like<TArg>(std::declval<T &>()))>(
-      arg);
-}
-
-template <typename... Ts> struct empty_structs_optimiser;
-template <> struct empty_structs_optimiser<> {
-  static constexpr void get() {}
-};
-template <typename T, typename... Ts>
-  requires(std::is_empty_v<T>)
-struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
-  using _base_t = empty_structs_optimiser<Ts...>;
-  constexpr empty_structs_optimiser() noexcept(
-      std::is_nothrow_default_constructible_v<T> &&
-      std::is_nothrow_default_constructible_v<_base_t>) = default;
-  template <typename TArg, typename... TArgs>
-    requires(std::constructible_from<_base_t, TArgs && ...>)
-  constexpr explicit empty_structs_optimiser(TArg &&, TArgs &&...to_base)
-      : _base_t(std::forward<TArgs>(to_base)...) {}
-  static constexpr T get(std::type_identity<T>) { return T{}; }
-  using _base_t::get;
-};
-template <typename T, typename... Ts>
-  requires(!std::is_empty_v<T>)
-struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
-  using _base_t = empty_structs_optimiser<Ts...>;
-  T val_;
-  constexpr empty_structs_optimiser() noexcept(
-      std::is_nothrow_default_constructible_v<T> &&
-      std::is_nothrow_default_constructible_v<_base_t>) = default;
-  template <typename TArg, typename... TArgs>
-    requires(std::constructible_from<T, TArg &&> &&
-             std::constructible_from<_base_t, TArgs && ...>)
-  constexpr explicit empty_structs_optimiser(TArg &&arg, TArgs &&...to_base)
-      : _base_t(std::forward<TArgs>(to_base)...),
-        val_(std::forward<TArg>(arg)) {}
-  constexpr T &&get(std::type_identity<T>) && { return std::move(*this).val_; }
-  constexpr T &get(std::type_identity<T>) & { return val_; }
-  constexpr T const &&get(std::type_identity<T>) const && {
-    return std::move(*this).val_;
-  }
-  constexpr T const &get(std::type_identity<T>) const & { return val_; }
-  using _base_t::get;
-};
-
 template <typename T> struct as_forward {
   T &&val_;
 
@@ -101,6 +54,109 @@ template <typename T> struct as_forward {
 };
 
 template <typename T> as_forward(T &&) -> as_forward<T>;
+
+template <typename T, typename TArg, typename TIn>
+constexpr auto forward_cast(TIn &&arg)
+    -> decltype(bp::forward_like<TArg>(std::declval<T &>())) {
+  return static_cast<decltype(bp::forward_like<TArg>(std::declval<T &>()))>(
+      arg);
+}
+
+template <typename T, typename Type, std::size_t index>
+concept get_arg = std::is_same_v<T, std::type_identity<Type>> ||
+                  std::is_same_v<T, std::integral_constant<std::size_t, index>>;
+template <typename T, typename Tag>
+concept member_get = requires(T &&t, Tag tag) { std::forward<T>(t).get(tag); };
+template <typename T, typename TQual, typename Tag>
+concept static_get =
+    requires(TQual &&t, Tag tag) { T::get(std::forward<TQual>(t), tag); };
+
+template <std::size_t tIndex, typename... Ts>
+struct empty_structs_optimiser_impl;
+template <std::size_t tIndex> struct empty_structs_optimiser_impl<tIndex> {
+  static constexpr void get() {}
+};
+template <std::size_t tIndex, typename T, typename... Ts>
+  requires(std::is_empty_v<T>)
+struct empty_structs_optimiser_impl<tIndex, T, Ts...>
+    : empty_structs_optimiser_impl<tIndex + 1, Ts...> {
+  using _base_t = empty_structs_optimiser_impl<tIndex + 1, Ts...>;
+  constexpr empty_structs_optimiser_impl() noexcept(
+      std::is_nothrow_default_constructible_v<T> &&
+      std::is_nothrow_default_constructible_v<_base_t>) = default;
+  template <typename TArg, typename... TArgs>
+    requires(std::constructible_from<_base_t, TArgs && ...>)
+  constexpr explicit empty_structs_optimiser_impl(TArg &&, TArgs &&...to_base)
+      : _base_t(std::forward<TArgs>(to_base)...) {}
+
+  template <typename Tag>
+    requires(get_arg<Tag, T, tIndex> || member_get<_base_t, Tag>)
+  static constexpr T get(Tag) {
+    return T{};
+  }
+  template <bp::cvref_type<empty_structs_optimiser_impl> TSelf, typename Tag>
+    requires(get_arg<Tag, T, tIndex> || member_get<_base_t, Tag>)
+  static constexpr T get(TSelf &&, Tag) {
+    return T{};
+  }
+  using _base_t::get;
+};
+
+template <std::size_t tIndex, typename T, typename... Ts>
+  requires(!std::is_empty_v<T>)
+struct empty_structs_optimiser_impl<tIndex, T, Ts...>
+    : empty_structs_optimiser_impl<tIndex + 1, Ts...> {
+  using _base_t = empty_structs_optimiser_impl<tIndex + 1, Ts...>;
+  using _this_t = empty_structs_optimiser_impl;
+  T val_;
+  constexpr empty_structs_optimiser_impl() noexcept(
+      std::is_nothrow_default_constructible_v<T> &&
+      std::is_nothrow_default_constructible_v<_base_t>) = default;
+  template <typename TArg, typename... TArgs>
+    requires(std::constructible_from<T, TArg &&> &&
+             std::constructible_from<_base_t, TArgs && ...>)
+  constexpr explicit empty_structs_optimiser_impl(TArg &&arg,
+                                                  TArgs &&...to_base)
+      : _base_t(std::forward<TArgs>(to_base)...),
+        val_(std::forward<TArg>(arg)) {}
+
+  template <bp::cvref_type<empty_structs_optimiser_impl> TSelf, typename Tag>
+    requires(get_arg<Tag, T, tIndex> || static_get<_base_t, _base_t, Tag>)
+  static constexpr auto && get(TSelf &&self, Tag tag) {
+    auto s =
+        bp::as_forward(forward_cast<empty_structs_optimiser_impl, TSelf>(self));
+    if constexpr (get_arg<Tag, T, tIndex>) {
+      static_assert(!member_get<_base_t, Tag>, "Ambigouos get");
+      return (*s).val_;
+    } else {
+      return _base_t::get(*s, tag);
+    }
+  }
+
+  template <typename Tag>
+    requires(static_get<_this_t, _this_t &&, Tag>)
+  constexpr auto &&get(Tag tag) && {
+    return _this_t::get(std::move(*this), tag);
+  }
+  template <typename Tag>
+    requires(static_get<_this_t, _this_t &, Tag>)
+  constexpr auto &get(Tag tag) & {
+    return _this_t::get(*this, tag);
+  }
+  template <get_arg<T, tIndex> Tag>
+    requires(static_get<_this_t, _this_t const &&, Tag>)
+  constexpr T const &&get(Tag tag) const && {
+    return _this_t::get(std::move(*this), tag);
+  }
+  template <get_arg<T, tIndex> Tag>
+    requires(static_get<_this_t, _this_t const &, Tag>)
+  constexpr T const &get(Tag tag) const & {
+    return _this_t::get(*this, tag);
+  }
+};
+
+template <typename... Ts>
+using empty_structs_optimiser = empty_structs_optimiser_impl<0u, Ts...>;
 
 template <typename T> class deferred {
   T val_;

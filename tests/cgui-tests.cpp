@@ -25,6 +25,18 @@ static_assert(requires(std::tuple<int> t) {
   call::impl::do_apply_to{}(t, bp::no_op);
 });
 
+struct type_test_base {};
+struct type_test_derived : type_test_base {};
+
+static_assert(std::is_same_v<
+              type_test_base &,
+              decltype(bp::forward_cast<type_test_base, type_test_derived &>(
+                  std::declval<type_test_derived &>()))>);
+static_assert(std::is_same_v<
+              type_test_base &&,
+              decltype(bp::forward_cast<type_test_base, type_test_derived &&>(
+                  std::declval<type_test_derived &>()))>);
+
 using namespace ::testing;
 
 static_assert(std::is_rvalue_reference_v<
@@ -73,6 +85,24 @@ TEST(EtdExpected, VoidTypes) // NOLINT
   val = expected<void, int>(unexpected(2));
   EXPECT_THAT(val.has_value(), Eq(false));
   EXPECT_THAT(val.error(), Eq(2));
+}
+TEST(EtdEmptyBaseOptimiser, Empty) // NOLINT
+{
+  EXPECT_THAT(sizeof(bp::empty_structs_optimiser<>), Eq(1));
+  EXPECT_THAT(sizeof(bp::empty_structs_optimiser<empty_state>), Eq(1));
+  EXPECT_THAT(sizeof(bp::empty_structs_optimiser<empty_state, empty_state>),
+              Eq(1));
+}
+TEST(EtdEmptyBaseOptimiser, GetType) // NOLINT
+{
+  auto tested = bp::empty_structs_optimiser<int, float, double>();
+  auto &tested_i = tested.get(std::type_identity<int>{});
+  tested.get(std::type_identity<int>{}) = 1;
+  tested.get(std::type_identity<float>{}) = 2.f;
+  tested.get(std::type_identity<double>{}) = 3.;
+  EXPECT_THAT(tested.get(std::type_identity<int>{}), Eq(1));
+  EXPECT_THAT(tested.get(std::type_identity<float>{}), Eq(2.f));
+  EXPECT_THAT(tested.get(std::type_identity<double>{}), Eq(3.));
 }
 
 TEST(XxWh, BasicXy2Wh) // NOLINT
@@ -2096,15 +2126,16 @@ TEST(Widget, ButtonSharedStateCallback) // NOLINT
 TEST(Widget, BasicList) // NOLINT
 {
   int current_element = lowest_possible;
+  int clicks{};
   auto constexpr full_area = default_rect{0, 0, 16, 10};
-  toggle_button_states button_states[4]{};
-  auto constexpr button_builder = [](default_rect const &r,
-                                     toggle_button_states &state_set) {
+  auto button_builder = [&](default_rect const &r, int element) {
     return widget_builder()
         .area(r)
         .event(buttonlike_trigger())
-        .state(toggle_button().on_state_change(
-            [&state_set](toggle_button_states s) { state_set = s; }));
+        .state(toggle_button().on_active([&] {
+          ++clicks;
+          current_element = element;
+        }));
   };
   auto list = widget_builder()
                   .area(full_area)

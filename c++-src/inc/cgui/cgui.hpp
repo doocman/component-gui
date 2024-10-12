@@ -1325,6 +1325,14 @@ struct momentary_button {
   }
 };
 
+/*
+template <typename, bp::value_type_pair... >
+class invoke_on_state_change;
+
+template <typename TEnum, TEnum... values, typename... Ts>
+class invoke_on_state_change<TEnum, bp::value_type_pair<values, Ts>...> {};
+*/
+
 enum class toggle_button_states {
   off = 0,
   hover_off = 1,
