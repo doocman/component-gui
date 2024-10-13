@@ -1529,6 +1529,19 @@ public:
   }
 };
 
+/// @brief Trigger for widgets that acts like a container of multiple buttons.
+///
+/// It may handle things more efficiently than having a widget with a
+/// passthrough trigger. However, it will also only work with sub-widgets that
+/// has button-like states and no triggers themselves.
+class button_list_trigger {};
+
+/// @brief Builder for a state for a list of button in which only one button
+/// should be active at a time.
+///
+/// Is to be combined with the @ref button_list_trigger or similar.
+class radio_button_state {};
+
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_HPP
