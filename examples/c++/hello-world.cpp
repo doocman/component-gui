@@ -52,7 +52,7 @@ int main(int, char **) {
                 cgui::widget_builder().area(area_t{}).display(
                     cgui::fill_rect(),
                     cgui::display_per_state(
-                        cgui::text_renderer(std::ref(cached_font)))).event(cgui::buttonlike_trigger()).state(cgui::toggle_button().build()),
+                        cgui::text_renderer(std::ref(cached_font)))).event(cgui::buttonlike_trigger()).state(cgui::toggle_button_state().build()),
                 cgui::widget_builder().area(area_t{}).display(
                     cgui::text_renderer(std::ref(cached_font))) //
                 )

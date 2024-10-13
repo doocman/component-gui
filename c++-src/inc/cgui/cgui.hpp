@@ -235,7 +235,7 @@ constexpr auto build_context_display_tuple(std::tuple<Ts...> &&t,
                                            std::index_sequence<tIs...>) {
   return std::tuple<bp::remove_rvalue_reference_t<
       decltype(gui_context_build_or_forward(std::declval<Ts &&>()))>...>{
-        gui_context_build_or_forward(std::forward<Ts>(std::get<tIs>(t)))...};
+      gui_context_build_or_forward(std::forward<Ts>(std::get<tIs>(t)))...};
 }
 
 constexpr decltype(auto) widget_build_or_forward(auto &&v, auto const &states) {
@@ -252,7 +252,7 @@ constexpr auto build_tuple(std::tuple<Ts...> &&t, TStates const &states,
     -> std::tuple<bp::remove_rvalue_reference_t<
         decltype(widget_build_or_forward(std::declval<Ts &&>(), states))>...> {
   return {
-    widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)), states)...};
+      widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)), states)...};
 }
 #if CGUI_HAS_NAMED_ARGS
 template <typename... Ts>
@@ -706,22 +706,22 @@ public:
 
   auto build() &&
       requires(contract_fulfilled) {
-    static_assert(
-        bounding_box<TArea>,
-        "You must set an area to the widget before constructing it!");
-    static_assert(contract_fulfilled);
-    using display_t = decltype(impl::build_displays(
-        std::move(displays_), state_wrapper::all_states()));
-    using subs_t =
-        decltype(impl::build_gui_context_widgets(std::move(subs_)));
-    return widget<TArea, display_t, state_wrapper, TEventHandler, subs_t,
-                  TOnResize>(
-        std::move(area_),
-        impl::build_displays(std::move(displays_),
-                             state_wrapper::all_states()),
-        state_wrapper(std::move(state_)), std::move(event_),
-        impl::build_gui_context_widgets(std::move(subs_)),
-        std::move(on_resize_));
+        static_assert(
+            bounding_box<TArea>,
+            "You must set an area to the widget before constructing it!");
+        static_assert(contract_fulfilled);
+        using display_t = decltype(impl::build_displays(
+            std::move(displays_), state_wrapper::all_states()));
+        using subs_t =
+            decltype(impl::build_gui_context_widgets(std::move(subs_)));
+        return widget<TArea, display_t, state_wrapper, TEventHandler, subs_t,
+                      TOnResize>(
+            std::move(area_),
+            impl::build_displays(std::move(displays_),
+                                 state_wrapper::all_states()),
+            state_wrapper(std::move(state_)), std::move(event_),
+            impl::build_gui_context_widgets(std::move(subs_)),
+            std::move(on_resize_));
       } template <typename TE2,
                   typename TRes = widget_builder_impl<TArea, TDisplay, TState,
                                                       std::remove_cvref_t<TE2>,
@@ -832,10 +832,10 @@ public:
     auto add_line_at =
         [this, &cur_line_index](
             iterator_t pos) -> std::pair<newline_entry &, iterator_t> {
-          ++line_count_;
-          cur_line_index = std::distance(begin(tokens_), pos);
-          auto new_pos = tokens_.emplace(pos, std::in_place_type<newline_entry>);
-          return {std::get<newline_entry>(*new_pos), new_pos};
+      ++line_count_;
+      cur_line_index = std::distance(begin(tokens_), pos);
+      auto new_pos = tokens_.emplace(pos, std::in_place_type<newline_entry>);
+      return {std::get<newline_entry>(*new_pos), new_pos};
     };
     add_line();
     std::size_t last_ws{};
@@ -889,7 +889,7 @@ public:
                       if (dash_pos != rev_toks.end() &&
                           std::holds_alternative<newline_entry>(*dash_pos)) {
                         dash_pos = rev_toks.end();
-                          }
+                      }
                       break;
                     }
                     ++dash_pos;
@@ -1338,8 +1338,9 @@ enum class toggle_button_states {
   hover_on = 5,
   hold_on = 6
 };
-template <std::invocable TToOn, std::invocable TToOff>
-class toggle_button_impl : bp::empty_structs_optimiser<TToOn, TToOff> {
+template <typename TState, bp::invocable_or_invocable_args<TState &> TToOn,
+          bp::invocable_or_invocable_args<TState &> TToOff>
+class toggle_button_impl : bp::empty_structs_optimiser<TState, TToOn, TToOff> {
 
   using state_t = widget_state_marker<
       toggle_button_states, toggle_button_states::off,
@@ -1347,9 +1348,18 @@ class toggle_button_impl : bp::empty_structs_optimiser<TToOn, TToOff> {
       toggle_button_states::on, toggle_button_states::hover_on,
       toggle_button_states::hold_on>;
 
+  static constexpr std::size_t state_i = 0;
+  static constexpr std::size_t activate_i = 1;
+  static constexpr std::size_t deactivate_i = 2;
+
   using base_t = bp::empty_structs_optimiser<TToOn, TToOff>;
-  template <typename T> constexpr decltype(auto) call() noexcept {
-    return this->get(std::type_identity<T>{})();
+  template <std::size_t tI> constexpr void call() noexcept {
+    decltype(auto) f = this->get(bp::index_constant<tI>{});
+    if constexpr (std::invocable<decltype(f)>) {
+      f();
+    } else {
+      f(this->get(bp::index_constant<state_i>{}));
+    }
   }
   bool on_ : 1 = {};
   bool hover_ : 1 = {};
@@ -1377,9 +1387,9 @@ public:
 
   constexpr void handle(buttonlike_trigger::click_event const &) {
     if (on_) {
-      call<TToOff>();
+      call<activate_i>();
     } else {
-      call<TToOn>();
+      call<deactivate_i>();
     }
     hold_ = false;
     on_ = !on_;
@@ -1396,22 +1406,126 @@ public:
   }
 };
 
-template <std::invocable TToOn = bp::no_op_t,
+/// @brief A builder for a widget state to generate a toggle button. Works with
+/// the @ref buttonlike_trigger event aspect.
+///
+/// The `toggle_button` class template allows for constructing a toggle button
+/// with two different actions: one for turning "on" and one for turning "off".
+/// The actions are specified as invocable types, allowing customization of
+/// the toggle button's behavior upon each toggle.
+///
+/// @tparam TState Common state that the callbacks can use and manipulate. It is
+///                used as an optional argument to the activation and
+///                deactivation callbacks
+/// @tparam TToOn Type of the action to perform when the button is toggled to
+///               "on" state.
+///               Defaults to a no-operation.
+/// @tparam TToOff Type of the action to perform when the button is toggled to
+///                "off" state.
+///                Defaults to a no-operation.
+template <typename TState = no_state_t, std::invocable TToOn = bp::no_op_t,
           std::invocable TToOff = bp::no_op_t>
-class toggle_button {
+class toggle_button_state {
+  TState cb_state_{};
   TToOn to_on_{};
   TToOff to_off_{};
 
 public:
-  constexpr toggle_button() = default;
-  template <typename TON, typename TOFF>
-    requires(std::constructible_from<TToOn, TON &&> &&
-             std::constructible_from<TToOff, TOFF &&>)
-  constexpr toggle_button(TON &&on, TToOff &&off)
-      : to_on_(std::forward<TON>(on)), to_off_(std::forward<TOFF>(off)) {}
+  /// @brief Default constructor.
+  constexpr toggle_button_state() = default;
 
-  constexpr toggle_button_impl<TToOn, TToOff> build() && {
-    return {std::move(to_on_), std::move(to_off_)};
+  /// @brief Parameterized constructor.
+  ///
+  /// Constructs a `toggle_button` with specified actions for "on" and "off"
+  /// states.
+  ///
+  /// @tparam TS Type of the callback state.
+  /// @tparam TON Type of the action for the "on" state.
+  /// @tparam TOFF Type of the action for the "off" state.
+  /// @param s Callback state.
+  /// @param on Action to perform when the button is toggled to "on" state.
+  /// @param off Action to perform when the button is toggled to "off" state.
+  template <typename TS, typename TON, typename TOFF>
+    requires(std::constructible_from<TState, TS &&> &&
+             std::constructible_from<TToOn, TON &&> &&
+             std::constructible_from<TToOff, TOFF &&>)
+  constexpr toggle_button_state(TS &&s, TON &&on, TToOff &&off)
+      : cb_state_(std::forward<TS>(s)), to_on_(std::forward<TON>(on)),
+        to_off_(std::forward<TOFF>(off)) {}
+
+  /// @brief Builds the toggle button state aspect.
+  ///
+  /// Converts this builder into an implementation of a toggle button with the
+  /// specified actions for "on" and "off" states.
+  ///
+  /// @return toggle_button_impl<TToOn, TToOff> An implementation of the toggle
+  /// button.
+  ///
+  /// @note The builder is invalidated after this operation, as it transfers
+  ///       ownership of the actions to the returned implementation.
+  constexpr toggle_button_impl<TState, TToOn, TToOff> build() && {
+    auto s = bp::as_forward(std::move(*this));
+    return {(*s).cb_state_, (*s).to_on_, (*s).to_off_};
+  }
+
+  /// @brief Add a function to be called when the button activates.
+  ///
+  /// The function should either take no arguments or have a signature in which
+  /// a TState& can be passed in as the first argument.
+  ///
+  /// @tparam TOn Type of input parameter.
+  /// @tparam T Helper type
+  /// @param in New function to be called when the final object is activated.
+  /// Use std::ref to create a reference object.
+  /// @return Modified toggle_button builder.
+  ///
+  /// @note Invalidates the original builder.
+  template <typename TOn, typename T = std::unwrap_ref_decay_t<TOn>>
+  constexpr toggle_button_state<TState, T, TToOff> on_active(TOn &&in) && {
+    auto s = bp::as_forward(std::move(*this));
+    return {(*s).cb_state_, std::forward<TOn>(in), (*s).to_off_};
+  }
+
+  /// @brief Add a function to be called when the button deactivates (reverts to
+  /// its initial state).
+  ///
+  /// The function should either take no arguments or have a signature in which
+  /// a TState& can be passed in as the first argument.
+  ///
+  /// @tparam TOff Type of input parameter.
+  /// @tparam T Helper type
+  /// @param in New function to be called when the final object is deactivated.
+  /// Use std::ref to create a reference object.
+  /// @return Modified toggle_button builder.
+  ///
+  /// @note Invalidates the original builder.
+  template <typename TOff, typename T = std::unwrap_ref_decay_t<TOff>>
+  constexpr toggle_button_state<TState, TToOn, T> on_unactive(TOff &&in) && {
+    auto s = bp::as_forward(std::move(*this));
+    return {(*s).cb_state_, (*s).to_on_, std::forward<TOff>(in)};
+  }
+
+  /// @brief Add a shared state object accessible to all state change callbacks
+  /// during execution.
+  ///
+  /// This function allows you to specify a state object that all toggle button
+  /// callbacks (both on and off) can access. This is useful when callbacks
+  /// require shared data or configuration throughout the toggle button's
+  /// lifetime. It will appear as an optional argument to the state change
+  /// callbacks as a mutable reference (unless std::ref/std::cref is used to
+  /// generate a constant reference).
+  ///
+  /// @tparam TIn Type of input parameter.
+  /// @tparam T Helper type
+  /// @param in New state object that can be used by the callbacks. Use std::ref
+  ///           to create a reference object.
+  /// @return Modified toggle_button builder.
+  ///
+  /// @note Invalidates the original builder.
+  template <typename TIn, typename T = std::unwrap_ref_decay_t<TIn>>
+  constexpr toggle_button_state<TState, TToOn, T> callback_state(TIn &&in) && {
+    auto s = bp::as_forward(std::move(*this));
+    return {std::forward<TIn>(in), (*s).to_on_, (*s).to_off_};
   }
 };
 

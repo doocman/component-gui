@@ -2115,6 +2115,11 @@ TEST(Widget, BasicButton) // NOLINT
   reset();
 }
 
+constexpr void click_widget(auto &w, default_pixel_coord const &pos = {}) {
+  w.handle(dummy_mouse_down_event{.button_id = {}, .pos = pos});
+  w.handle(dummy_mouse_up_event{.button_id = {}, .pos = pos});
+}
+
 TEST(Widget, ButtonSharedStateCallback) // NOLINT
 {
   int i{};
@@ -2127,31 +2132,61 @@ TEST(Widget, ButtonSharedStateCallback) // NOLINT
                           .build())
                .build();
   EXPECT_THAT(i, Eq(0));
-  w.handle(dummy_mouse_down_event{});
-  w.handle(dummy_mouse_up_event{});
+  click_widget(w);
   EXPECT_THAT(i, Eq(1));
 }
 
 TEST(Widget, BasicList) // NOLINT
 {
   int current_element = lowest_possible;
-  int clicks{};
+  int activations{};
+  int deactivations{};
   auto constexpr full_area = default_rect{0, 0, 16, 10};
   auto button_builder = [&](default_rect const &r, int element) {
     return widget_builder()
         .area(r)
         .event(buttonlike_trigger())
-        .state(toggle_button().on_active([&] {
-          ++clicks;
-          current_element = element;
-        }));
+        .state(toggle_button_state()
+                   .on_active([&] {
+                     ++activations;
+                     current_element = element;
+                   })
+                   .on_unactive([&] {
+                     ++deactivations;
+                     current_element = -1;
+                   }).build()
+                   );
   };
   auto list = widget_builder()
                   .area(full_area)
                   .event(button_list_trigger())
-                  .state(radio_button_state())
-                  .subcomponents()
+                  .state(radio_button_state().disablable().subcomponents(
+                      button_builder({{0, 0}, {4, 4}}, 0),
+                      button_builder({{0, 4}, {4, 8}}, 1),
+                      button_builder({{4, 0}, {8, 8}}, 2)) //
+                         )
                   .build();
+  // activate button 0
+  click_widget(list);
+  EXPECT_THAT(activations, Eq(1));
+  EXPECT_THAT(deactivations, Eq(0));
+  EXPECT_THAT(current_element, Eq(0));
+  // deactivate button 0
+  click_widget(list);
+  EXPECT_THAT(activations, Eq(1));
+  EXPECT_THAT(deactivations, Eq(1));
+  EXPECT_THAT(current_element, Eq(-1));
+  // click outside any subcomponents
+  click_widget(list, {12, 0});
+  EXPECT_THAT(activations, Eq(1));
+  EXPECT_THAT(deactivations, Eq(1));
+  EXPECT_THAT(current_element, Eq(-1));
+
+  // activate button 1
+  click_widget(list, {1, 7});
+  EXPECT_THAT(activations, Eq(2));
+  EXPECT_THAT(deactivations, Eq(1));
+  EXPECT_THAT(current_element, Eq(1));
 }
 
 struct mock_widget_resize {
