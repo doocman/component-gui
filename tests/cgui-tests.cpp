@@ -2116,8 +2116,8 @@ TEST(Widget, BasicButton) // NOLINT
 }
 
 constexpr void click_widget(auto &w, default_pixel_coord const &pos = {}) {
-  w.handle(dummy_mouse_down_event{.button_id = {}, .pos = pos});
-  w.handle(dummy_mouse_up_event{.button_id = {}, .pos = pos});
+  w.handle(dummy_mouse_down_event{.pos = pos, .button_id = {}});
+  w.handle(dummy_mouse_up_event{.pos = pos, .button_id = {}});
 }
 
 TEST(Widget, ButtonSharedStateCallback) // NOLINT
@@ -2154,17 +2154,17 @@ TEST(Widget, BasicList) // NOLINT
                    .on_unactive([&] {
                      ++deactivations;
                      current_element = -1;
-                   }).build()
-                   );
+                   })
+                   .build());
   };
   auto list = widget_builder()
                   .area(full_area)
-                  .event(button_list_trigger())
-                  .state(radio_button_state().disablable().subcomponents(
+                  .event(radio_button_trigger())
+                  .subcomponents( //
                       button_builder({{0, 0}, {4, 4}}, 0),
                       button_builder({{0, 4}, {4, 8}}, 1),
-                      button_builder({{4, 0}, {8, 8}}, 2)) //
-                         )
+                      button_builder({{4, 0}, {8, 8}}, 2) //
+                      )
                   .build();
   // activate button 0
   click_widget(list);

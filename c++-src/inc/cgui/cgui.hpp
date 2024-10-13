@@ -1352,7 +1352,7 @@ class toggle_button_impl : bp::empty_structs_optimiser<TState, TToOn, TToOff> {
   static constexpr std::size_t activate_i = 1;
   static constexpr std::size_t deactivate_i = 2;
 
-  using base_t = bp::empty_structs_optimiser<TToOn, TToOff>;
+  using base_t = bp::empty_structs_optimiser<TState, TToOn, TToOff>;
   template <std::size_t tI> constexpr void call() noexcept {
     decltype(auto) f = this->get(bp::index_constant<tI>{});
     if constexpr (std::invocable<decltype(f)>) {
@@ -1423,7 +1423,7 @@ public:
 /// @tparam TToOff Type of the action to perform when the button is toggled to
 ///                "off" state.
 ///                Defaults to a no-operation.
-template <typename TState = no_state_t, std::invocable TToOn = bp::no_op_t,
+template <typename TState = empty_state, std::invocable TToOn = bp::no_op_t,
           std::invocable TToOff = bp::no_op_t>
 class toggle_button_state {
   TState cb_state_{};
@@ -1449,7 +1449,7 @@ public:
     requires(std::constructible_from<TState, TS &&> &&
              std::constructible_from<TToOn, TON &&> &&
              std::constructible_from<TToOff, TOFF &&>)
-  constexpr toggle_button_state(TS &&s, TON &&on, TToOff &&off)
+  constexpr toggle_button_state(TS &&s, TON &&on, TOFF &&off)
       : cb_state_(std::forward<TS>(s)), to_on_(std::forward<TON>(on)),
         to_off_(std::forward<TOFF>(off)) {}
 
@@ -1529,18 +1529,37 @@ public:
   }
 };
 
-/// @brief Trigger for widgets that acts like a container of multiple buttons.
+/// @brief Trigger for widgets that acts like a container of multiple buttons
+/// where only one button should be enabled.
 ///
-/// It may handle things more efficiently than having a widget with a
-/// passthrough trigger. However, it will also only work with sub-widgets that
-/// has button-like states and no triggers themselves.
-class button_list_trigger {};
-
-/// @brief Builder for a state for a list of button in which only one button
-/// should be active at a time.
-///
-/// Is to be combined with the @ref button_list_trigger or similar.
-class radio_button_state {};
+class radio_button_trigger {
+public:
+  /*
+   *
+template <typename T>
+void handle(
+    widget_ref_no_set_area<T> const &widget,
+    event_types<ui_events::mouse_move, ui_events::mouse_button_down,
+                ui_events::mouse_button_up, ui_events::mouse_exit> auto &&evt,
+    auto &&trigger_callback)
+   */
+  template <
+      typename T,
+      event_types<ui_events::mouse_move, ui_events::mouse_exit,
+                  ui_events::mouse_button_down, ui_events::mouse_button_up>
+          TEvt,
+      typename Trigger>
+  constexpr void handle(widget_ref_no_set_area<T> const &widget, TEvt &&evt,
+                        Trigger &&) const {
+    if (call::tuple_find(
+            widget.subcomponents(),
+            [p = call::position(evt)](auto &s) {
+              return hit_box(call::area(s), p);
+            },
+            []() {})) {
+    }
+  }
+};
 
 } // namespace cgui
 
