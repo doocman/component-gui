@@ -568,6 +568,21 @@ struct all_states_in_marker<widget_state_marker<T, values...>> {
 template <typename T>
 using all_states_in_marker_t = typename all_states_in_marker<T>::type;
 
+template <typename T>
+using state_marker_t = decltype(call::state(std::declval<T const &>()));
+template <typename T>
+using all_states_t = all_states_in_marker_t<state_marker_t<T>>;
+template <typename T>
+concept stateful_aspect = requires(T const& t) { call::state(t); } && requires() { typename all_states_in_marker<state_marker_t<T>>::type;};
+template <typename T>
+constexpr auto all_states() noexcept {
+  if constexpr(stateful_aspect<T>) {
+    return all_states_t<T>{};
+  } else {
+    return no_state_t{};
+  }
+}
+
 template <typename T, T... values>
 constexpr std::size_t state2index(widget_state_marker<T, values...> const &v) {
   if constexpr (sizeof...(values) < 2) {

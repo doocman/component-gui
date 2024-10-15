@@ -1785,9 +1785,7 @@ struct mock_button_callback {
     do_on_button_click(e.button);
   }
   void handle(button_state_events::exit) { do_on_button_exit(); }
-  void operator()(auto const& e) {
-    handle(e);
-  }
+  void operator()(auto const &e) { handle(e); }
   no_state_t state() const { return {}; }
 };
 static_assert(button_state<mock_button_callback>);
@@ -1917,7 +1915,9 @@ struct int_states {
 static_assert(has_handle<int_states, int>);
 
 struct int_as_event_handler {
-  void handle(auto const &, int i, auto &&cb) { cb(i); }
+  int state_ = 0;
+  void handle(auto const &, int i) { state_ = std::clamp(i, 0, 1); }
+  widget_state_marker<int, 0, 1> state() const { return state_; }
 };
 
 TEST(WidgetBuilder, BuildWithState) // NOLINT
@@ -1931,7 +1931,7 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   EXPECT_CALL(state_aware_rend, do_render(Eq(1)));
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
-               .state(int_states{})
+               //.state(int_states{})
                .event(int_as_event_handler{})
                .display(std::ref(state_aware_rend))
                .build();
@@ -1947,7 +1947,7 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
                .event(int_as_event_handler{})
-               .state(int_states{})
+               //.state(int_states{})
                .display(display_per_state(fill_rect{}))
                .build();
   auto &[per_state] = w.displays();
@@ -2042,24 +2042,25 @@ TEST(Widget, BasicButton) // NOLINT
   int calls{};
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
-  .event(buttonlike_trigger(momentary_button()
-             .click([&clicked, &calls](auto &&...) {
-               clicked = true;
-               ++calls;
-             })
-             .hover([&last_state, &calls](auto &&...) {
-               last_state = hover;
-               ++calls;
-             })
-             .hold([&last_state, &calls](auto &&...) {
-               last_state = hold;
-               ++calls;
-             })
-             .exit([&last_state, &calls](auto &&...) {
-               last_state = off;
-               ++calls;
-             })
-             .build()))
+               .event(buttonlike_trigger(
+                   momentary_button()
+                       .click([&clicked, &calls](auto &&...) {
+                         clicked = true;
+                         ++calls;
+                       })
+                       .hover([&last_state, &calls](auto &&...) {
+                         last_state = hover;
+                         ++calls;
+                       })
+                       .hold([&last_state, &calls](auto &&...) {
+                         last_state = hold;
+                         ++calls;
+                       })
+                       .exit([&last_state, &calls](auto &&...) {
+                         last_state = off;
+                         ++calls;
+                       })
+                       .build()))
                .display(display_per_state(fill_rect{}))
                .build();
   auto &[filler] = w.displays();
@@ -2124,17 +2125,15 @@ constexpr void click_widget(auto &w, default_pixel_coord const &pos = {}) {
   w.handle(dummy_mouse_up_event{.pos = pos, .button_id = {}});
 }
 
-#if 0
 TEST(Widget, ButtonSharedStateCallback) // NOLINT
 {
   int i{};
   auto w = widget_builder()
                .area(default_rect{{0, 0}, {2, 2}})
-               .event(buttonlike_trigger())
-               .state(momentary_button()
-                          .callback_state(std::ref(i))
-                          .click([](int &i_in) { ++i_in; })
-                          .build())
+               .event(buttonlike_trigger(momentary_button()
+                                             .callback_state(std::ref(i))
+                                             .click([](int &i_in) { ++i_in; })
+                                             .build()))
                .build();
   EXPECT_THAT(i, Eq(0));
   click_widget(w);
@@ -2148,19 +2147,17 @@ TEST(Widget, BasicList) // NOLINT
   int deactivations{};
   auto constexpr full_area = default_rect{0, 0, 16, 10};
   auto button_builder = [&](default_rect const &r, int element) {
-    return widget_builder()
-        .area(r)
-        .event(buttonlike_trigger())
-        .state(toggle_button_state()
-                   .on_active([&] {
-                     ++activations;
-                     current_element = element;
-                   })
-                   .on_unactive([&] {
-                     ++deactivations;
-                     current_element = -1;
-                   })
-                   .build());
+    return widget_builder().area(r).event(
+        buttonlike_trigger(toggle_button_state()
+                               .on_active([&] {
+                                 ++activations;
+                                 current_element = element;
+                               })
+                               .on_unactive([&] {
+                                 ++deactivations;
+                                 current_element = -1;
+                               })
+                               .build()));
   };
   auto list = widget_builder()
                   .area(full_area)
@@ -2193,7 +2190,6 @@ TEST(Widget, BasicList) // NOLINT
   EXPECT_THAT(deactivations, Eq(1));
   EXPECT_THAT(current_element, Eq(1));
 }
-#endif
 
 struct mock_widget_resize {
 
@@ -2245,17 +2241,14 @@ TEST(GuiContext, RerenderOutput) // NOLINT
   auto w1b = widget_builder()
                  .area(default_rect{{0, 0}, {1, 1}})
                  .event(int_as_event_handler{})
-                 .state(int_states{})
                  .display(rerender_if_state{0});
   auto w2b = widget_builder()
                  .area(default_rect{{1, 0}, {2, 1}})
                  .event(int_as_event_handler{})
-                 .state(int_states{})
                  .display(rerender_if_state{1});
   auto w3b = widget_builder()
                  .area(default_rect{{2, 0}, {3, 1}})
                  .event(int_as_event_handler{})
-                 .state(int_states{})
                  .display(rerender_if_state{0});
   auto r = test_renderer({{0, 0}, {3, 1}});
   auto guic = gui_context_builder()
