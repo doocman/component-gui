@@ -35,6 +35,11 @@ concept is_mutable_by =
 template <typename T, typename... TArgs>
 concept invocable_or_invocable_args =
     std::invocable<T> || std::invocable<T, TArgs...>;
+
+template <typename T, typename... TArgs>
+concept invocable_for_each = (std::invocable<T, TArgs> && ...);
+template <typename T, typename Operator, typename... EachOperand>
+concept can_be_operand_for_all = (std::invocable<Operator, T, EachOperand> && ...);
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_CONCEPTS_HPP

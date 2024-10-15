@@ -1142,41 +1142,89 @@ public:
 template <typename T>
 cached_font(T &&) -> cached_font<std::unwrap_ref_decay_t<T>>;
 
-class buttonlike_trigger {
+namespace button_state_events {
+struct hover {};
+struct exit {};
+struct hold {};
+struct click {
+  mouse_buttons button;
+};
+template <typename T>
+concept state_event_handler =
+    bp::can_be_operand_for_all<T, decltype(call::handle), hover, exit, hold, click>;
+} // namespace button_state_events
+
+template <typename T>
+concept button_state =
+    button_state_events::state_event_handler<T> && widget_states_aspect<T>;
+
+/// @brief Event handling class for button-like widgets that manage state
+/// transitions.
+///
+/// The `buttonlike_trigger` class template handles mouse-related events, such
+/// as clicks, holds, and hovering, for button widgets and translates them into
+/// button state transition events. It provides a convenient way to implement
+/// different types of buttons (e.g., momentary or toggle) by allowing a
+/// `TState` type to be injected, which manages the button's state transitions.
+///
+/// @tparam TState Type parameter representing the state transition logic of the
+/// button. This must satisfy the `button_state` concept requirements.
+template <button_state TState>
+class buttonlike_trigger : bp::empty_structs_optimiser<TState> {
   bool mouse_inside_{};
   bool mouse_down_{};
 
-public:
-  struct hover_event {};
-  struct exit_event {};
-  struct hold_event {};
-  struct click_event {
-    mouse_buttons button;
-  };
+  // Perfect forwarding access to the state object for this button.
+  // May return a reference or a value depending on the empty_structs_optimiser
+  // implementation and wheter TState is empty or not.
+  static constexpr decltype(auto) _state(auto &&self) {
+    return std::forward<decltype(self)>(self).get(bp::index_constant<0>{});
+  }
 
-  template <typename T>
-  void handle(
-      widget_ref_no_set_area<T> const &widget,
-      event_types<ui_events::mouse_move, ui_events::mouse_button_down,
-                  ui_events::mouse_button_up, ui_events::mouse_exit> auto &&evt,
-      auto &&trigger_callback) {
+  // Pass a state change event to the TState object.
+  constexpr void state_change(auto &&event) { call::handle( _state (*this), event); }
+
+  // Convenient type aliases
+  using hover_event = button_state_events::hover;
+  using exit_event = button_state_events::exit;
+  using hold_event = button_state_events::hold;
+  using click_event = button_state_events::click;
+
+public:
+  using bp::empty_structs_optimiser<TState>::empty_structs_optimiser;
+
+
+  /// @brief Handles mouse-based events for button interactions.
+  ///
+  /// This function processes a variety of user input events and
+  /// modifies the button's state accordingly. For example, when the mouse enters the button's
+  /// bounding box, the hover state is triggered; on button down, the hold state is triggered; and
+  /// on button release, the click state is triggered if the mouse is within the button's area.
+  ///
+  /// @param area This event handlers borders.
+  /// @param evt The event to handle, which must be one of `mouse_move`, `mouse_button_down`,
+  ///            `mouse_button_up`, or `mouse_exit` from the `ui_events` namespace.
+  void handle(bounding_box auto const& area,
+              event_types<ui_events::mouse_move, ui_events::mouse_button_down,
+                          ui_events::mouse_button_up,
+                          ui_events::mouse_exit> auto &&evt) {
     using enum ui_events;
     using evt_t = decltype(evt);
     if constexpr (can_be_event<mouse_exit, evt_t>()) {
       if (is_event<mouse_exit>(evt) && mouse_inside_) {
-        trigger_callback(exit_event{});
+        state_change(exit_event{});
         mouse_inside_ = false;
       }
     }
     if constexpr (can_be_event<mouse_move, evt_t>()) {
       if (is_event<mouse_move>(evt)) {
         // do_stuff;
-        auto is_now_inside = hit_box(widget.area(), call::position(evt));
+        auto is_now_inside = hit_box(area, call::position(evt));
         if (is_now_inside != mouse_inside_) {
           if (mouse_inside_) {
-            trigger_callback(exit_event{});
+            state_change(exit_event{});
           } else {
-            trigger_callback(hover_event{});
+            state_change(hover_event{});
           }
           mouse_inside_ = is_now_inside;
         }
@@ -1185,8 +1233,8 @@ public:
     }
     if constexpr (can_be_event<mouse_button_down, evt_t>()) {
       if (is_event<mouse_button_down>(evt)) {
-        if (!mouse_down_ && hit_box(widget.area(), call::position(evt))) {
-          trigger_callback(hold_event{});
+        if (!mouse_down_ && hit_box(area, call::position(evt))) {
+          state_change(hold_event{});
         }
         mouse_down_ = true;
         return;
@@ -1194,8 +1242,8 @@ public:
     }
     if constexpr (can_be_event<mouse_button_up, evt_t>()) {
       if (is_event<mouse_button_up>(evt)) {
-        if (hit_box(widget.area(), call::position(evt))) {
-          trigger_callback(click_event{call::mouse_button(evt)});
+        if (hit_box(area, call::position(evt))) {
+          state_change(click_event{call::mouse_button(evt)});
         }
         mouse_down_ = false;
         return;
@@ -1203,6 +1251,8 @@ public:
     }
   }
 };
+template <typename T>
+buttonlike_trigger(T&&) -> buttonlike_trigger<std::unwrap_ref_decay_t<T>>;
 
 enum class momentary_button_states { off, hover, hold };
 
@@ -1248,20 +1298,20 @@ public:
 
   [[nodiscard]] constexpr state_t state() const { return current_state_; }
 
-  constexpr void handle(buttonlike_trigger::click_event const &) {
+  constexpr void handle(button_state_events::click const &) {
     on_click();
     current_state_ = momentary_button_states::hover;
     on_hover();
   }
-  constexpr void handle(buttonlike_trigger::exit_event const &) {
+  constexpr void handle(button_state_events::exit const &) {
     current_state_ = momentary_button_states::off;
     on_exit();
   }
-  constexpr void handle(buttonlike_trigger::hold_event const &) {
+  constexpr void handle(button_state_events::hold const &) {
     current_state_ = momentary_button_states::hold;
     on_hold();
   }
-  constexpr void handle(buttonlike_trigger::hover_event const &) {
+  constexpr void handle(button_state_events::hover const &) {
     current_state_ = momentary_button_states::hover;
     on_hover();
   }
@@ -1385,7 +1435,7 @@ public:
     return static_cast<toggle_button_states>(on_part + hover_hold_part);
   }
 
-  constexpr void handle(buttonlike_trigger::click_event const &) {
+  constexpr void handle(button_state_events::click const &) {
     if (on_) {
       call<activate_i>();
     } else {
@@ -1394,14 +1444,14 @@ public:
     hold_ = false;
     on_ = !on_;
   }
-  constexpr void handle(buttonlike_trigger::exit_event const &) {
+  constexpr void handle(button_state_events::exit const &) {
     hover_ = false;
     hold_ = false;
   }
-  constexpr void handle(buttonlike_trigger::hold_event const &) {
+  constexpr void handle(button_state_events::hold const &) {
     hold_ = true;
   }
-  constexpr void handle(buttonlike_trigger::hover_event const &) {
+  constexpr void handle(button_state_events::hover const &) {
     hover_ = true;
   }
 };
@@ -1543,6 +1593,7 @@ void handle(
                 ui_events::mouse_button_up, ui_events::mouse_exit> auto &&evt,
     auto &&trigger_callback)
    */
+#if 0
   template <
       typename T,
       event_types<ui_events::mouse_move, ui_events::mouse_exit,
@@ -1559,6 +1610,7 @@ void handle(
             []() {})) {
     }
   }
+#endif
 };
 
 } // namespace cgui
