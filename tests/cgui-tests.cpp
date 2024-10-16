@@ -1869,9 +1869,6 @@ TEST(WidgetBuilder, SetColour) // NOLINT
   EXPECT_CALL(m1, do_render()).Times(1);
   EXPECT_CALL(m2, do_render()).Times(1);
   using namespace dooc::tuple_literals;
-  using display_wrap_t = widget_group_builder_helper<
-        builder_display_element_constraint<dummy_renderer, no_state_t>>;
-  auto wrap = display_wrap_t{}.display("text"_na = std::ref(m1), "fill"_na = std::ref(m2));
 
   auto w = widget_builder()
                .area(default_rect{})
@@ -2151,25 +2148,24 @@ TEST(Widget, BasicList) // NOLINT
   int deactivations{};
   auto constexpr full_area = default_rect{0, 0, 16, 10};
   auto button_builder = [&](default_rect const &r, int element) {
-    return widget_builder().area(r).event(
-        buttonlike_trigger(toggle_button_state()
-                               .on_active([&] {
-                                 ++activations;
-                                 current_element = element;
-                               })
-                               .on_unactive([&] {
-                                 ++deactivations;
-                                 current_element = -1;
-                               })
-                               .build()));
+    return radio_button::element_builder()
+        .on_activate([&] {
+          ++activations;
+          current_element = element;
+        })
+        .on_deactivate([&] {
+          ++deactivations;
+          current_element = -1;
+        });
   };
   auto list = widget_builder()
                   .area(full_area)
-  .event(radio_button_trigger().sub_widgets(
-      button_builder({{0, 0}, {4, 4}}, 0),
-      button_builder({{0, 4}, {4, 8}}, 1),
-      button_builder({{4, 0}, {8, 8}}, 2) //
-      ).build())
+                  .event(radio_button_trigger()
+                             .elements(button_builder({{0, 0}, {4, 4}}, 0),
+                                       button_builder({{0, 4}, {4, 8}}, 1),
+                                       button_builder({{4, 0}, {8, 8}}, 2) //
+                                       )
+                             .build())
                   .build();
   // activate button 0
   click_widget(list);

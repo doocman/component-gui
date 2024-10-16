@@ -303,58 +303,39 @@ constexpr auto build_displays(T &&t, TStates const &states) {
   }
 }
 
-} // namespace impl
+template <typename TElementConstraint, typename... TD2,
+          typename TTuple = std::tuple<std::unwrap_ref_decay_t<TD2>...>>
+  requires((std::invocable<TElementConstraint, std::unwrap_ref_decay_t<TD2>> &&
+            ...))
+TTuple args_to_group(TElementConstraint, TD2 &&...d2) {
+  return TTuple(std::forward<TD2>(d2)...);
+}
 
-template <typename TElementConstraint = bp::no_op_t,
-          typename TGroup = std::tuple<>>
-class widget_group_builder_helper {
-  TGroup g_{};
-
-public:
-  constexpr widget_group_builder_helper() requires std::is_default_constructible_v<TGroup> = default;
-  explicit constexpr widget_group_builder_helper(TElementConstraint) {}
-  template <typename... Ts>
-    requires(std::constructible_from<TGroup, Ts && ...>)
-  explicit(sizeof...(Ts) ==
-           1) constexpr widget_group_builder_helper(Ts &&...args)
-      : g_(std::forward<Ts>(args)...) {}
-
-  template <
-      typename... TD2,
-      typename TTuple = std::tuple<std::unwrap_ref_decay_t<TD2>...>,
-      typename TRes = widget_group_builder_helper<TElementConstraint, TTuple>>
-    requires(
-        (std::invocable<TElementConstraint, std::unwrap_ref_decay_t<TD2>> &&
-         ...))
-  TRes group(TD2 &&...d2) && {
-    return TRes(TTuple(std::forward<TD2>(d2)...));
-  }
-
-  template <
-      typename TGroup2, typename TG2UW = std::unwrap_ref_decay_t<TGroup2>,
-      typename TRes = widget_group_builder_helper<TElementConstraint, TG2UW>>
-    requires(requires(TG2UW &g, TElementConstraint f) { call::for_each(f, g); })
-  TRes group(TGroup2 &&g) && {
-    return TRes(std::forward<TGroup2>(g));
-  }
+template <typename TElementConstraint, typename TGroup2,
+          typename TG2UW = std::unwrap_ref_decay_t<TGroup2>>
+  requires(requires(TG2UW &g, TElementConstraint f) { call::for_each(f, g); })
+TG2UW args_to_group(TElementConstraint, TGroup2 &&g) {
+  return TG2UW(std::forward<TGroup2>(g));
+}
 
 #if CGUI_HAS_NAMED_ARGS
-  template <dooc::arg_with_any_name... TArgs>
-    //requires(
-    //    (std::invocable<TElementConstraint,
-    //                    std::unwrap_ref_decay_t<typename dooc::named_arg_properties<TArgs>::type> &> &&
-    //     ...))
-  constexpr auto display(TArgs &&...args) && {
-    using tuple_t = dooc::named_tuple<std::remove_cvref_t<TArgs>...>;
-    return widget_group_builder_helper<TElementConstraint, tuple_t>(
-        tuple_t(std::forward<TArgs>(args)...));
-  }
+template <typename TElementConstraint, typename... TArgs>
+  requires(((dooc::arg_with_any_name<std::unwrap_ref_decay_t<TArgs>> &&
+             std::invocable<
+                 TElementConstraint,
+                 std::unwrap_ref_decay_t<
+                     typename dooc::named_arg_properties<TArgs>::type> &>) &&
+            ...))
+constexpr auto args_to_group(TElementConstraint, TArgs &&...args) {
+  using tuple_t = dooc::named_tuple<std::remove_cvref_t<TArgs>...>;
+  return tuple_t(std::forward<TArgs>(args)...);
+}
 #endif
 
-  constexpr TGroup unwrap() && {
-    return std::move(*this).g_;
-  }
-};
+template <typename TConstraint, typename... TArgs>
+using args_to_group_t = decltype(args_to_group(TConstraint{}, std::declval<TArgs&&>()...));
+
+} // namespace impl
 
 template <renderer TR = dummy_renderer>
 struct builder_widget_element_constraint {
@@ -708,13 +689,11 @@ template <typename TArea, typename TDisplay, widget_states_aspect TState,
 class widget_builder_impl {
   using state_wrapper = widget_state_wrapper<TState>;
   using state_arg_t = typename state_wrapper::template arg_t<int>;
-  using display_wrap_t = widget_group_builder_helper<
-      builder_display_element_constraint<dummy_renderer, state_arg_t>, TDisplay>;
+  using display_constraint_t =
+      builder_display_element_constraint<dummy_renderer, state_arg_t>;
 
   TArea area_;
-  // TDisplay displays_;
-  display_wrap_t
-      displays_;
+  TDisplay displays_;
   TState state_;
   TEventHandler event_;
   TSubs subs_;
@@ -725,7 +704,7 @@ public:
 
   constexpr widget_builder_impl() = default;
   template <typename TUs, typename TS, typename TE, typename TSC, typename TRSZ>
-    requires(std::constructible_from<display_wrap_t, TUs &&> &&
+    requires(std::constructible_from<TDisplay, TUs &&> &&
              std::constructible_from<TState, TS &&> &&
              std::constructible_from<TEventHandler, TE &&> &&
              std::constructible_from<TSubs, TSC> &&
@@ -736,6 +715,7 @@ public:
         state_(std::forward<TS>(s)), event_(std::forward<TE>(e)),
         subs_(std::forward<TSC>(sc)), on_resize_(std::forward<TRSZ>(rsz)) {}
 
+#if 0
   template <
       typename... TD2,
       typename TRes = widget_builder_impl<
@@ -745,6 +725,20 @@ public:
   constexpr TRes display(TD2 &&...vs) && {
     auto s = bp::as_forward(std::move(*this));
     return TRes{(*s).area_,  (*s).displays_.group(std::forward<TD2>(vs)...),
+                (*s).state_, (*s).event_,
+                (*s).subs_,  (*s).on_resize_};
+  }
+#endif
+
+  template <typename... TD2> constexpr auto display(TD2 &&...vs) && {
+    using TRes = widget_builder_impl<
+        TArea,
+        impl::args_to_group_t<display_constraint_t, TD2&&...>,
+        //decltype(std::move(displays_).group(std::declval<TD2>()...).unwrap()),
+        TState, TEventHandler, TSubs, TOnResize>;
+    auto s = bp::as_forward(std::move(*this));
+    return TRes{(*s).area_,  //(*s).displays_.group(std::forward<TD2>(vs)...),
+                impl::args_to_group(display_constraint_t{}, std::forward<TD2>(vs)...),
                 (*s).state_, (*s).event_,
                 (*s).subs_,  (*s).on_resize_};
   }
@@ -797,7 +791,7 @@ public:
                   "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
     using display_t = decltype(impl::build_displays(
-        std::move(displays_).unwrap(),
+        std::move(displays_),
         all_states<TEventHandler>() /*state_wrapper::all_states()*/));
     using subs_t = decltype(impl::build_gui_context_widgets(std::move(subs_)));
     auto s = bp::as_forward(std::move(*this));
@@ -805,7 +799,7 @@ public:
                   subs_t, TOnResize>(
         (*s).area_,
         impl::build_displays(
-            (*s).displays_.unwrap(),
+            (*s).displays_,
             all_states<TEventHandler>() /*state_wrapper::all_states()*/),
         /*state_wrapper(std::move(state_))*/ (*s).state_, (*s).event_,
         impl::build_gui_context_widgets((*s).subs_), (*s).on_resize_);
@@ -1674,6 +1668,63 @@ public:
   }
 };
 
+namespace radio_button {
+enum class element_state {
+  relaxed_off,
+  relaxed_on,
+  hover_off,
+  hover_on,
+  hold_off,
+  hold_on,
+};
+static constexpr auto max_element_state = element_state::hold_on;
+template <element_state TState> struct state_event {
+  static constexpr auto value = TState;
+};
+struct trigger_on {};
+struct trigger_off {};
+using state_marker_t = make_widget_state_marker_sequence_t<
+    element_state, element_state::relaxed_off, max_element_state>;
+using all_states_t = all_states_in_marker<state_marker_t>;
+template <typename T, typename TRender = dummy_renderer>
+concept element = has_render<T, TRender, state_marker_t>;
+template <typename T, typename TRender = dummy_renderer>
+concept element_after_build = requires(bp::as_forward<T> t) {
+  { call::build(*t) } -> element<TRender>;
+};
+struct sub_constraint {
+  constexpr void operator()(element_after_build auto &&) const {}
+};
+
+template <std::invocable Act, std::invocable Deact>
+class basic_element : bp::empty_structs_optimiser<Act, Deact> {
+public:
+  using bp::empty_structs_optimiser<Act, Deact>::empty_structs_optimiser;
+  constexpr void render(renderer auto&&, state_marker_t const&) const {}
+};
+template <std::invocable Activate = bp::no_op_t, std::invocable Deactivate = bp::no_op_t>
+class element_builder : bp::empty_structs_optimiser<Activate, Deactivate> {
+  using base_t = bp::empty_structs_optimiser<Activate, Deactivate>;
+  constexpr bp::as_forward<base_t> move_this_as_base() {
+    return static_cast<base_t&&>(*this);
+  }
+public:
+  using bp::empty_structs_optimiser<Activate, Deactivate>::empty_structs_optimiser;
+  constexpr auto on_activate(auto && v) && -> element_builder<std::unwrap_ref_decay_t<decltype(v)>, Deactivate> {
+    auto s = move_this_as_base();
+    return {std::forward<decltype(v)>(v), get<1>(*s)};
+  }
+  constexpr auto on_deactivate(auto && v) && -> element_builder<Activate, std::unwrap_ref_decay_t<decltype(v)>> {
+    auto s = move_this_as_base();
+    return {get<0>(*s), std::forward<decltype(v)>(v)};
+  }
+  constexpr basic_element<Activate, Deactivate> build() && {
+    auto s = move_this_as_base();
+    return {get<0>(*s), get<1>(*s)};
+  }
+};
+} // namespace radio_button
+
 /// @brief Trigger for widgets that acts like a container of multiple buttons
 /// where only one button should be enabled.
 ///
@@ -1696,8 +1747,13 @@ public:
 };
 
 class radio_button_trigger {
-  // widget_group_builder_helper
+  //widget_group_builder_helper<radio_button::sub_constraint> elements_;
+
 public:
+  template <typename... Ts, typename TE = impl::args_to_group_t<radio_button::sub_constraint, Ts&&...>>
+  constexpr radio_button_trigger elements(Ts &&...vs) && { return {}; }
+
+  constexpr radio_button_trigger_impl build() && { return {}; }
 };
 
 } // namespace cgui

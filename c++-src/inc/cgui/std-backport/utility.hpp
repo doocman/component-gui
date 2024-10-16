@@ -92,7 +92,7 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
       std::is_nothrow_default_constructible_v<_base_t>) = default;
   template <typename TArg, typename... TArgs>
     requires(std::constructible_from<_base_t, TArgs && ...>)
-  constexpr explicit empty_structs_optimiser_impl(TArg &&, TArgs &&...to_base)
+  constexpr explicit(sizeof...(TArgs) == 0) empty_structs_optimiser_impl(TArg &&, TArgs &&...to_base)
       : _base_t(std::forward<TArgs>(to_base)...) {}
 
   template <bp::cvref_type<empty_structs_optimiser_impl> TSelf, typename Tag>
@@ -144,7 +144,7 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
   template <typename TArg, typename... TArgs>
     requires(std::constructible_from<T, TArg &&> &&
              std::constructible_from<_base_t, TArgs && ...>)
-  constexpr explicit empty_structs_optimiser_impl(TArg &&arg,
+  constexpr explicit(sizeof...(TArgs) == 0) empty_structs_optimiser_impl(TArg &&arg,
                                                   TArgs &&...to_base)
       : _base_t(std::forward<TArgs>(to_base)...),
         val_(std::forward<TArg>(arg)) {}

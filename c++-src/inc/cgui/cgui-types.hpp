@@ -555,6 +555,27 @@ constexpr bool operator==(widget_state_marker<T, tS1...> const &l,
                           widget_state_marker<T, tS2...> const &r) {
   return l.current_state() == r.current_state();
 }
+namespace impl {
+template <typename T, typename TInt, TInt... tVals, TInt tOffset>
+inline widget_state_marker<T, static_cast<T>(tVals + tOffset)...>
+    deduce_state_marker(std::integer_sequence<TInt, tVals...>,
+                        std::integral_constant<TInt, tOffset>);
+}
+template <typename T, T tMin, T tMax> struct make_widget_state_marker_sequence {
+private:
+  using _int_t = std::underlying_type_t<T>;
+  static constexpr auto min_v = static_cast<_int_t>(tMin);
+  static constexpr auto max_v = static_cast<_int_t>(tMax);
+  static constexpr auto size = max_v - min_v;
+
+public:
+  using type = decltype(impl::deduce_state_marker<T>(
+      std::make_integer_sequence<_int_t, static_cast<_int_t>(size)>{},
+      std::integral_constant<_int_t, min_v>{}));
+};
+template <typename T, T tMin, T tMax>
+using make_widget_state_marker_sequence_t =
+    typename make_widget_state_marker_sequence<T, tMin, tMax>::type;
 
 template <typename T, T... values> struct widget_states {
   static constexpr std::size_t size() { return sizeof...(values); }
@@ -573,10 +594,11 @@ using state_marker_t = decltype(call::state(std::declval<T const &>()));
 template <typename T>
 using all_states_t = all_states_in_marker_t<state_marker_t<T>>;
 template <typename T>
-concept stateful_aspect = requires(T const& t) { call::state(t); } && requires() { typename all_states_in_marker<state_marker_t<T>>::type;};
-template <typename T>
-constexpr auto all_states() noexcept {
-  if constexpr(stateful_aspect<T>) {
+concept stateful_aspect = requires(T const &t) {
+  call::state(t);
+} && requires() { typename all_states_in_marker<state_marker_t<T>>::type; };
+template <typename T> constexpr auto all_states() noexcept {
+  if constexpr (stateful_aspect<T>) {
     return all_states_t<T>{};
   } else {
     return no_state_t{};
