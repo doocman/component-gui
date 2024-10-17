@@ -12,6 +12,7 @@
 #include <cgui/ft_fonts.hpp>
 #include <cgui/std-backport/array.hpp>
 #include <cgui/stl_extend.hpp>
+#include <cgui/widget_algorithm.hpp>
 
 namespace cgui {
 template <typename TX, typename TY> class nudger {
@@ -37,6 +38,8 @@ template <bounding_box TB = default_rect> class recursive_area_navigator {
   using y_t = std::remove_cvref_t<decltype(call::t_y(relative_area_))>;
   x_t offset_x_{};
   y_t offset_y_{};
+
+  template <bounding_box A2> friend class recursive_area_navigator;
 
   constexpr recursive_area_navigator(TB const &b, x_t ox, y_t oy)
       : relative_area_(b), offset_x_(ox), offset_y_(oy) {}
@@ -70,6 +73,10 @@ public:
   constexpr nudger<x_t, y_t> relative_to_absolute_nudger() const noexcept {
     return {offset_x_, offset_y_};
   }
+  template <typename A2>
+  constexpr explicit operator recursive_area_navigator<A2>() const {
+    return {copy_box<A2>(relative_area_), offset_x_, offset_y_};
+  };
 };
 
 template <canvas T, bounding_box TB> class sub_renderer {
@@ -185,6 +192,8 @@ class basic_widget_back_propagater {
   recursive_area_navigator<TArea> full_area_;
   TArea to_rerender_{};
 
+  template <bounding_box A2> friend class basic_widget_back_propagater;
+
   explicit(false) constexpr basic_widget_back_propagater(
       recursive_area_navigator<TArea> nav)
       : full_area_(nav) {}
@@ -217,10 +226,17 @@ public:
       rerender(sub_area);
     }
   }
+
+  template <typename A2>
+  constexpr explicit operator basic_widget_back_propagater<A2>() const {
+    return {static_cast<recursive_area_navigator<A2>>(full_area_),
+            copy_box<A2>(to_rerender_)};
+  }
 };
 
 template <typename T, typename TConstraint = bp::no_op_t>
-concept each_constraint = requires(T &g, TConstraint f) { call::for_each(g, f); };
+concept each_constraint =
+    requires(T &g, TConstraint f) { call::for_each(g, f); };
 
 namespace impl {
 template <typename> constexpr bool is_tuple = false;
@@ -636,10 +652,11 @@ public:
   template <typename TEvt, widget_back_propagater TCallback>
   constexpr void handle(TEvt &&evt, TCallback &&display_callbacks)
     requires has_handle<TEventHandler, TArea const &, decltype(evt)> ||
-      has_handle<TEventHandler, TArea const &, decltype(evt), TCallback>
+             has_handle<TEventHandler, TArea const &, decltype(evt), TCallback>
   {
     auto const do_handle = [this, &evt, &display_callbacks] {
-      if constexpr(has_handle<TEventHandler, TArea const &, decltype(evt), TCallback>) {
+      if constexpr (has_handle<TEventHandler, TArea const &, decltype(evt),
+                               TCallback>) {
         call::handle(event_handler(*this), area(),
                      std::forward<decltype(evt)>(evt), display_callbacks);
       } else {
@@ -1649,6 +1666,7 @@ class basic_element : bp::empty_structs_optimiser<Act, Deact> {
 public:
   using bp::empty_structs_optimiser<Act, Deact>::empty_structs_optimiser;
   constexpr void render(renderer auto &&, state_marker_t const &) const {}
+  constexpr void handle(auto&&...) {}
 };
 template <std::invocable Activate = bp::no_op_t,
           std::invocable Deactivate = bp::no_op_t>
@@ -1684,16 +1702,18 @@ public:
 template <each_constraint<radio_button::sub_constraint> TElements>
 class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
-  static constexpr decltype(auto) elements(auto&& self) noexcept {
+  template <typename T> using basic_function = T *;
+  basic_function<void(radio_button_trigger_impl &, void const*,
+                      basic_widget_back_propagater<default_rect>&&)> reset_active = bp::no_op;
+  std::ptrdiff_t reset_active_offset{};
+
+  static constexpr decltype(auto) elements(auto &&self) noexcept {
     using t = bp::copy_cvref_t<base_t, decltype(self)>;
     return get<0>(static_cast<t>(self));
   }
-  constexpr decltype(auto) elements() noexcept {
-    return elements(*this);
-  }
-  constexpr decltype(auto) elements() const noexcept {
-    return elements(*this);
-  }
+  constexpr decltype(auto) elements() noexcept { return elements(*this); }
+  constexpr decltype(auto) elements() const noexcept { return elements(*this); }
+
 public:
   using base_t::base_t;
   template <
@@ -1701,7 +1721,38 @@ public:
       event_types<ui_events::mouse_move, ui_events::mouse_exit,
                   ui_events::mouse_button_down, ui_events::mouse_button_up>
           TEvt>
-  constexpr void handle(T const &, TEvt &&evt, subable_widget_back_propagator auto&&) {
+  constexpr void handle(T const &, TEvt &&evt,
+                        subable_widget_back_propagator auto &&back_prop) {
+    if (find_first_cb(
+            [&evt](auto &&c) -> bool {
+              return hit_box(call::area(c), call::position(evt));
+            },
+            [this, &back_prop]<typename C>(C &&c) {
+              reset_active(
+                  *this, &c,
+                  static_cast<basic_widget_back_propagater<default_rect>>(
+                      back_prop));
+              call::handle(c, radio_button::trigger_on{}, back_prop);
+              reset_active =
+                  [](radio_button_trigger_impl &self, void const *new_active,
+                     basic_widget_back_propagater<default_rect> &&bp) {
+                    if constexpr (!std::is_empty_v<C>) {
+                      void *active_pos =
+                          reinterpret_cast<char *>(&self) + self.reset_active_offset;
+                      if (active_pos != new_active) {
+                        auto &c = *reinterpret_cast<std::remove_cvref_t<C> *>(
+                            active_pos);
+                        call::handle(c, radio_button::trigger_off{}, bp);
+                      }
+                    } else {
+                      unused(self, new_active, bp);
+                    }
+                  };
+              reset_active_offset = reinterpret_cast<char const *>(&c) -
+                                    reinterpret_cast<char const *>(this);
+            },
+            elements())) {
+    }
 #if 0
     if (call::tuple_find(
             widget.subcomponents(),
@@ -1724,12 +1775,13 @@ public:
   template <typename... Ts, typename TE = impl::args_to_group_t<
                                 radio_button::sub_constraint, Ts &&...>>
   constexpr radio_button_trigger<TE> elements(Ts &&...vs) && {
-    return radio_button_trigger<TE>(
-        impl::args_to_group(radio_button::sub_constraint{}, std::forward<Ts>(vs)...));
+    return radio_button_trigger<TE>(impl::args_to_group(
+        radio_button::sub_constraint{}, std::forward<Ts>(vs)...));
   }
 
   constexpr radio_button_trigger_impl<TElements> build() && {
-    return radio_button_trigger_impl<TElements>(std::move(*this).get(bp::index_constant<0>{}));
+    return radio_button_trigger_impl<TElements>(
+        std::move(*this).get(bp::index_constant<0>{}));
   }
 };
 

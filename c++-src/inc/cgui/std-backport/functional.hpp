@@ -11,7 +11,17 @@
 
 namespace cgui::bp {
 struct no_op_t {
+  template <typename T>
+  using function = T;
+
+  template <typename... Ts>
+  static constexpr void call(Ts...) noexcept{}
   constexpr void operator()(auto &&...) const noexcept {}
+
+  template <typename... Ts>
+  constexpr explicit(false) operator function<void(Ts...)>*() const noexcept {
+    return &call<Ts...>;
+  }
 };
 inline constexpr no_op_t no_op;
 
