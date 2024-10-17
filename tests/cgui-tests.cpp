@@ -4,6 +4,7 @@
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/expected.hpp>
 #include <cgui/stl_extend.hpp>
+#include <cgui/widget_algorithm.hpp>
 
 #include <array>
 #include <optional>
@@ -1155,6 +1156,67 @@ TYPED_TEST(BoxApiFixture, MoveTlTo) // NOLINT
 
 } // namespace apitests
 
+TEST(SubFind, FindInTuple) // NOLINT
+{
+  auto v = std::tuple(1, 2, 3, 3);
+  int const* res = nullptr;
+  int calls{};
+  auto cb = [&res, &calls] (int const& i) { res = &i; ++calls; };
+  auto found = find_first_cb(equals(2), cb, v);
+  EXPECT_THAT(found, IsTrue());
+  EXPECT_THAT(res, Eq(&std::get<1>(v)));
+  EXPECT_THAT(calls, Eq(1));
+
+  auto reset = [&] { res=nullptr; calls = 0; };
+  reset();
+  found = find_first_cb(equals(3), cb, v);
+  EXPECT_THAT(found, IsTrue());
+  EXPECT_THAT(res, Eq(&std::get<2>(v)));
+  EXPECT_THAT(calls, Eq(1));
+
+  reset();
+  found = find_first_cb(equals(4), cb, v);
+  EXPECT_THAT(found, IsFalse());
+  EXPECT_THAT(res, IsNull());
+  EXPECT_THAT(calls, Eq(0));
+}
+
+struct dummy_for_eachable {
+  int i1, i2, i3, i4;
+
+  constexpr void for_each(auto&& cb) {
+    cb(i1);
+    cb(i2);
+    cb(i3);
+    cb(i4);
+  }
+};
+
+TEST(SubFind, FindInForEach) // NOLINT
+{
+  auto v = dummy_for_eachable{1, 2, 3, 3};
+  int const* res = nullptr;
+  int calls{};
+  auto cb = [&res, &calls] (int const& i) { res = &i; ++calls; };
+  auto found = find_first_cb(equals(2), cb, v);
+  EXPECT_THAT(found, IsTrue());
+  EXPECT_THAT(res, Eq(&v.i2));
+  EXPECT_THAT(calls, Eq(1));
+
+  auto reset = [&] { res=nullptr; calls = 0; };
+  reset();
+  found = find_first_cb(equals(3), cb, v);
+  EXPECT_THAT(found, IsTrue());
+  EXPECT_THAT(res, Eq(&v.i3));
+  EXPECT_THAT(calls, Eq(1));
+
+  reset();
+  found = find_first_cb(equals(4), cb, v);
+  EXPECT_THAT(found, IsFalse());
+  EXPECT_THAT(res, IsNull());
+  EXPECT_THAT(calls, Eq(0));
+}
+
 struct test_renderer {
   struct individual_colours_t {
     std::vector<std::uint_least8_t> red, green, blue, alpha;
@@ -1897,8 +1959,7 @@ struct mock_state_aware_renderer {
       render_failed_type = std::string_view(typeid(state_t).name());
     }
   }
-  void set_state(state_marker auto const &i,
-                 display_state_callbacks auto &&cb) {
+  void set_state(state_marker auto const &i, widget_back_propagater auto &&cb) {
     do_set_state(i.current_state());
     cb.rerender();
   }
@@ -2121,9 +2182,11 @@ TEST(Widget, BasicButton) // NOLINT
   reset();
 }
 
-constexpr void click_widget(auto &w, default_pixel_coord const &pos = {}) {
-  w.handle(dummy_mouse_down_event{.pos = pos, .button_id = {}});
-  w.handle(dummy_mouse_up_event{.pos = pos, .button_id = {}});
+constexpr void click_widget(auto &w, default_pixel_coord const &pos = {},
+                            auto &&...args)
+{
+  w.handle(dummy_mouse_down_event{.pos = pos, .button_id = {}}, args...);
+  w.handle(dummy_mouse_up_event{.pos = pos, .button_id = {}}, args...);
 }
 
 TEST(Widget, ButtonSharedStateCallback) // NOLINT
@@ -2168,23 +2231,24 @@ TEST(Widget, BasicList) // NOLINT
                              .build())
                   .build();
   // activate button 0
-  click_widget(list);
+  auto backprop = basic_widget_back_propagater(full_area);
+  click_widget(list, {}, backprop);
   EXPECT_THAT(activations, Eq(1));
   EXPECT_THAT(deactivations, Eq(0));
   EXPECT_THAT(current_element, Eq(0));
   // deactivate button 0
-  click_widget(list);
+  click_widget(list, {}, backprop);
   EXPECT_THAT(activations, Eq(1));
   EXPECT_THAT(deactivations, Eq(1));
   EXPECT_THAT(current_element, Eq(-1));
   // click outside any subcomponents
-  click_widget(list, {12, 0});
+  click_widget(list, {12, 0}, backprop);
   EXPECT_THAT(activations, Eq(1));
   EXPECT_THAT(deactivations, Eq(1));
   EXPECT_THAT(current_element, Eq(-1));
 
   // activate button 1
-  click_widget(list, {1, 7});
+  click_widget(list, {1, 7}, backprop);
   EXPECT_THAT(activations, Eq(2));
   EXPECT_THAT(deactivations, Eq(1));
   EXPECT_THAT(current_element, Eq(1));
@@ -2228,7 +2292,7 @@ struct rerender_if_state {
 
   constexpr void render(auto &&...) const noexcept {}
   constexpr void set_state(state_marker auto const &i,
-                           display_state_callbacks auto &&cb) {
+                           widget_back_propagater auto &&cb) {
     if (i.current_state() == rerender_state) {
       cb.rerender();
     }

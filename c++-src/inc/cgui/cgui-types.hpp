@@ -213,11 +213,20 @@ concept set_state_with_rerender =
     };
 
 template <typename T, typename TBox = default_rect>
-concept display_state_callbacks =
+concept widget_back_propagater =
     bounding_box<TBox> && requires(T &t, TBox const &cbox) {
       t.rerender();
       t.rerender(cbox);
     };
+
+template <typename T, typename TBox = default_rect>
+concept subable_widget_back_propagator = widget_back_propagater<T, TBox> && requires(T& t, TBox const& box)
+{
+  { t.sub(box) } -> widget_back_propagater<TBox>;
+};
+
+template <typename T, bounding_box TBox = default_rect>
+using sub_of_type_t = decltype(std::declval<T&&>().sub(std::declval<TBox const&>()));
 
 template <typename T, typename TCoord = default_pixel_coord,
           typename TColour = default_colour_t>
