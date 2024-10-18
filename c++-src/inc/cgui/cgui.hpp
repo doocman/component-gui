@@ -11,6 +11,7 @@
 #include <cgui/cgui-types.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/std-backport/array.hpp>
+#include <cgui/std-backport/ranges.hpp>
 #include <cgui/stl_extend.hpp>
 #include <cgui/widget_algorithm.hpp>
 
@@ -352,6 +353,52 @@ constexpr auto args_to_group(TElementConstraint, TArgs &&...args) {
   return tuple_t(std::forward<TArgs>(args)...);
 }
 #endif
+
+template <typename Constraint, typename... Args> struct maybe_build_constraint {
+  template <typename T>
+    requires(std::invocable<Constraint, T &&> ||
+             (builder<T, Args...> &&
+              std::invocable<Constraint, build_result_t<T, Args...>>))
+  constexpr void operator()(T &&) const {}
+};
+
+template <typename Constraint>
+constexpr auto optional_build =
+    []<typename T, typename... Args>(T &&e, Args &&...args) {
+      if constexpr (!std::invocable<Constraint, T>) {
+        static_assert(
+            builder<T, Args...>,
+            "Element did not satisfy constraint and it could not be built");
+        static_assert(std::invocable<Constraint, build_result_t<T, Args...>>,
+                      "Built element did not satisfy constraint");
+        return call::build(std::forward<T>(e), std::forward<Args>(args)...);
+      } else {
+        unused(args...);
+        return std::forward<T>(e);
+      }
+    };
+
+template <typename Constraint,
+          typename Builder = decltype(optional_build<Constraint>), typename T,
+          typename... TArgs>
+constexpr auto build_group(Constraint &&, T &&g, Builder b = {},
+                           TArgs &&...args) {
+  auto gf = bp::as_forward<T>(g);
+  if constexpr (std::invocable<Constraint, T>) {
+    return std::forward<T>(g);
+  } else if constexpr (builder<T, TArgs &&...>) {
+    return call::build(*gf, std::forward<TArgs>(args)...);
+  } else if constexpr (std::invocable<decltype(call::apply_to), T,
+                                      bp::no_op_t>) {
+    return call::apply_to(
+        *gf, [do_build = bp::trailing_curried<Builder, TArgs...>(
+                  b, std::forward<TArgs>(args)...)] <typename... Ts> (Ts &&...elements) {
+          return std::tuple(do_build(std::forward<Ts>(elements))...);
+        });
+  } else if constexpr (std::ranges::range<std::remove_cvref_t<T>>) {
+    return bp::transform_range(std::forward<T>(g), bp::trailing_curried<Builder, TArgs...>(b, std::forward<TArgs>(args)...));
+  }
+}
 
 template <typename TConstraint, typename... TArgs>
 using args_to_group_t =
@@ -1653,12 +1700,8 @@ using state_marker_t = make_widget_state_marker_sequence_t<
 using all_states_t = all_states_in_marker<state_marker_t>;
 template <typename T, typename TRender = dummy_renderer>
 concept element = has_render<T, TRender, state_marker_t>;
-template <typename T, typename TRender = dummy_renderer>
-concept element_after_build = requires(bp::as_forward<T> t) {
-  { call::build(*t) } -> element<TRender>;
-};
 struct sub_constraint {
-  constexpr void operator()(element_after_build auto &&) const {}
+  constexpr void operator()(element auto &&) const {}
 };
 
 template <std::invocable Act, std::invocable Deact>
@@ -1666,7 +1709,7 @@ class basic_element : bp::empty_structs_optimiser<Act, Deact> {
 public:
   using bp::empty_structs_optimiser<Act, Deact>::empty_structs_optimiser;
   constexpr void render(renderer auto &&, state_marker_t const &) const {}
-  constexpr void handle(auto&&...) {}
+  constexpr void handle(auto &&...) {}
 };
 template <std::invocable Activate = bp::no_op_t,
           std::invocable Deactivate = bp::no_op_t>
@@ -1703,8 +1746,9 @@ template <each_constraint<radio_button::sub_constraint> TElements>
 class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
   template <typename T> using basic_function = T *;
-  basic_function<void(radio_button_trigger_impl &, void const*,
-                      basic_widget_back_propagater<default_rect>&&)> reset_active = bp::no_op;
+  basic_function<void(radio_button_trigger_impl &, void const *,
+                      basic_widget_back_propagater<default_rect> &&)>
+      reset_active = bp::no_op;
   std::ptrdiff_t reset_active_offset{};
 
   static constexpr decltype(auto) elements(auto &&self) noexcept {
@@ -1732,13 +1776,17 @@ public:
                   *this, &c,
                   static_cast<basic_widget_back_propagater<default_rect>>(
                       back_prop));
+              // if constexpr (has_handle<C, radio_button::trigger_on,
+              // decltype(back_prop)>) {
               call::handle(c, radio_button::trigger_on{}, back_prop);
+              //}
               reset_active =
                   [](radio_button_trigger_impl &self, void const *new_active,
                      basic_widget_back_propagater<default_rect> &&bp) {
-                    if constexpr (!std::is_empty_v<C>) {
-                      void *active_pos =
-                          reinterpret_cast<char *>(&self) + self.reset_active_offset;
+                    if constexpr (has_handle<C, radio_button::trigger_off,
+                                             decltype(back_prop)>) {
+                      void *active_pos = reinterpret_cast<char *>(&self) +
+                                         self.reset_active_offset;
                       if (active_pos != new_active) {
                         auto &c = *reinterpret_cast<std::remove_cvref_t<C> *>(
                             active_pos);
@@ -1769,19 +1817,21 @@ template <typename TElements = std::tuple<>>
 class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
 
+  using element_constraint = impl::maybe_build_constraint<radio_button::sub_constraint>;
+
 public:
   using base_t::base_t;
 
   template <typename... Ts, typename TE = impl::args_to_group_t<
-                                radio_button::sub_constraint, Ts &&...>>
+                                element_constraint, Ts &&...>>
   constexpr radio_button_trigger<TE> elements(Ts &&...vs) && {
     return radio_button_trigger<TE>(impl::args_to_group(
-        radio_button::sub_constraint{}, std::forward<Ts>(vs)...));
+        element_constraint{}, std::forward<Ts>(vs)...));
   }
 
   constexpr radio_button_trigger_impl<TElements> build() && {
     return radio_button_trigger_impl<TElements>(
-        std::move(*this).get(bp::index_constant<0>{}));
+        impl::build_group(radio_button::sub_constraint{}, std::move(*this).get(bp::index_constant<0>{})));
   }
 };
 
