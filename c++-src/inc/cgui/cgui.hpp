@@ -392,11 +392,14 @@ constexpr auto build_group(Constraint &&, T &&g, Builder b = {},
                                       bp::no_op_t>) {
     return call::apply_to(
         *gf, [do_build = bp::trailing_curried<Builder, TArgs...>(
-                  b, std::forward<TArgs>(args)...)] <typename... Ts> (Ts &&...elements) {
+                  b, std::forward<TArgs>(args)...)]<typename... Ts>(
+                 Ts &&...elements) {
           return std::tuple(do_build(std::forward<Ts>(elements))...);
         });
   } else if constexpr (std::ranges::range<std::remove_cvref_t<T>>) {
-    return bp::transform_range(std::forward<T>(g), bp::trailing_curried<Builder, TArgs...>(b, std::forward<TArgs>(args)...));
+    return bp::transform_range(std::forward<T>(g),
+                               bp::trailing_curried<Builder, TArgs...>(
+                                   b, std::forward<TArgs>(args)...));
   }
 }
 
@@ -1704,37 +1707,65 @@ struct sub_constraint {
   constexpr void operator()(element auto &&) const {}
 };
 
-template <std::invocable Act, std::invocable Deact>
-class basic_element : bp::empty_structs_optimiser<Act, Deact> {
+template <std::invocable Act, std::invocable Deact, typename Area>
+class basic_element : bp::empty_structs_optimiser<Act, Deact, Area> {
+  using base_t = bp::empty_structs_optimiser<Act, Deact, Area>;
+  template <std::size_t tI> static constexpr decltype(auto) _get(auto &&self) {
+    using t =
+        decltype(bp::forward_like<decltype(self)>(std::declval<base_t &>()));
+    return get<tI>(static_cast<t>(self));
+  }
+
 public:
-  using bp::empty_structs_optimiser<Act, Deact>::empty_structs_optimiser;
+  using base_t::base_t;
   constexpr void render(renderer auto &&, state_marker_t const &) const {}
-  constexpr void handle(auto &&...) {}
+  constexpr void handle(trigger_on, auto &&) { _get<0> (*this)(); }
+  constexpr void handle(trigger_off, auto &&) { _get<1> (*this)(); }
+  constexpr Area area() const
+    requires(bounding_box<Area>)
+  {
+    return _get<2>(*this);
+  }
+  constexpr Area area(bounding_box auto &&in)
+    requires(bounding_box<Area>)
+  {
+    _get<2>(*this) = copy_box<Area>(std::forward<decltype(in)>(in));
+  }
 };
 template <std::invocable Activate = bp::no_op_t,
-          std::invocable Deactivate = bp::no_op_t>
-class element_builder : bp::empty_structs_optimiser<Activate, Deactivate> {
-  using base_t = bp::empty_structs_optimiser<Activate, Deactivate>;
+          std::invocable Deactivate = bp::no_op_t, typename Area = empty_state>
+class element_builder
+    : bp::empty_structs_optimiser<Activate, Deactivate, Area> {
+  using base_t = bp::empty_structs_optimiser<Activate, Deactivate, Area>;
   constexpr bp::as_forward<base_t> move_this_as_base() {
     return static_cast<base_t &&>(*this);
   }
 
 public:
-  using bp::empty_structs_optimiser<Activate,
-                                    Deactivate>::empty_structs_optimiser;
-  constexpr auto on_activate(auto &&v)
-      && -> element_builder<std::unwrap_ref_decay_t<decltype(v)>, Deactivate> {
+  using base_t::base_t;
+  constexpr auto on_activate(
+      auto &&v) && -> element_builder<std::unwrap_ref_decay_t<decltype(v)>,
+                                      Deactivate, Area> {
     auto s = move_this_as_base();
-    return {std::forward<decltype(v)>(v), get<1>(*s)};
+    return {std::forward<decltype(v)>(v), get<1>(*s), get<2>(*s)};
   }
   constexpr auto on_deactivate(auto &&v)
-      && -> element_builder<Activate, std::unwrap_ref_decay_t<decltype(v)>> {
+      && -> element_builder<Activate, std::unwrap_ref_decay_t<decltype(v)>,
+                            Area> {
     auto s = move_this_as_base();
-    return {get<0>(*s), std::forward<decltype(v)>(v)};
+    return {get<0>(*s), std::forward<decltype(v)>(v), get<2>(*s)};
   }
-  constexpr basic_element<Activate, Deactivate> build() && {
+  template <typename T, typename TPure = std::remove_cvref_t<T>>
+    requires bounding_box<T> || std::is_same_v<TPure, empty_state>
+  constexpr auto
+  area(T &&area) && -> element_builder<Activate, Deactivate, TPure> {
     auto s = move_this_as_base();
-    return {get<0>(*s), get<1>(*s)};
+    return {get<0>(*s), get<1>(*s), std::forward<decltype(area)>(area)};
+  }
+
+  constexpr basic_element<Activate, Deactivate, Area> build() && {
+    auto s = move_this_as_base();
+    return {get<0>(*s), get<1>(*s), get<2>(*s)};
   }
 };
 } // namespace radio_button
@@ -1771,33 +1802,39 @@ public:
             [&evt](auto &&c) -> bool {
               return hit_box(call::area(c), call::position(evt));
             },
-            [this, &back_prop]<typename C>(C &&c) {
-              reset_active(
-                  *this, &c,
-                  static_cast<basic_widget_back_propagater<default_rect>>(
-                      back_prop));
-              // if constexpr (has_handle<C, radio_button::trigger_on,
-              // decltype(back_prop)>) {
-              call::handle(c, radio_button::trigger_on{}, back_prop);
-              //}
-              reset_active =
-                  [](radio_button_trigger_impl &self, void const *new_active,
-                     basic_widget_back_propagater<default_rect> &&bp) {
-                    if constexpr (has_handle<C, radio_button::trigger_off,
-                                             decltype(back_prop)>) {
-                      void *active_pos = reinterpret_cast<char *>(&self) +
-                                         self.reset_active_offset;
-                      if (active_pos != new_active) {
-                        auto &c = *reinterpret_cast<std::remove_cvref_t<C> *>(
-                            active_pos);
-                        call::handle(c, radio_button::trigger_off{}, bp);
-                      }
-                    } else {
-                      unused(self, new_active, bp);
-                    }
-                  };
-              reset_active_offset = reinterpret_cast<char const *>(&c) -
-                                    reinterpret_cast<char const *>(this);
+            [this, &back_prop, &evt]<typename C>(C &&c) {
+              if constexpr (can_be_event<ui_events::mouse_button_up, TEvt>()) {
+                if (is_event<ui_events::mouse_button_up>(evt)) {
+                  reset_active(
+                      *this, &c,
+                      static_cast<basic_widget_back_propagater<default_rect>>(
+                          back_prop));
+                  // if constexpr (has_handle<C, radio_button::trigger_on,
+                  // decltype(back_prop)>) {
+                  call::handle(c, radio_button::trigger_on{}, back_prop);
+                  //}
+                  reset_active =
+                      [](radio_button_trigger_impl &self,
+                         void const *new_active,
+                         basic_widget_back_propagater<default_rect> &&bp) {
+                        if constexpr (has_handle<C, radio_button::trigger_off,
+                                                 decltype(back_prop)>) {
+                          void *active_pos = reinterpret_cast<char *>(&self) +
+                                             self.reset_active_offset;
+                          if (active_pos != new_active) {
+                            auto &c =
+                                *reinterpret_cast<std::remove_cvref_t<C> *>(
+                                    active_pos);
+                            call::handle(c, radio_button::trigger_off{}, bp);
+                          }
+                        } else {
+                          unused(self, new_active, bp);
+                        }
+                      };
+                  reset_active_offset = reinterpret_cast<char const *>(&c) -
+                                        reinterpret_cast<char const *>(this);
+                }
+              }
             },
             elements())) {
     }
@@ -1817,21 +1854,37 @@ template <typename TElements = std::tuple<>>
 class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
 
-  using element_constraint = impl::maybe_build_constraint<radio_button::sub_constraint>;
+  using element_constraint =
+      impl::maybe_build_constraint<radio_button::sub_constraint>;
+
+  constexpr base_t &&move_base() {
+    return std::move(static_cast<base_t &>(*this));
+  }
+
+  static constexpr auto do_build_group(auto &&g) {
+    return impl::build_group(radio_button::sub_constraint{},
+                             std::forward<decltype(g)>(g));
+  }
+
+  using built_elements_t =
+      decltype(do_build_group(std::declval<TElements &&>()));
+
+  constexpr auto build_group() {
+    return do_build_group(move_base().get(bp::index_constant<0>{}));
+  }
 
 public:
   using base_t::base_t;
 
-  template <typename... Ts, typename TE = impl::args_to_group_t<
-                                element_constraint, Ts &&...>>
+  template <typename... Ts,
+            typename TE = impl::args_to_group_t<element_constraint, Ts &&...>>
   constexpr radio_button_trigger<TE> elements(Ts &&...vs) && {
-    return radio_button_trigger<TE>(impl::args_to_group(
-        element_constraint{}, std::forward<Ts>(vs)...));
+    return radio_button_trigger<TE>(
+        impl::args_to_group(element_constraint{}, std::forward<Ts>(vs)...));
   }
 
-  constexpr radio_button_trigger_impl<TElements> build() && {
-    return radio_button_trigger_impl<TElements>(
-        impl::build_group(radio_button::sub_constraint{}, std::move(*this).get(bp::index_constant<0>{})));
+  constexpr auto build() && -> radio_button_trigger_impl<built_elements_t> {
+    return radio_button_trigger_impl<built_elements_t>(build_group());
   }
 };
 

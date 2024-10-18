@@ -1217,6 +1217,16 @@ TEST(SubFind, FindInForEach) // NOLINT
   EXPECT_THAT(calls, Eq(0));
 }
 
+TEST(UiEventsMatcher, Basics) // NOLINT
+{
+  /*
+   * ui_event_switch(event_case<ui_events::mouse_down>([] () {}));
+   *
+   *
+   * */
+  FAIL() << "Not yet implemented";
+}
+
 struct test_renderer {
   struct individual_colours_t {
     std::vector<std::uint_least8_t> red, green, blue, alpha;
@@ -2212,14 +2222,14 @@ TEST(Widget, BasicList) // NOLINT
   auto constexpr full_area = default_rect{0, 0, 16, 10};
   auto button_builder = [&](default_rect const &r, int element) {
     return radio_button::element_builder()
-        .on_activate([&] {
+        .on_activate([&activations, &current_element, element] {
           ++activations;
           current_element = element;
         })
-        .on_deactivate([&] {
+        .on_deactivate([&deactivations, &current_element, element] {
           ++deactivations;
           current_element = -1;
-        });
+        }).area(r);
   };
   auto list = widget_builder()
                   .area(full_area)
