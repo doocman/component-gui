@@ -1743,15 +1743,13 @@ class element_builder
 
 public:
   using base_t::base_t;
-  constexpr auto on_activate(
-      auto &&v) && -> element_builder<std::unwrap_ref_decay_t<decltype(v)>,
-                                      Deactivate, Area> {
+  constexpr auto on_activate(auto &&v) && -> element_builder<
+      std::unwrap_ref_decay_t<decltype(v)>, Deactivate, Area> {
     auto s = move_this_as_base();
     return {std::forward<decltype(v)>(v), get<1>(*s), get<2>(*s)};
   }
-  constexpr auto on_deactivate(auto &&v)
-      && -> element_builder<Activate, std::unwrap_ref_decay_t<decltype(v)>,
-                            Area> {
+  constexpr auto on_deactivate(auto &&v) && -> element_builder<
+      Activate, std::unwrap_ref_decay_t<decltype(v)>, Area> {
     auto s = move_this_as_base();
     return {get<0>(*s), std::forward<decltype(v)>(v), get<2>(*s)};
   }
@@ -1777,10 +1775,10 @@ template <each_constraint<radio_button::sub_constraint> TElements>
 class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
   template <typename T> using basic_function = T *;
-  basic_function<void(radio_button_trigger_impl &, void const *,
+  basic_function<void(radio_button_trigger_impl &,
                       basic_widget_back_propagater<default_rect> &&)>
       reset_active = bp::no_op;
-  std::ptrdiff_t reset_active_offset{};
+  std::ptrdiff_t reset_active_offset = sizeof(radio_button_trigger_impl);
 
   static constexpr decltype(auto) elements(auto &&self) noexcept {
     using t = bp::copy_cvref_t<base_t, decltype(self)>;
@@ -1788,6 +1786,16 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   }
   constexpr decltype(auto) elements() noexcept { return elements(*this); }
   constexpr decltype(auto) elements() const noexcept { return elements(*this); }
+  constexpr void *current_active_element() noexcept {
+    return reinterpret_cast<char *>(this) + reset_active_offset;
+  }
+  constexpr std::ptrdiff_t get_active_offset(auto const &e) const {
+    auto ptr = reinterpret_cast<char const *>(&e);
+    auto sptr = reinterpret_cast<char const *>(this);
+    CGUI_ASSERT(ptr >= sptr);
+    CGUI_ASSERT(ptr < reinterpret_cast<char const *>(&reset_active));
+    return ptr - sptr;
+  }
 
 public:
   using base_t::base_t;
@@ -1806,47 +1814,38 @@ public:
               if constexpr (can_be_event<ui_events::mouse_button_up, TEvt>()) {
                 if (is_event<ui_events::mouse_button_up>(evt)) {
                   reset_active(
-                      *this, &c,
+                      *this,
                       static_cast<basic_widget_back_propagater<default_rect>>(
                           back_prop));
-                  // if constexpr (has_handle<C, radio_button::trigger_on,
-                  // decltype(back_prop)>) {
-                  call::handle(c, radio_button::trigger_on{}, back_prop);
-                  //}
-                  reset_active =
-                      [](radio_button_trigger_impl &self,
-                         void const *new_active,
-                         basic_widget_back_propagater<default_rect> &&bp) {
-                        if constexpr (has_handle<C, radio_button::trigger_off,
-                                                 decltype(back_prop)>) {
-                          void *active_pos = reinterpret_cast<char *>(&self) +
-                                             self.reset_active_offset;
-                          if (active_pos != new_active) {
+                  if (&c != current_active_element()) {
+                    if constexpr (has_handle<C, radio_button::trigger_on,
+                                             decltype(back_prop)>) {
+                      call::handle(c, radio_button::trigger_on{}, back_prop);
+                    }
+                    reset_active =
+                        [](radio_button_trigger_impl &self,
+                           basic_widget_back_propagater<default_rect> &&bp) {
+                          if constexpr (has_handle<C, radio_button::trigger_off,
+                                                   decltype(back_prop)>) {
+                            void *active_pos = self.current_active_element();
                             auto &c =
                                 *reinterpret_cast<std::remove_cvref_t<C> *>(
                                     active_pos);
                             call::handle(c, radio_button::trigger_off{}, bp);
+                          } else {
+                            unused(self, bp);
                           }
-                        } else {
-                          unused(self, new_active, bp);
-                        }
-                      };
-                  reset_active_offset = reinterpret_cast<char const *>(&c) -
-                                        reinterpret_cast<char const *>(this);
+                        };
+                    reset_active_offset = get_active_offset(c);
+                  } else {
+                    reset_active = bp::no_op;
+                    reset_active_offset = sizeof(radio_button_trigger_impl);
+                  }
                 }
               }
             },
             elements())) {
     }
-#if 0
-    if (call::tuple_find(
-            widget.subcomponents(),
-            [p = call::position(evt)](auto &s) {
-              return hit_box(call::area(s), p);
-            },
-            []() {})) {
-    }
-#endif
   }
 };
 
