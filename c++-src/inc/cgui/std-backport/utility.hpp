@@ -217,6 +217,47 @@ constexpr decltype(auto) get(T &&t) {
   return std::remove_cvref_t<T>::get(std::forward<T>(t), index_constant<tI>{});
 }
 } // namespace impl
+} // namespace cgui::bp
+namespace std {
+template <std::size_t tI, typename... Ts>
+struct tuple_size<cgui::bp::impl::empty_structs_optimiser_impl<tI, Ts...>>
+    : std::integral_constant<std::size_t, tI + sizeof...(Ts)> {};
+template <std::size_t i, std::size_t tI, typename... Ts>
+struct tuple_element<i,
+                     cgui::bp::impl::empty_structs_optimiser_impl<tI, Ts...>> {
+  using type = decltype(get<i>(
+      declval<cgui::bp::impl::empty_structs_optimiser_impl<tI, Ts...>>()));
+};
+template <std::size_t i, std::size_t tI, typename... Ts>
+struct tuple_element<
+    i, cgui::bp::impl::empty_structs_optimiser_impl<tI, Ts...> const> {
+  using type = decltype(get<i>(
+      declval<
+          cgui::bp::impl::empty_structs_optimiser_impl<tI, Ts...> const>()));
+};
+} // namespace std
+namespace cgui::bp {
+namespace impl {
+
+template <typename T, std::size_t... is, typename F>
+  requires(std::invocable<F &&, decltype(get<is>(std::declval<T &&>()))...>)
+constexpr decltype(auto) do_apply_to(T &&t, F &&f, std::index_sequence<is...>) {
+  return std::invoke(std::forward<F>(f), get<is>(std::forward<T>(t))...);
+}
+
+template <typename T, typename F>
+  requires(requires(T &&t, F &&f) {
+    do_apply_to(
+        std::forward<T>(t), std::forward<F>(f),
+        std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>());
+  })
+constexpr decltype(auto) apply_to(T &&t, F &&f) {
+  return do_apply_to(
+      std::forward<T>(t), std::forward<F>(f),
+      std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>());
+}
+
+} // namespace impl
 template <typename... Ts>
 using empty_structs_optimiser = impl::empty_structs_optimiser_impl<0u, Ts...>;
 

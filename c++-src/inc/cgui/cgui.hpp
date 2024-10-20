@@ -1800,6 +1800,13 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
     return ptr - sptr;
   }
 
+  constexpr auto event_switch(subable_widget_back_propagator auto &back_prop) {
+    using enum ui_events;
+    return saved_ui_event_switch(std::forward_as_tuple(*this, back_prop),
+                                 event_case<mouse_button_up>([] (){})
+                                 );
+  }
+
 public:
   using base_t::base_t;
   template <

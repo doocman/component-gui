@@ -247,6 +247,7 @@ template <typename T>
 constexpr bool is_event_case = is_event_case_raw<std::remove_cvref_t<T>>;
 } // namespace impl
 
+
 template <has_event_type Evt, typename Data, ui_events... evt_vs,
           typename... Fs>
   requires(bp::is_unique(evt_vs...) && !impl::is_event_case<Data> &&
@@ -266,6 +267,43 @@ constexpr bool ui_event_switch(Evt &&e, event_case_t<evt_vs, Fs> &&...cases) {
   // The forwarding operator is fine to use hre since the cases leaves both e
   // and d untouched if the case does not correspond to the correct event.
   return (cases(std::forward<Evt>(e)) || ...);
+}
+
+template <typename Data, typename... Fs>
+class ui_event_switch_t : bp::empty_structs_optimiser<Data, Fs...> {
+  using _base_t = bp::empty_structs_optimiser<Data, Fs...>;
+  static constexpr auto&& to_base(auto&& self) {
+    using t = bp::copy_cvref_t<_base_t&, decltype(self)>;
+    return static_cast<t>(self);
+  }
+public:
+  using _base_t::_base_t;
+
+  constexpr bool operator()(auto&& evt) & {
+    return call::apply_to(to_base(*this), [] (auto&& data, auto&&... cases) {
+      ui_event_switch(std::forward<decltype(data)>(data), std::forward<decltype(cases)>(cases)...);
+    });
+  }
+  constexpr bool operator()(auto&& evt) const & {
+    return call::apply_to(to_base(*this), [] (auto&& data, auto&&... cases) {
+      ui_event_switch(std::forward<decltype(data)>(data), std::forward<decltype(cases)>(cases)...);
+    });
+  }
+  constexpr bool operator()(auto&& evt) && {
+    return call::apply_to(to_base(std::move(*this)), [] (auto&& data, auto&&... cases) {
+      ui_event_switch(std::forward<decltype(data)>(data), std::forward<decltype(cases)>(cases)...);
+    });
+  }
+  constexpr bool operator()(auto&& evt) const && {
+    return call::apply_to(to_base(std::move(*this)), [] (auto&& data, auto&&... cases) {
+      ui_event_switch(std::forward<decltype(data)>(data), std::forward<decltype(cases)>(cases)...);
+    });
+  }
+};
+template <typename Data, ui_events... evt_vs,
+          typename... Fs>
+constexpr ui_event_switch_t<std::unwrap_ref_decay_t<Data>, event_case_t<evt_vs, Fs>...> saved_ui_event_switch(Data&& d, event_case_t<evt_vs, Fs>&&... cases) {
+  return {std::forward<Data>(d), std::move(cases)...};
 }
 } // namespace cgui
 
