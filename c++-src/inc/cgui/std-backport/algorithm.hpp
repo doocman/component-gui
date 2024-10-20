@@ -48,6 +48,12 @@ constexpr auto find_template_index(T const &v) {
   return std::distance(begin(vals), it);
 }
 
+template <typename... Ts, typename T = std::remove_cvref_t<std::common_type_t<Ts...>>>
+constexpr bool is_unique(Ts&&... values) {
+  std::array<T, sizeof...(Ts)> vals{values...};
+  return ((std::count(begin(vals), end(vals), values) == 1) && ...);
+}
+
 } // namespace cgui::bp
 
 #endif

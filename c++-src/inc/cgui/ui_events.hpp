@@ -208,28 +208,65 @@ struct cgui_mouse_exit_event {
 template <ui_events evt_val, typename F>
 class event_case_t : bp::empty_structs_optimiser<F> {
 public:
+  using bp::empty_structs_optimiser<F>::empty_structs_optimiser;
+
   template <typename Evt, typename... Ts>
-   requires(can_be_event<evt_val, Evt>())
-  constexpr bool operator()(Evt&& e, Ts&&... args)  {
+    requires(can_be_event<evt_val, Evt>())
+  constexpr bool operator()(Evt &&e, Ts &&...args) {
     if (is_event<evt_val>(e)) {
-      auto ef = bp::as_forward<Evt>(e);
-      if constexpr(std::invocable<F, Evt&&, Ts&&...>) {
-        std::invoke(this->get_first(), *ef, std::forward<Ts>(args)...);
+      if constexpr (std::invocable<F, Evt &&, Ts &&...>) {
+        std::invoke(this->get_first(), std::forward<Evt>(e),
+                    std::forward<Ts>(args)...);
+      } else if constexpr (std::invocable<F, Evt &&>) {
+        std::invoke(this->get_first(), std::forward<Evt>(e));
       } else {
-        static_assert(std::invocable<F, Evt&&>, "Bad signature of function F");
-        std::invoke(this->get_first(), *ef);
+        static_assert(std::invocable<F>, "Bad signature of function F");
+        std::invoke(this->get_first());
+        unused(e, args...);
       }
       return true;
     }
     return false;
   }
   template <typename Evt, typename... Ts>
-   requires(!can_be_event<evt_val, Evt>())
-  constexpr bool operator()(Evt&&, Ts&&...)
-  {
+    requires(!can_be_event<evt_val, Evt>())
+  constexpr bool operator()(Evt &&, Ts &&...) {
     return false;
   }
 };
+template <ui_events evt_v, typename T>
+constexpr event_case_t<evt_v, std::remove_cvref_t<T>> event_case(T &&in) {
+  return event_case_t<evt_v, std::remove_cvref_t<T>>{std::forward<T>(in)};
 }
+
+namespace impl {
+template <typename> constexpr bool is_event_case_raw = false;
+template <ui_events e, typename T>
+constexpr bool is_event_case_raw<event_case_t<e, T>> = true;
+template <typename T>
+constexpr bool is_event_case = is_event_case_raw<std::remove_cvref_t<T>>;
+} // namespace impl
+
+template <has_event_type Evt, typename Data, ui_events... evt_vs,
+          typename... Fs>
+  requires(bp::is_unique(evt_vs...) && !impl::is_event_case<Data> &&
+           ((std::invocable<Fs> || std::invocable<Fs, Evt &&> ||
+             std::invocable<Fs, Evt &&, Data &&>) &&
+            ...))
+constexpr bool ui_event_switch(Evt &&e, Data &&d,
+                               event_case_t<evt_vs, Fs> &&...cases) {
+  // The forwarding operator is fine to use hre since the cases leaves both e
+  // and d untouched if the case does not correspond to the correct event.
+  return (cases(std::forward<Evt>(e), std::forward<Data>(d)) || ...);
+}
+template <has_event_type Evt, ui_events... evt_vs,
+          bp::invocable_or_invocable_args<Evt>... Fs>
+  requires(bp::is_unique(evt_vs...))
+constexpr bool ui_event_switch(Evt &&e, event_case_t<evt_vs, Fs> &&...cases) {
+  // The forwarding operator is fine to use hre since the cases leaves both e
+  // and d untouched if the case does not correspond to the correct event.
+  return (cases(std::forward<Evt>(e)) || ...);
+}
+} // namespace cgui
 
 #endif

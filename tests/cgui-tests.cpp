@@ -1238,7 +1238,7 @@ TEST(UiEventsMatcher, Basics) // NOLINT
   EXPECT_CALL(f, Call(StrEq("Up")));
 
   using enum ui_events;
-  auto constexpr my_switch = [&f](auto &&evt) {
+  auto my_switch = [&f](auto &&evt) {
     ui_event_switch(evt,
                     event_case<mouse_button_down>([&f] { f.Call("Down"); }),
                     event_case<mouse_button_up>([&f] { f.Call("Up"); }),
@@ -1258,11 +1258,13 @@ TEST(UiEventsMatcher, BasicsState) // NOLINT
   EXPECT_CALL(f, Call(StrEq("Up")));
 
   using enum ui_events;
-  auto constexpr my_switch = [&f](auto &&evt) {
-    ui_event_switch(evt, f,
-                    event_case<mouse_button_down>([] (auto& f2) { f2.Call("Down"); }),
-                    event_case<mouse_button_up>([] (auto& f2) { f2.Call("Up"); }),
-                    event_case<mouse_move>([&f] { f.Call("Move"); }));
+  auto my_switch = [&f](auto &&evt) {
+    ui_event_switch(
+        evt, f, event_case<mouse_button_down>([](auto &&, auto &f2) {
+          f2.Call("Down");
+        }),
+        event_case<mouse_button_up>([](auto &&, auto &f2) { f2.Call("Up"); }),
+        event_case<mouse_move>([&f] { f.Call("Move"); }));
   };
   my_switch(dummy_mouse_move_event{});
   my_switch(dummy_mouse_down_event{});

@@ -92,7 +92,8 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
       std::is_nothrow_default_constructible_v<_base_t>) = default;
   template <typename TArg, typename... TArgs>
     requires(std::constructible_from<_base_t, TArgs && ...>)
-  constexpr explicit(sizeof...(TArgs) == 0) empty_structs_optimiser_impl(TArg &&, TArgs &&...to_base)
+  constexpr explicit(sizeof...(TArgs) == 0)
+      empty_structs_optimiser_impl(TArg &&, TArgs &&...to_base)
       : _base_t(std::forward<TArgs>(to_base)...) {}
 
   template <bp::cvref_type<empty_structs_optimiser_impl> TSelf, typename Tag>
@@ -108,14 +109,31 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
   static constexpr decltype(auto) get(TSelf &&self, Tag tag) {
     return _base_t::get(static_cast<TBase>(self), tag);
   }
-
   template <typename Tag>
-    requires(static_get<_this_t, Tag>)
-  constexpr decltype(auto) get(Tag tag) const {
+    requires static_get<_this_t, Tag>
+  constexpr decltype(auto) get(Tag tag) & {
     return _this_t::get(*this, tag);
   }
-  constexpr decltype(auto) get_first() requires tIndex == 0 {
-    return _this_t::get(this, index_constant<tIndex>{});
+  template <typename Tag>
+    requires static_get<_this_t, Tag>
+  constexpr decltype(auto) get(Tag tag) const & {
+    return _this_t::get(*this, tag);
+  }
+  template <typename Tag>
+    requires static_get<_this_t, Tag>
+  constexpr decltype(auto) get(Tag tag) && {
+    return _this_t::get(std::move(*this), tag);
+  }
+  template <typename Tag>
+    requires static_get<_this_t, Tag>
+  constexpr decltype(auto) get(Tag tag) const && {
+    return _this_t::get(std::move(*this), tag);
+  }
+
+  constexpr decltype(auto) get_first()
+    requires(tIndex == 0)
+  {
+    return _this_t::get(*this, index_constant<tIndex>{});
   }
 };
 
@@ -132,8 +150,8 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
   template <typename TArg, typename... TArgs>
     requires(std::constructible_from<T, TArg &&> &&
              std::constructible_from<_base_t, TArgs && ...>)
-  constexpr explicit(sizeof...(TArgs) == 0) empty_structs_optimiser_impl(TArg &&arg,
-                                                  TArgs &&...to_base)
+  constexpr explicit(sizeof...(TArgs) == 0)
+      empty_structs_optimiser_impl(TArg &&arg, TArgs &&...to_base)
       : _base_t(std::forward<TArgs>(to_base)...),
         val_(std::forward<TArg>(arg)) {}
 
@@ -174,22 +192,27 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
     return _this_t::get(*this, tag);
   }
 
-  constexpr decltype(auto) get_first() && requires tIndex == 0 {
+  // double parenthesis due to clang-format bug.
+  constexpr decltype(auto) get_first() &&
+      requires((tIndex == 0)) {
+        return _this_t::get(std::move(*this), index_constant<tIndex>{});
+      } constexpr decltype(auto) get_first() const &&
+        requires((tIndex == 0))
+  {
     return _this_t::get(std::move(*this), index_constant<tIndex>{});
   }
-  constexpr decltype(auto) get_first() const && requires tIndex == 0 {
-    return _this_t::get(std::move(*this), index_constant<tIndex>{});
-  }
-  constexpr decltype(auto) get_first() & requires tIndex == 0 {
-    return _this_t::get(*this, index_constant<tIndex>{});
-  }
-  constexpr decltype(auto) get_first() const & requires tIndex == 0 {
+  constexpr decltype(auto) get_first() &
+      requires((tIndex == 0)) {
+        return _this_t::get(*this, index_constant<tIndex>{});
+      } constexpr decltype(auto) get_first() const &
+        requires((tIndex == 0))
+  {
     return _this_t::get(*this, index_constant<tIndex>{});
   }
 };
 
 template <std::size_t tI, typename T>
-  requires(impl::static_get<T, index_constant<tI>>)
+  requires impl::static_get<T, index_constant<tI>>
 constexpr decltype(auto) get(T &&t) {
   return std::remove_cvref_t<T>::get(std::forward<T>(t), index_constant<tI>{});
 }

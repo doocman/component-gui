@@ -13,8 +13,8 @@
 #include <cgui/std-backport/array.hpp>
 #include <cgui/std-backport/ranges.hpp>
 #include <cgui/stl_extend.hpp>
-#include <cgui/widget_algorithm.hpp>
 #include <cgui/ui_events.hpp>
+#include <cgui/widget_algorithm.hpp>
 
 namespace cgui {
 template <typename TX, typename TY> class nudger {
@@ -729,7 +729,7 @@ public:
     requires has_handle<TEventHandler, TArea const &, decltype(evt)>
   {
     display_state_callbacks_t display_callbacks(area());
-    handle(evt, display_callbacks);
+    handle(std::forward<decltype(evt)>(evt), display_callbacks);
     return display_callbacks.result_area();
   }
   constexpr TSubs &subcomponents()
@@ -1744,13 +1744,15 @@ class element_builder
 
 public:
   using base_t::base_t;
-  constexpr auto on_activate(auto &&v) && -> element_builder<
-      std::unwrap_ref_decay_t<decltype(v)>, Deactivate, Area> {
+  constexpr auto on_activate(
+      auto &&v) && -> element_builder<std::unwrap_ref_decay_t<decltype(v)>,
+                                      Deactivate, Area> {
     auto s = move_this_as_base();
     return {std::forward<decltype(v)>(v), get<1>(*s), get<2>(*s)};
   }
-  constexpr auto on_deactivate(auto &&v) && -> element_builder<
-      Activate, std::unwrap_ref_decay_t<decltype(v)>, Area> {
+  constexpr auto on_deactivate(auto &&v)
+      && -> element_builder<Activate, std::unwrap_ref_decay_t<decltype(v)>,
+                            Area> {
     auto s = move_this_as_base();
     return {get<0>(*s), std::forward<decltype(v)>(v), get<2>(*s)};
   }
