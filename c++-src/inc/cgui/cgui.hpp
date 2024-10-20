@@ -14,6 +14,7 @@
 #include <cgui/std-backport/ranges.hpp>
 #include <cgui/stl_extend.hpp>
 #include <cgui/widget_algorithm.hpp>
+#include <cgui/ui_events.hpp>
 
 namespace cgui {
 template <typename TX, typename TY> class nudger {

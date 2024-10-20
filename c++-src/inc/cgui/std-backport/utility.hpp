@@ -111,23 +111,11 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
 
   template <typename Tag>
     requires(static_get<_this_t, Tag>)
-  constexpr decltype(auto) get(Tag tag) && {
-    return _this_t::get(std::move(*this), tag);
-  }
-  template <typename Tag>
-    requires(static_get<_this_t &, Tag>)
-  constexpr decltype(auto) get(Tag tag) & {
+  constexpr decltype(auto) get(Tag tag) const {
     return _this_t::get(*this, tag);
   }
-  template <typename Tag>
-    requires(static_get<_this_t const, Tag>)
-  constexpr decltype(auto) get(Tag tag) const && {
-    return _this_t::get(std::move(*this), tag);
-  }
-  template <typename Tag>
-    requires(static_get<_this_t const &, Tag>)
-  constexpr decltype(auto) get(Tag tag) const & {
-    return _this_t::get(*this, tag);
+  constexpr decltype(auto) get_first() requires tIndex == 0 {
+    return _this_t::get(this, index_constant<tIndex>{});
   }
 };
 
@@ -184,6 +172,19 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
     requires(static_get<_this_t const &, Tag>)
   constexpr decltype(auto) get(Tag tag) const & {
     return _this_t::get(*this, tag);
+  }
+
+  constexpr decltype(auto) get_first() && requires tIndex == 0 {
+    return _this_t::get(std::move(*this), index_constant<tIndex>{});
+  }
+  constexpr decltype(auto) get_first() const && requires tIndex == 0 {
+    return _this_t::get(std::move(*this), index_constant<tIndex>{});
+  }
+  constexpr decltype(auto) get_first() & requires tIndex == 0 {
+    return _this_t::get(*this, index_constant<tIndex>{});
+  }
+  constexpr decltype(auto) get_first() const & requires tIndex == 0 {
+    return _this_t::get(*this, index_constant<tIndex>{});
   }
 };
 

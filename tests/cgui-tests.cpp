@@ -1159,15 +1159,21 @@ TYPED_TEST(BoxApiFixture, MoveTlTo) // NOLINT
 TEST(SubFind, FindInTuple) // NOLINT
 {
   auto v = std::tuple(1, 2, 3, 3);
-  int const* res = nullptr;
+  int const *res = nullptr;
   int calls{};
-  auto cb = [&res, &calls] (int const& i) { res = &i; ++calls; };
+  auto cb = [&res, &calls](int const &i) {
+    res = &i;
+    ++calls;
+  };
   auto found = find_first_cb(equals(2), cb, v);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&std::get<1>(v)));
   EXPECT_THAT(calls, Eq(1));
 
-  auto reset = [&] { res=nullptr; calls = 0; };
+  auto reset = [&] {
+    res = nullptr;
+    calls = 0;
+  };
   reset();
   found = find_first_cb(equals(3), cb, v);
   EXPECT_THAT(found, IsTrue());
@@ -1184,7 +1190,7 @@ TEST(SubFind, FindInTuple) // NOLINT
 struct dummy_for_eachable {
   int i1, i2, i3, i4;
 
-  constexpr void for_each(auto&& cb) {
+  constexpr void for_each(auto &&cb) {
     cb(i1);
     cb(i2);
     cb(i3);
@@ -1195,15 +1201,21 @@ struct dummy_for_eachable {
 TEST(SubFind, FindInForEach) // NOLINT
 {
   auto v = dummy_for_eachable{1, 2, 3, 3};
-  int const* res = nullptr;
+  int const *res = nullptr;
   int calls{};
-  auto cb = [&res, &calls] (int const& i) { res = &i; ++calls; };
+  auto cb = [&res, &calls](int const &i) {
+    res = &i;
+    ++calls;
+  };
   auto found = find_first_cb(equals(2), cb, v);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&v.i2));
   EXPECT_THAT(calls, Eq(1));
 
-  auto reset = [&] { res=nullptr; calls = 0; };
+  auto reset = [&] {
+    res = nullptr;
+    calls = 0;
+  };
   reset();
   found = find_first_cb(equals(3), cb, v);
   EXPECT_THAT(found, IsTrue());
@@ -1219,12 +1231,42 @@ TEST(SubFind, FindInForEach) // NOLINT
 
 TEST(UiEventsMatcher, Basics) // NOLINT
 {
-  /*
-   * ui_event_switch(event_case<ui_events::mouse_down>([] () {}));
-   *
-   *
-   * */
-  FAIL() << "Not yet implemented";
+  auto f = MockFunction<void(std::string_view)>();
+  InSequence s;
+  EXPECT_CALL(f, Call(StrEq("Move")));
+  EXPECT_CALL(f, Call(StrEq("Down")));
+  EXPECT_CALL(f, Call(StrEq("Up")));
+
+  using enum ui_events;
+  auto constexpr my_switch = [&f](auto &&evt) {
+    ui_event_switch(evt,
+                    event_case<mouse_button_down>([&f] { f.Call("Down"); }),
+                    event_case<mouse_button_up>([&f] { f.Call("Up"); }),
+                    event_case<mouse_move>([&f] { f.Call("Move"); }));
+  };
+  my_switch(dummy_mouse_move_event{});
+  my_switch(dummy_mouse_down_event{});
+  my_switch(dummy_mouse_up_event{});
+}
+
+TEST(UiEventsMatcher, BasicsState) // NOLINT
+{
+  auto f = MockFunction<void(std::string_view)>();
+  InSequence s;
+  EXPECT_CALL(f, Call(StrEq("Move")));
+  EXPECT_CALL(f, Call(StrEq("Down")));
+  EXPECT_CALL(f, Call(StrEq("Up")));
+
+  using enum ui_events;
+  auto constexpr my_switch = [&f](auto &&evt) {
+    ui_event_switch(evt, f,
+                    event_case<mouse_button_down>([] (auto& f2) { f2.Call("Down"); }),
+                    event_case<mouse_button_up>([] (auto& f2) { f2.Call("Up"); }),
+                    event_case<mouse_move>([&f] { f.Call("Move"); }));
+  };
+  my_switch(dummy_mouse_move_event{});
+  my_switch(dummy_mouse_down_event{});
+  my_switch(dummy_mouse_up_event{});
 }
 
 struct test_renderer {
@@ -2193,8 +2235,7 @@ TEST(Widget, BasicButton) // NOLINT
 }
 
 constexpr void click_widget(auto &w, default_pixel_coord const &pos = {},
-                            auto &&...args)
-{
+                            auto &&...args) {
   w.handle(dummy_mouse_down_event{.pos = pos, .button_id = {}}, args...);
   w.handle(dummy_mouse_up_event{.pos = pos, .button_id = {}}, args...);
 }
@@ -2229,7 +2270,8 @@ TEST(Widget, BasicList) // NOLINT
         .on_deactivate([&deactivations, &current_element, element] {
           ++deactivations;
           current_element = -1;
-        }).area(r);
+        })
+        .area(r);
   };
   auto list = widget_builder()
                   .area(full_area)
