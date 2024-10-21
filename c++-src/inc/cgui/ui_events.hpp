@@ -2,6 +2,8 @@
 #ifndef COMPONENT_GUI_CGUI_UI_EVENTS_HPP
 #define COMPONENT_GUI_CGUI_UI_EVENTS_HPP
 
+#include <tuple>
+
 #include <cgui/cgui-types.hpp>
 #include <cgui/std-backport/utility.hpp>
 
@@ -89,7 +91,9 @@ template <ui_events evt> struct subset_ui_events<evt> {
 };
 
 template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> && requires() {
+concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
+  requires()
+{
   {
     std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
   } -> std::convertible_to<bool>;
@@ -207,11 +211,16 @@ struct cgui_mouse_exit_event {
 
 template <ui_events evt_val, typename F>
 class event_case_t : bp::empty_structs_optimiser<F> {
+  template <typename Evt, typename... Ts>
+  static constexpr bool valid_function =
+      std::invocable<F, Evt &&, Ts &&...> || std::invocable<F, Evt &&> ||
+      std::invocable<F>;
+
 public:
   using bp::empty_structs_optimiser<F>::empty_structs_optimiser;
 
   template <typename Evt, typename... Ts>
-    requires(can_be_event<evt_val, Evt>())
+    requires(can_be_event<evt_val, Evt>() && valid_function<Evt, Ts...>)
   constexpr bool operator()(Evt &&e, Ts &&...args) {
     if (is_event<evt_val>(e)) {
       if constexpr (std::invocable<F, Evt &&, Ts &&...>) {
@@ -247,7 +256,6 @@ template <typename T>
 constexpr bool is_event_case = is_event_case_raw<std::remove_cvref_t<T>>;
 } // namespace impl
 
-
 template <has_event_type Evt, typename Data, ui_events... evt_vs,
           typename... Fs>
   requires(bp::is_unique(evt_vs...) && !impl::is_event_case<Data> &&
@@ -272,37 +280,77 @@ constexpr bool ui_event_switch(Evt &&e, event_case_t<evt_vs, Fs> &&...cases) {
 template <typename Data, typename... Fs>
 class ui_event_switch_t : bp::empty_structs_optimiser<Data, Fs...> {
   using _base_t = bp::empty_structs_optimiser<Data, Fs...>;
-  static constexpr auto&& to_base(auto&& self) {
-    using t = bp::copy_cvref_t<_base_t&, decltype(self)>;
+  static constexpr auto &&to_base(auto &&self) {
+    using t = bp::copy_cvref_t<_base_t &, decltype(self)>;
     return static_cast<t>(self);
   }
+
 public:
   using _base_t::_base_t;
+  static constexpr bool call(bp::cvref_type<ui_event_switch_t> auto &&self,
+                             auto &&evt, auto &&...args)
+    requires((std::invocable<Fs, decltype(evt)> ||
+                  std::invocable<Fs, decltype(evt), Data &&> ||
+                  std::invocable < Fs,
+              decltype(evt), Data &&, decltype(args)... >) && ...)
+  {
+    using evt_t = decltype(evt);
+    auto sf = bp::as_forward<decltype(self)>(self);
+    auto ef = bp::as_forward<evt_t>(evt);
+    if constexpr (sizeof...(args) == 0) {
+      return call::apply_to(to_base(*sf), [ef](auto &&data, auto &&...cases) {
+        ui_event_switch(*ef, std::forward<decltype(data)>(data),
+                        std::forward<decltype(cases)>(cases)...);
+      });
+    } else {
+      auto case_caller = [ef, args_tuple = std::forward_as_tuple(
+                                  args...)]<typename Case>(Data &&d, Case &&c) {
+        auto cf = bp::as_forward<Case>(c);
+        auto df = bp::as_forward<Data>(d);
+        if constexpr (std::invocable<Case, evt_t>) {
+          return std::invoke(*cf, *ef);
+        } else if constexpr (std::invocable<Case, evt_t, Data &&>) {
+          return std::invoke(*cf, *ef, *df);
+        } else {
+          // The following line may introduce trouble on some versions of
+          // MSVC... static_assert(std::invocable<Case, evt_t, Data&&,
+          // decltype(args)...>);
+          return std::apply(
+              [&]<typename... Ts2>(Ts2 &&...args) {
+                return std::invoke(*cf, *ef, *df, std::forward<Ts2>(args)...);
+              },
+              args_tuple);
+        }
+      };
+      return call::apply_to(*to_base(*sf), [&case_caller]<typename... Cases>(
+                                               Data &&d, Cases &&...cs) {
+        return (case_caller(std::forward<Data>(d), std::forward<Cases>(cs)) ||
+                ...);
+      });
+    }
+  }
 
-  constexpr bool operator()(auto&& evt) & {
-    return call::apply_to(to_base(*this), [] (auto&& data, auto&&... cases) {
-      ui_event_switch(std::forward<decltype(data)>(data), std::forward<decltype(cases)>(cases)...);
-    });
+  constexpr bool operator()(auto &&evt, auto &&...args) & {
+    return call(*this, std::forward<decltype(evt)>(evt),
+                std::forward<decltype(args)>(args)...);
   }
-  constexpr bool operator()(auto&& evt) const & {
-    return call::apply_to(to_base(*this), [] (auto&& data, auto&&... cases) {
-      ui_event_switch(std::forward<decltype(data)>(data), std::forward<decltype(cases)>(cases)...);
-    });
+  constexpr bool operator()(auto &&evt, auto &&...args) const & {
+    return call(*this, std::forward<decltype(evt)>(evt),
+                std::forward<decltype(args)>(args)...);
   }
-  constexpr bool operator()(auto&& evt) && {
-    return call::apply_to(to_base(std::move(*this)), [] (auto&& data, auto&&... cases) {
-      ui_event_switch(std::forward<decltype(data)>(data), std::forward<decltype(cases)>(cases)...);
-    });
+  constexpr bool operator()(auto &&evt, auto &&...args) && {
+    return call(std::move(*this), std::forward<decltype(evt)>(evt),
+                std::forward<decltype(args)>(args)...);
   }
-  constexpr bool operator()(auto&& evt) const && {
-    return call::apply_to(to_base(std::move(*this)), [] (auto&& data, auto&&... cases) {
-      ui_event_switch(std::forward<decltype(data)>(data), std::forward<decltype(cases)>(cases)...);
-    });
+  constexpr bool operator()(auto &&evt, auto &&...args) const && {
+    return call(std::move(*this), std::forward<decltype(evt)>(evt),
+                std::forward<decltype(args)>(args)...);
   }
 };
-template <typename Data, ui_events... evt_vs,
-          typename... Fs>
-constexpr ui_event_switch_t<std::unwrap_ref_decay_t<Data>, event_case_t<evt_vs, Fs>...> saved_ui_event_switch(Data&& d, event_case_t<evt_vs, Fs>&&... cases) {
+template <typename Data, ui_events... evt_vs, typename... Fs>
+constexpr ui_event_switch_t<std::unwrap_ref_decay_t<Data>,
+                            event_case_t<evt_vs, Fs>...>
+saved_ui_event_switch(Data &&d, event_case_t<evt_vs, Fs> &&...cases) {
   return {std::forward<Data>(d), std::move(cases)...};
 }
 } // namespace cgui

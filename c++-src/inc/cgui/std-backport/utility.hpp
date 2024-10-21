@@ -54,6 +54,8 @@ template <typename T> struct as_forward {
 
   constexpr T &&value() const noexcept { return std::forward<T>(val_); }
   constexpr T &&operator*() const noexcept { return value(); }
+  constexpr std::remove_reference_t<T>& as_ref() noexcept { return val_; }
+  constexpr std::add_const_t<std::remove_reference_t<T>>& as_cref() const noexcept { return val_; }
 };
 
 template <typename T> as_forward(T &&) -> as_forward<T>;
