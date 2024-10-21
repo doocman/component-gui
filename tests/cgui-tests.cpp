@@ -1161,30 +1161,36 @@ TEST(SubFind, FindInTuple) // NOLINT
   auto v = std::tuple(1, 2, 3, 3);
   int const *res = nullptr;
   int calls{};
-  auto cb = [&res, &calls](int const &i) {
+  std::size_t last_index = -1;
+  auto cb = [&res, &calls, &last_index](int const &i, std::size_t index) {
     res = &i;
+    last_index = index;
     ++calls;
   };
   auto found = find_first_cb(equals(2), cb, v);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&std::get<1>(v)));
   EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_index, Eq(1));
 
   auto reset = [&] {
     res = nullptr;
     calls = 0;
+    last_index = -1;
   };
   reset();
   found = find_first_cb(equals(3), cb, v);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&std::get<2>(v)));
   EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_index, Eq(2));
 
   reset();
   found = find_first_cb(equals(4), cb, v);
   EXPECT_THAT(found, IsFalse());
   EXPECT_THAT(res, IsNull());
   EXPECT_THAT(calls, Eq(0));
+  EXPECT_THAT(last_index, Eq(std::size_t{highest_possible}));
 }
 
 struct dummy_for_eachable {
@@ -1203,30 +1209,36 @@ TEST(SubFind, FindInForEach) // NOLINT
   auto v = dummy_for_eachable{1, 2, 3, 3};
   int const *res = nullptr;
   int calls{};
-  auto cb = [&res, &calls](int const &i) {
+  std::size_t last_index = -1;
+  auto cb = [&res, &calls, &last_index](int const &i, std::size_t index) {
     res = &i;
+    last_index = index;
     ++calls;
   };
   auto found = find_first_cb(equals(2), cb, v);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&v.i2));
   EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_index, Eq(1));
 
   auto reset = [&] {
     res = nullptr;
     calls = 0;
+    last_index = highest_possible;
   };
   reset();
   found = find_first_cb(equals(3), cb, v);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&v.i3));
   EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_index, Eq(2));
 
   reset();
   found = find_first_cb(equals(4), cb, v);
   EXPECT_THAT(found, IsFalse());
   EXPECT_THAT(res, IsNull());
   EXPECT_THAT(calls, Eq(0));
+  EXPECT_THAT(last_index, Eq(std::size_t{highest_possible}));
 }
 
 TEST(UiEventsMatcher, Basics) // NOLINT
