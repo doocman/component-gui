@@ -1197,10 +1197,10 @@ struct dummy_for_eachable {
   int i1, i2, i3, i4;
 
   constexpr void for_each(auto &&cb) {
-    cb(i1);
-    cb(i2);
-    cb(i3);
-    cb(i4);
+    cb(i1, 0);
+    cb(i2, 1);
+    cb(i3, 2);
+    cb(i4, 3);
   }
 };
 
@@ -2269,7 +2269,7 @@ TEST(Widget, ButtonSharedStateCallback) // NOLINT
   EXPECT_THAT(i, Eq(1));
 }
 
-TEST(Widget, BasicList) // NOLINT
+TEST(Widget, RadioButtonList) // NOLINT
 {
   int current_element = lowest_possible;
   int activations{};

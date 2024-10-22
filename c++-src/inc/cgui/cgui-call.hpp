@@ -311,6 +311,17 @@ struct do_apply_to {
   }
 };
 
+#if defined(CGUI_HAS_NAMED_ARGS)
+template <typename> struct named_tuple_tags {};
+template <typename... Ts, dooc::template_string... tags>
+struct named_tuple_tags<dooc::named_tuple<dooc::named_arg_t<tags, Ts>...>> {
+  using type = dooc::template_string_list_t<tags...>;
+};
+template <typename T>
+using named_tuple_tags_t =
+    typename named_tuple_tags<std::remove_cvref_t<T>>::type;
+#endif
+
 struct do_for_each {
   template <typename T, typename TCB>
     requires(has_for_each<T, TCB> || std::ranges::input_range<T> ||
@@ -321,20 +332,32 @@ struct do_for_each {
              )
   constexpr void operator()(T &&t, TCB &&cb) const {
     auto tf = bp::as_forward<T>(t);
-    auto cbf = bp::as_forward<TCB>(cb);
-    if constexpr (has_for_each<T, TCB>) {
-      _do_for_each{}(*tf, *cbf);
+    // auto cbf = bp::as_forward<TCB>(cb);
+    auto cb_gen = [cbf = bp::as_forward<TCB>(cb)]<typename U, typename INT>(
+                      U &&in, INT &&index) {
+      bp::invoke_arg1_or_arg1_2(*cbf, std::forward<U>(in),
+                                std::forward<INT>(index));
+    };
+    if constexpr (has_for_each<T, decltype(cb_gen)>) {
+      _do_for_each{}(*tf, cb_gen);
     } else if constexpr (std::ranges::input_range<T>) {
-      std::ranges::for_each(*tf, *cbf);
+      std::ranges::for_each(
+          *tf, [&cb_gen, i = std::ptrdiff_t{}]<typename U>(U &&v) mutable {
+            cb_gen(std::forward<U>(v), i);
+            ++i;
+          });
 #ifdef CGUI_HAS_NAMED_ARGS
     } else if constexpr (dooc::named_tuple_like<T>) {
       dooc::tuple_for_each(
-          [&cb](auto &&, auto &&v) { cb(std::forward<decltype(v)>(v)); },
+          [&cb_gen]<typename U>(auto const &tag, U &&v) {
+            using tags = named_tuple_tags_t<T>;
+            cb_gen(std::forward<U>(v), dooc::find_string(tag, tags{}));
+          },
           std::forward<T>(t));
 #endif
     } else {
-      do_apply_to{}(*tf, [&cbf](auto &&...vals) {
-        bp::run_for_each(*cbf, std::forward<decltype(vals)>(vals)...);
+      do_apply_to{}(*tf, [&cb_gen](auto &&...vals) {
+        bp::run_for_each(cb_gen, std::forward<decltype(vals)>(vals)...);
       });
     }
   }
