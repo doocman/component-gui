@@ -1152,6 +1152,7 @@ template <display_component TDC, typename... TArgs> class display_per_state {
 public:
   constexpr explicit display_per_state(TArgs &&...args)
       : args_(std::forward<TArgs>(args)...) {}
+
   template <typename T, T... tStates>
   constexpr display_per_state_impl<TDC, T, tStates...>
   build(widget_states<T, tStates...>) && {
