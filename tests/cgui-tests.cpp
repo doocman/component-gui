@@ -2320,6 +2320,11 @@ TEST(Widget, RadioButtonList) // NOLINT
   EXPECT_THAT(current_element, Eq(1));
 }
 
+TEST(Widget, RadioButtonListRender) // NOLINT
+{
+  FAIL() << "Not yet implemented";
+}
+
 struct mock_widget_resize {
 
   MOCK_METHOD(void, do_resize, (int w, int h));
