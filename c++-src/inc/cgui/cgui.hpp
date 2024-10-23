@@ -1690,6 +1690,11 @@ using state_marker_t = make_widget_state_marker_sequence_t<
 using all_states_t = all_states_in_marker<state_marker_t>;
 template <typename T, typename TRender = dummy_renderer>
 concept element = has_render<T, TRender, state_marker_t>;
+template <typename T, typename TRender = dummy_renderer, typename Position = default_pixel_coord>
+concept element_list = has_render<T, TRender, state_marker_t> && requires(T&& t, Position const& p)
+{
+  call::find_sub_at_location(t, p, bp::false_predicate, bp::no_op);
+};
 struct sub_constraint {
   constexpr void operator()(element auto &&) const {}
 };
@@ -1775,14 +1780,38 @@ public:
 /// @brief Trigger for widgets that acts like a container of multiple buttons
 /// where at most one button should be enabled.
 ///
-template <each_constraint<radio_button::sub_constraint> TElements>
+template <radio_button::element TElements>
 class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
+
+  struct do_trigger_off {
+    radio_button_trigger_impl& self;
+    basic_widget_back_propagater<default_rect> bp;
+
+    template <typename Sub>
+    constexpr void operator()(Sub& s) const {
+      if constexpr (has_handle<Sub, radio_button::trigger_off,
+                                           decltype(bp)>) {
+        if constexpr (std::is_lvalue_reference_v<Sub>) {
+          void *active_pos = self.current_active_element();
+          auto &c = *reinterpret_cast<std::remove_cvref_t<Sub> *>(
+              active_pos);
+          call::handle(c, radio_button::trigger_off{}, bp);
+        } else {
+          call::handle(Sub{}, radio_button::trigger_off{}, bp);
+        }
+                                           } else {
+                                             unused(self, bp);
+                                           }
+    }
+  };
   template <typename T> using basic_function = T *;
   basic_function<void(radio_button_trigger_impl &,
                       basic_widget_back_propagater<default_rect> &&)>
       reset_active_ = bp::no_op;
   std::ptrdiff_t reset_active_offset_ = sizeof(radio_button_trigger_impl);
+  using reset_active_f = decltype(call::sub_accessor(std::declval<TElements>(), ))
+
   std::size_t current_element_ = -1;
   constexpr void reset_active(basic_widget_back_propagater<default_rect> &&p) {
     reset_active_(*this, std::move(p));
@@ -1867,20 +1896,29 @@ public:
           TEvt>
   constexpr void handle(T const &, TEvt &&evt,
                         subable_widget_back_propagator auto &&back_prop) {
-    if (find_first_cb(
+    if (call::find_sub_at_location(elements(), call::position(evt),
+#if 0
             [&evt](auto &&c) -> bool {
               return hit_box(call::area(c), call::position(evt));
             },
+#endif
             [this, &back_prop, &evt]<typename Sub>(Sub &&s, std::size_t index) {
               event_switch(std::forward<TEvt>(evt), back_prop,
                            std::forward<Sub>(s), index);
-            },
-            elements())) {
+            })) {
     }
   }
 };
 
-template <typename TElements = std::tuple<>>
+class subs_group {
+public:
+  constexpr void render(auto&&...) const {}
+  constexpr bool find_sub(auto&&...) {
+    return false;
+  }
+};
+
+template <typename TElements = subs_group>
 class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
 

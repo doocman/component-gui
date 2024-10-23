@@ -23,7 +23,23 @@ struct no_op_t {
     return &call<Ts...>;
   }
 };
+template <bool result_v>
+struct pretend_predicate_t {
+  template <typename T>
+  using function = T;
+
+  template <typename... Ts>
+  static constexpr bool call(Ts...) noexcept { return result_v; }
+  constexpr bool operator()(auto&&...) const noexcept { return result_v; }
+  template <typename... Ts>
+  constexpr explicit(false) operator function<bool(Ts...)>*() const noexcept {
+    return &call<Ts...>;
+  }
+};
 inline constexpr no_op_t no_op;
+template <bool r>
+inline constexpr pretend_predicate_t<r> pretend_predicate;
+inline constexpr auto false_predicate = pretend_predicate<false>;
 
 template <typename TF, typename... TVals> class trailing_curried {
   TF f_;

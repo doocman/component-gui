@@ -124,6 +124,15 @@
 /// Primary CGUI namespace
 namespace cgui {
 
+/// @brief Used in arguments when types needs to be deduced as part of a function signature
+///
+/// @see sub_accessor_t
+template <typename...>
+struct arguments_marker_t {};
+
+template <typename... Ts>
+inline constexpr arguments_marker_t<Ts...> arguments_marker;
+
 /// @brief Customisation point. Users may specialise this class to provide an
 /// API for new types.
 ///
@@ -287,6 +296,9 @@ CGUI_CALL_CONCEPT(render_text)
 CGUI_CALL_CONCEPT(area)
 CGUI_CALL_CONCEPT(glyph)
 CGUI_CALL_CONCEPT(text_colour)
+CGUI_CALL_CONCEPT(find_sub)
+CGUI_CALL_CONCEPT(find_sub_at_location)
+CGUI_CALL_CONCEPT(sub_accessor)
 
 template <typename T>
 concept is_tuple_like_hack =
@@ -300,7 +312,7 @@ struct do_apply_to {
               requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
                 std::apply(*cb, *t);
               }))
-  constexpr decltype(auto) operator()(T && t, TCB && cb) const {
+  static constexpr decltype(auto) call(T && t, TCB && cb) {
     auto tf = bp::as_forward<T>(t);
     auto cf = bp::as_forward<TCB>(cb);
     if constexpr (has_apply_to<T, TCB>) {
@@ -308,6 +320,11 @@ struct do_apply_to {
     } else {
       return std::apply(*cf, *tf);
     }
+  }
+  template <typename... Ts>
+  requires(requires(bp::as_forward<Ts>... vs) { call(*vs...); })
+  constexpr decltype(auto) operator()(Ts&&... vs) const {
+    return call(std::forward<Ts>(vs)...);
   }
 };
 
@@ -587,7 +604,6 @@ constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
   _do_set_y_of::call(val, _do_y_of::call(*v));
   return val;
 }
-
 } // namespace impl
 /// @endcond
 

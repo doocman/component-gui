@@ -2288,7 +2288,7 @@ struct test_button_list {
   int sz{};
   using element_id = std::size_t;
   constexpr bool
-  find_element(pixel_coord auto const &pos,
+  find_sub_at_location(pixel_coord auto const &pos,
                std::invocable<element_t &, std::size_t> auto &&on_find) {
     if (call::x_of(pos) >= 0 && call::x_of(pos) < sz) {
       auto i = call::x_of(pos);
@@ -2319,7 +2319,7 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
                                  [&deactivations, &current_element](int element) {
                                    ++deactivations;
                                    current_element = -1;
-                                 }}, 3)
+                                 }, 3})
                              .build())
                   .build();
   // activate button 0
