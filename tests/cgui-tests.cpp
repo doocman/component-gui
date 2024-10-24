@@ -2298,6 +2298,11 @@ struct test_button_list {
     }
     return false;
   }
+  constexpr void for_each( auto&& f) {
+    for (int i = 0; i < sz; ++i) {
+      f(element_t{*this, i}, static_cast<std::size_t>(i));
+    }
+  }
 
   constexpr void render(auto&&... )const {}
 };

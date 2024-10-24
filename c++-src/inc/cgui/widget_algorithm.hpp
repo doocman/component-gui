@@ -60,7 +60,7 @@ struct find_sub_t {
         bool found = false;
         auto run_condition = [&found, &p, &call_f]<typename T2>(T2 &&v,
                                                                 std::size_t i) {
-          if (!found && predicate(v)) {
+          if (!found && (*p)(std::as_const(v), i)) {
             found = true;
             call_f(bp::as_forward<T2>(v), i);
           }
@@ -103,45 +103,36 @@ struct find_sub_at_location_t {
 };
 
 struct sub_accessor_t {
+  template <typename SubId>
   struct index_finder {
-    std::size_t i;
-    constexpr bool operator()(auto &&, std::size_t i2) const { return i == i2; }
+    SubId i;
+    constexpr bool operator()(auto &&, SubId const& i2) const { return i == i2; }
   };
   template <typename Sub>
   struct pointer_finder {
 
   };
-  template <typename T, typename Sub> struct callback {
-    T &t;
-    Sub s;
-    template <typename... Ts, typename F>
-    constexpr void operator()(F &&f, Ts &&...args) {
+  template <typename T, typename SubId> struct callback {
+    SubId id;
+    template <typename F>
+    constexpr void operator()(bp::cvref_type<T> auto&& t, F &&f) {
       find_sub_t{}(
-          t,
-          [&s = s]<typename S2>(S2 &&s2) {
-            if constexpr (bp::cvref_type<Sub, S2>) {
-              return &s == &s2;
-            }
+          std::forward<T>(t),
+          [this] (auto const&,  auto const& id) {
+            return this->id == id;
           },
-          [f = bp::as_forward<F>(f),
-           at = std::tuple<Ts...>(std::forward<Ts>(args)...)](Sub &&s2) {
-            std::apply([&f, &s2](Ts &&...args2) {
-              std::invoke(*f, std::forward<Sub>(s2),
-                          std::forward<Ts>(args2)...);
-            });
-          });
+          std::forward<F>(f));
     }
   };
 
-  template <typename T, typename Sub, std::invocable<Sub> F>
-    requires(has_sub_accessor<T &, Sub, arguments_marker_t<F>> ||
-             has_find_sub<T &, index_finder, bp::no_op_t>)
-  constexpr auto operator()(T &t, Sub &&s, arguments_marker_t<F> am) const {
-    auto sf = bp::as_forward<Sub>(s);
-    if constexpr (has_sub_accessor<T, Sub, arguments_marker_t<F>>) {
-      return _do_sub_accessor(t, *sf, am);
+  template <typename T, typename SubId, typename F>
+    requires(has_sub_accessor<T &, SubId, arguments_marker_t<F>> ||
+             requires(T&& t, index_finder<SubId> finder) { find_sub_t{}(t, finder, bp::no_op); } )
+  constexpr std::invocable<T&&, F> auto operator()(T &&t, SubId const&s, arguments_marker_t<F> am) const {
+    if constexpr (has_sub_accessor<T, SubId, arguments_marker_t<F>>) {
+      return _do_sub_accessor(std::forward<T>(t), s, am);
     } else {
-      return callback<T, Sub>(t, std::forward<Sub>(s));
+      return callback<std::remove_cvref_t<T>, SubId>(s);
     }
   }
 };
