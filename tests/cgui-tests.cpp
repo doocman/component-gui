@@ -2304,7 +2304,12 @@ struct test_button_list {
     }
   }
 
-  constexpr void render(auto&&... )const {}
+  constexpr void render(renderer auto&& r, button_list_args auto&& args) const {
+    for (int i = 0; i < sz; ++i) {
+      auto bright = static_cast<std::uint_least8_t>(args.button_state(i).current_state());
+      fill(r, default_rect{{i, 0}, {i + 1, 1}}, default_colour_t{bright, bright, bright, 255u});
+    }
+  }
 };
 
 TEST(Widget, RadioButtonDecorator) // NOLINT
@@ -2350,7 +2355,7 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
   EXPECT_THAT(deactivations, Eq(1));
   EXPECT_THAT(current_element, Eq(1));
 }
-#if 0
+
 TEST(Widget, RadioButtonListRender) // NOLINT
 {
   constexpr auto full_area = default_rect{{0, 0}, {3, 1}};
@@ -2359,24 +2364,10 @@ TEST(Widget, RadioButtonListRender) // NOLINT
     return default_colour_t{val, val, val, 255};
   };
   using enum radio_button::element_state;
-  auto button_builder = [&] (int x) {
-    auto res = radio_button::element_builder().area(default_rect{{x, 0}, {x + 1, 1}}).render(display_per_state(fill_rect())).build();
-    auto& [rs] = res.displays();
-    get<hover_on>(rs).colour(state2colour(hover_on));
-    get<hover_off>(rs).colour(state2colour(hover_off));
-    get<hold_on>(rs).colour(state2colour(hold_on));
-    get<hold_off>(rs).colour(state2colour(hold_off));
-    get<relaxed_on>(rs).colour(state2colour(relaxed_on));
-    get<relaxed_off>(rs).colour(state2colour(relaxed_off));
-    return res;
-  };
   auto list = widget_builder()
                   .area(full_area)
                   .event(radio_button_trigger()
-                             .elements(
-                               button_builder(0),
-                               button_builder(1),
-                               button_builder(2)
+                             .elements(test_button_list{bp::no_op, bp::no_op, 3}
                                        )
                              .build())
                   .build();
@@ -2389,7 +2380,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
   FAIL() << "Not yet implemented. Need to interact with mouse events.";
 }
-#endif
+
 
 struct mock_widget_resize {
 

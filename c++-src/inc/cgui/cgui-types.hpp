@@ -220,13 +220,14 @@ concept widget_back_propagater =
     };
 
 template <typename T, typename TBox = default_rect>
-concept subable_widget_back_propagator = widget_back_propagater<T, TBox> && requires(T& t, TBox const& box)
-{
-  { t.sub(box) } -> widget_back_propagater<TBox>;
-};
+concept subable_widget_back_propagator =
+    widget_back_propagater<T, TBox> && requires(T &t, TBox const &box) {
+      { t.sub(box) } -> widget_back_propagater<TBox>;
+    };
 
 template <typename T, bounding_box TBox = default_rect>
-using sub_of_type_t = decltype(std::declval<T&&>().sub(std::declval<TBox const&>()));
+using sub_of_type_t =
+    decltype(std::declval<T &&>().sub(std::declval<TBox const &>()));
 
 template <typename T, typename TCoord = default_pixel_coord,
           typename TColour = default_colour_t>
@@ -334,9 +335,10 @@ concept widget_states_aspect = requires(T const &t) {
 };
 
 template <std::equality_comparable T, T... values> class widget_state_marker {
-  T value_;
 
 public:
+  T value_;
+
   constexpr explicit(false) widget_state_marker(T val) : value_(val) {
     CGUI_ASSERT(((value_ == values) || ...));
   }

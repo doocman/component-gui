@@ -401,6 +401,8 @@ constexpr auto build_group(Constraint &&, T &&g, Builder b = {},
     return bp::transform_range(std::forward<T>(g),
                                bp::trailing_curried<Builder, TArgs...>(
                                    b, std::forward<TArgs>(args)...));
+  } else {
+    static_assert(std::is_void_v<T>, "Type does not satisfy constraint");
   }
 }
 
@@ -1670,6 +1672,35 @@ public:
   }
 };
 
+template <typename TState, typename TWH>
+  requires(requires(TState const &s, std::size_t i) {
+    { std::invoke(s, i) } -> state_marker;
+  })
+class basic_button_list_args : bp::empty_structs_optimiser<TState> {
+  using _base_t = bp::empty_structs_optimiser<TState>;
+  TWH w_;
+  TWH h_;
+
+public:
+  template <bounding_box B, typename T>
+    requires(std::constructible_from<TState, T>)
+  constexpr basic_button_list_args(B const &b, T &&s)
+      : _base_t(std::forward<T>(s)), w_(call::width(b)), h_(call::height(b)) {}
+
+  constexpr TWH width() const { return w_; }
+  constexpr TWH height() const { return h_; }
+  constexpr state_marker decltype(auto) button_state(std::size_t i) const {
+    return std::invoke(this->get_first(), i);
+  }
+};
+
+template <typename T>
+concept button_list_args = requires(T const &t, std::size_t i) {
+  t.width();
+  t.height();
+  { t.button_state(i) } -> state_marker;
+};
+
 namespace radio_button {
 enum class element_state {
   relaxed_off,
@@ -1689,7 +1720,10 @@ using state_marker_t = make_widget_state_marker_sequence_t<
     element_state, element_state::relaxed_off, max_element_state>;
 using all_states_t = all_states_in_marker<state_marker_t>;
 template <typename T, typename TRender = dummy_renderer>
-concept element = has_render<T, TRender, state_marker_t>;
+concept element = has_render<
+    T, TRender,
+    basic_button_list_args<
+        bp::return_constant_t<state_marker_t, element_state{}>, int>>;
 template <typename T, typename TRender = dummy_renderer,
           typename Position = default_pixel_coord>
 concept element_list =
@@ -1732,7 +1766,8 @@ template <std::invocable Activate = bp::no_op_t,
           typename Display = std::tuple<>>
 class element_builder
     : bp::empty_structs_optimiser<Activate, Deactivate, Area, Display> {
-  using base_t = bp::empty_structs_optimiser<Activate, Deactivate, Area>;
+  using base_t =
+      bp::empty_structs_optimiser<Activate, Deactivate, Area, Display>;
   constexpr bp::as_forward<base_t> move_this_as_base() {
     return static_cast<base_t &&>(*this);
   }
@@ -1791,14 +1826,16 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   struct do_trigger_off {
     basic_widget_back_propagater<default_rect> bp;
 
-    template <typename Sub> constexpr void operator()(Sub &&s, auto&&...) {
+    template <typename Sub> constexpr void operator()(Sub &&s, auto &&...) {
       if constexpr (has_handle<Sub, radio_button::trigger_off, decltype(bp)>) {
-        call::handle(std::forward<Sub>(s), radio_button::trigger_off{}, std::move(bp));
+        call::handle(std::forward<Sub>(s), radio_button::trigger_off{},
+                     std::move(bp));
       }
     }
   };
-  using reset_active_f = decltype(call::sub_accessor(
-      std::declval<TElements&>(), std::size_t{}, arguments_marker<do_trigger_off>));
+  using reset_active_f =
+      decltype(call::sub_accessor(std::declval<TElements &>(), std::size_t{},
+                                  arguments_marker<do_trigger_off>));
 
   std::optional<reset_active_f> reset_active_;
   std::size_t current_element_ = highest_possible;
@@ -1812,8 +1849,11 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
 
   constexpr void reset_active(widget_back_propagater auto &&back_prop) {
     if (reset_active_) {
-      (*reset_active_)(elements(), do_trigger_off{
-          static_cast<basic_widget_back_propagater<default_rect>>(back_prop)});
+      (*reset_active_)(
+          elements(),
+          do_trigger_off{
+              static_cast<basic_widget_back_propagater<default_rect>>(
+                  back_prop)});
     }
   }
 
@@ -1847,8 +1887,13 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
                                      decltype(back_prop)>) {
               call::handle(sub, radio_button::trigger_on{}, back_prop);
             }
-            static_assert(std::is_same_v<reset_active_f, decltype(call::sub_accessor(elements(self), sub_index, arguments_marker<do_trigger_off>))>);
-            self.reset_active_.emplace(call::sub_accessor(elements(self), sub_index, arguments_marker<do_trigger_off>));
+            static_assert(
+                std::is_same_v<reset_active_f,
+                               decltype(call::sub_accessor(
+                                   elements(self), sub_index,
+                                   arguments_marker<do_trigger_off>))>);
+            self.reset_active_.emplace(call::sub_accessor(
+                elements(self), sub_index, arguments_marker<do_trigger_off>));
             self.current_element_ = sub_index;
           } else {
             self.reset_active_ = std::nullopt;
@@ -1901,10 +1946,9 @@ class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
 
   using built_elements_t =
       decltype(do_build_group(std::declval<TElements &&>()));
+  static_assert(!std::is_void_v<built_elements_t>);
 
-  constexpr auto build_group() {
-    return do_build_group(get<0>(move_base()));
-  }
+  constexpr auto build_group() { return do_build_group(get<0>(move_base())); }
 
 public:
   using base_t::base_t;
@@ -1921,7 +1965,9 @@ public:
     return radio_button_trigger<TR>(std::forward<TE>(e));
   }
 
-  constexpr auto build() && -> radio_button_trigger_impl<built_elements_t> {
+  constexpr auto build() && -> radio_button_trigger_impl<built_elements_t>
+    requires(!std::is_void_v<built_elements_t>)
+  {
     return radio_button_trigger_impl<built_elements_t>(build_group());
   }
 };
