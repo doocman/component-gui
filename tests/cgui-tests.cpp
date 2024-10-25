@@ -2469,8 +2469,20 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   exp_states[1] = relaxed_off;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
   do_render();
-  EXPECT_THAT(r, ElementsAre(state2bright(relaxed_on), state2bright(relaxed_off),
-                             state2bright(relaxed_off)));
+  EXPECT_THAT(r,
+              ElementsAre(state2bright(relaxed_on), state2bright(relaxed_off),
+                          state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+
+  call::handle(list, dummy_mouse_down_event{});
+  call::handle(list, dummy_mouse_move_event{{-1, 0}});
+  call::handle(list, dummy_mouse_up_event{{-1, 0}});
+  call::handle(list, dummy_mouse_move_event{});
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r,
+              ElementsAre(state2bright(relaxed_on), state2bright(relaxed_off),
+                          state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 }
 

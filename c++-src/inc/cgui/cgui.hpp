@@ -1706,9 +1706,10 @@ public:
 };
 
 template <bounding_box B, typename T>
-basic_button_list_args(B const &, T &&) -> basic_button_list_args<
-    std::unwrap_ref_decay_t<T>,
-    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+basic_button_list_args(B const &, T &&)
+    -> basic_button_list_args<
+        std::unwrap_ref_decay_t<T>,
+        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
 template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;
@@ -1789,13 +1790,15 @@ class element_builder
 
 public:
   using base_t::base_t;
-  constexpr auto on_activate(auto &&v) && -> element_builder<
-      std::unwrap_ref_decay_t<decltype(v)>, Deactivate, Area, Display> {
+  constexpr auto on_activate(
+      auto &&v) && -> element_builder<std::unwrap_ref_decay_t<decltype(v)>,
+                                      Deactivate, Area, Display> {
     auto s = move_this_as_base();
     return {std::forward<decltype(v)>(v), get<1>(*s), get<2>(*s), get<3>(*s)};
   }
-  constexpr auto on_deactivate(auto &&v) && -> element_builder<
-      Activate, std::unwrap_ref_decay_t<decltype(v)>, Area, Display> {
+  constexpr auto on_deactivate(auto &&v)
+      && -> element_builder<Activate, std::unwrap_ref_decay_t<decltype(v)>,
+                            Area, Display> {
     auto s = move_this_as_base();
     return {get<0>(*s), std::forward<decltype(v)>(v), get<2>(*s)};
   }
@@ -1892,18 +1895,22 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   }
   template <widget_back_propagater BP>
   constexpr void reset_hovered(BP &&back_prop) {
-    call::find_sub(
-        elements(),
-        [id = hovered_element_](auto &&, auto &&id_in) { return id == id_in; },
-        [this, &back_prop]<typename S>(S &&s, element_id_t const &i) {
-          using enum radio_button::element_state;
-          if constexpr (has_set_state<S, state_marker_t, BP>) {
-            call::set_state(s,
-                            state_marker_t(combine_toggled_hover_states(
-                                i == current_element_, false, false)),
-                            std::forward<BP>(back_prop));
-          }
-        });
+    if (hovered_element_ != static_cast<element_id_t>(highest_possible)) {
+      call::find_sub(
+          elements(),
+          [id = hovered_element_](auto &&, auto &&id_in) {
+            return id == id_in;
+          },
+          [this, &back_prop]<typename S>(S &&s, element_id_t const &i) {
+            using enum radio_button::element_state;
+            if constexpr (has_set_state<S, state_marker_t, BP>) {
+              call::set_state(s,
+                              state_marker_t(combine_toggled_hover_states(
+                                  i == current_element_, false, false)),
+                              std::forward<BP>(back_prop));
+            }
+          });
+    }
   }
 
   template <typename TEvt, subable_widget_back_propagator BackProp,
@@ -1976,18 +1983,22 @@ public:
     if constexpr (can_be_event<ui_events::mouse_exit, TEvt>()) {
       if (is_event<ui_events::mouse_exit>(evt)) {
         reset_hovered(back_prop);
+        hovered_element_ = highest_possible;
       }
     }
     if constexpr (event_types<TEvt, ui_events::mouse_move,
                               ui_events::mouse_button_down,
                               ui_events::mouse_button_up>) {
-      if (call::find_sub_at_location(elements(), call::position(evt),
+      if (!call::find_sub_at_location(elements(), call::position(evt),
                                      [this, &back_prop, &evt]<typename Sub>(
                                          Sub &&s, element_id_t index) {
                                        event_switch(
                                            std::forward<TEvt>(evt), back_prop,
                                            std::forward<Sub>(s), index);
                                      })) {
+        reset_hovered(back_prop);
+        hovered_element_ = highest_possible;
+        event_case<ui_events::mouse_button_up>([this] (auto&&...) { mouse_down_ = false; })(evt);
       }
     }
   }
