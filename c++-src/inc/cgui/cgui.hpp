@@ -1845,6 +1845,7 @@ public:
 template <radio_button::element TElements>
 class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
+  using state_marker_t = radio_button::state_marker_t;
 
   struct do_trigger_off {
     basic_widget_back_propagater<default_rect> bp;
@@ -1888,6 +1889,9 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
         [id = hovered_element_](auto &&, auto &&id_in) { return id == id_in; },
         [this, &back_prop]<typename S>(S &&s, element_id_t const &i) {
           using enum radio_button::element_state;
+            if constexpr(has_set_state<S, state_marker_t, BP>) {
+              call::set_state(s, state_marker_t(combine_toggled_hover_states(false, false, false)), std::forward<BP>(back_prop));
+            }
           if (i == current_element_) {
             // TODO: add testcase before implementation
             // if constexpr(has_set_state<>)
@@ -1955,9 +1959,9 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
                   hovered_element_ = e;
                   using namespace radio_button;
                   if constexpr (has_set_state<
-                                    S, state_event<element_state::hover_off>,
+                                    S, state_marker_t,
                                     BackProp>) {
-                    call::set_state(s, state_event<element_state::hover_off>{},
+                    call::set_state(s, state_marker_t(combine_toggled_hover_states(false, true, false)),
                                     back_prop);
                   }
                 }

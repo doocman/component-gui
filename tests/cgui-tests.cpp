@@ -2284,10 +2284,10 @@ struct test_button_list {
       parent.on_deactivate(index);
       bp.rerender(default_rect{{index, 0}, {index + 1, 1}});
     }
-    template <radio_button::element_state S, widget_back_propagater T>
-    constexpr void set_state(radio_button::state_event<S>, T&& t) const {
+    template <state_marker S, widget_back_propagater T>
+    constexpr void set_state(S const& s, T&& t) const {
       t.rerender(default_rect{{index, 0}, {index + 1, 1}});
-      parent.state_change(S, index);
+      parent.state_change(s.current_state(), index);
     }
   };
   std::function<void(int)> on_activate = bp::no_op;
