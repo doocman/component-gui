@@ -23,9 +23,17 @@ struct find_sub_t {
   constexpr bool operator()(T &&tr, Predicate &&pr, FindFunction &&fr) const {
     auto t = bp::as_forward<T>(tr);
     auto p = bp::as_forward<Predicate>(pr);
+    auto pfix = [&p] <typename S, typename ID>(S&& s, ID&& i) {
+      if constexpr(std::predicate<Predicate, S, ID>) {
+        return std::invoke(*p, std::forward<S>(s), std::forward<ID>(i));
+      } else {
+        static_assert(std::predicate<Predicate, S>);
+        return std::invoke(*p, std::forward<S>(s));
+      }
+    };
     auto f = bp::as_forward<FindFunction>(fr);
-    if constexpr (has_find_sub<T, Predicate, FindFunction>) {
-      return _do_find_sub::call(*t, *p, *f);
+    if constexpr (has_find_sub<T, decltype(pfix), FindFunction>) {
+      return _do_find_sub::call(*t, pfix, *f);
     } else {
       auto call_f = [&f]<typename T2>(bp::as_forward<T2> t2, std::ptrdiff_t i) {
         if constexpr (std::invocable<FindFunction, T2 &&, std::size_t>) {
@@ -37,13 +45,13 @@ struct find_sub_t {
       if constexpr (std::invocable<do_apply_to, T, bp::no_op_t>) {
         // Tuple-like. We use the shortcutting from OR operators to only search
         // up til the correct values.
-        return do_apply_to::call(*t, [&p,
+        return do_apply_to::call(*t, [&pfix,
                                       &call_f]<typename... Ts>(Ts &&...vs_in) {
-          auto run_all = [&p, &call_f]<std::size_t... is>(
+          auto run_all = [&pfix, &call_f]<std::size_t... is>(
                              std::index_sequence<is...>, Ts &&...vs) {
-            auto run_condition = [&p, &call_f]<typename T0>(T0 v,
+            auto run_condition = [&pfix, &call_f]<typename T0>(T0 v,
                                                             std::size_t fi) {
-              if (predicate(v.as_cref())) {
+              if (pfix(v.as_cref(), fi)) {
                 call_f(v, fi);
                 return true;
               }
@@ -58,9 +66,9 @@ struct find_sub_t {
       } else if constexpr (std::invocable<do_for_each, T, bp::no_op_t>) {
         // Fallback implementation that must run on all elements using for_each.
         bool found = false;
-        auto run_condition = [&found, &p, &call_f]<typename T2>(T2 &&v,
+        auto run_condition = [&found, &pfix, &call_f]<typename T2>(T2 &&v,
                                                                 std::size_t i) {
-          if (!found && (*p)(std::as_const(v), i)) {
+          if (!found && std::invoke(pfix, std::as_const(v), i)) {
             found = true;
             call_f(bp::as_forward<T2>(v), i);
           }

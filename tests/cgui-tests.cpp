@@ -2274,11 +2274,13 @@ struct test_button_list {
     test_button_list &parent;
     int index;
 
-    constexpr void handle(radio_button::trigger_on, widget_back_propagater auto && bp) {
+    constexpr void handle(radio_button::trigger_on,
+                          widget_back_propagater auto &&bp) {
       parent.on_activate(index);
       bp.rerender(default_rect{{index, 0}, {index + 1, 1}});
     }
-    constexpr void handle(radio_button::trigger_off, widget_back_propagater auto && bp) {
+    constexpr void handle(radio_button::trigger_off,
+                          widget_back_propagater auto &&bp) {
       parent.on_deactivate(index);
       bp.rerender(default_rect{{index, 0}, {index + 1, 1}});
     }
@@ -2287,9 +2289,9 @@ struct test_button_list {
   std::function<void(int)> on_deactivate = bp::no_op;
   int sz{};
   using element_id = std::size_t;
-  constexpr bool
-  find_sub_at_location(pixel_coord auto const &pos,
-               std::invocable<element_t &, std::size_t> auto &&on_find) {
+  constexpr bool find_sub_at_location(
+      pixel_coord auto const &pos,
+      std::invocable<element_t &, std::size_t> auto &&on_find) {
     if (call::x_of(pos) >= 0 && call::x_of(pos) < sz) {
       auto i = call::x_of(pos);
       auto e = element_t(*this, i);
@@ -2298,16 +2300,18 @@ struct test_button_list {
     }
     return false;
   }
-  constexpr void for_each( auto&& f) {
+  constexpr void for_each(auto &&f) {
     for (int i = 0; i < sz; ++i) {
       f(element_t{*this, i}, static_cast<std::size_t>(i));
     }
   }
 
-  constexpr void render(renderer auto&& r, button_list_args auto&& args) const {
+  constexpr void render(renderer auto &&r, button_list_args auto &&args) const {
     for (int i = 0; i < sz; ++i) {
-      auto bright = static_cast<std::uint_least8_t>(args.button_state(i).current_state());
-      fill(r, default_rect{{i, 0}, {i + 1, 1}}, default_colour_t{bright, bright, bright, 255u});
+      auto bright =
+          static_cast<std::uint_least8_t>(args.button_state(i).current_state());
+      fill(r, default_rect{{i, 0}, {i + 1, 1}},
+           default_colour_t{bright, bright, bright, 255u});
     }
   }
 };
@@ -2318,20 +2322,22 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
   int activations{};
   int deactivations{};
   auto constexpr full_area = default_rect{0, 0, 16, 10};
-  auto list = widget_builder()
-                  .area(full_area)
-                  .event(radio_button_trigger()
-                             .elements(test_button_list{
-                                 [&activations, &current_element](int element) {
-                                   ++activations;
-                                   current_element = element;
-                                 },
-                                 [&deactivations, &current_element](int element) {
-                                   ++deactivations;
-                                   current_element = -1;
-                                 }, 3})
-                             .build())
-                  .build();
+  auto list =
+      widget_builder()
+          .area(full_area)
+          .event(radio_button_trigger()
+                     .elements(test_button_list{
+                         [&activations, &current_element](int element) {
+                           ++activations;
+                           current_element = element;
+                         },
+                         [&deactivations, &current_element](int element) {
+                           ++deactivations;
+                           current_element = -1;
+                         },
+                         3})
+                     .build())
+          .build();
   // activate button 0
   auto backprop = basic_widget_back_propagater(full_area);
   click_widget(list, {}, backprop);
@@ -2359,28 +2365,41 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
 TEST(Widget, RadioButtonListRender) // NOLINT
 {
   constexpr auto full_area = default_rect{{0, 0}, {3, 1}};
-  constexpr auto state2colour = [] (radio_button::element_state s) {
-    std::uint_least8_t val = static_cast<std::uint_least8_t>(s);
+  constexpr auto state2bright = [](radio_button::element_state s) {
+    return static_cast<std::uint_least8_t>(s);
+  };
+  constexpr auto state2colour = [=](radio_button::element_state s) {
+    auto const val = state2bright(s);
     return default_colour_t{val, val, val, 255};
   };
   using enum radio_button::element_state;
-  auto list = widget_builder()
-                  .area(full_area)
-                  .event(radio_button_trigger()
-                             .elements(test_button_list{bp::no_op, bp::no_op, 3}
-                                       )
-                             .build())
-                  .build();
+  auto list =
+      widget_builder()
+          .area(full_area)
+          .event(radio_button_trigger()
+                     .elements(test_button_list{bp::no_op, bp::no_op, 3})
+                     .build())
+          .build();
   auto rend = test_renderer{full_area};
   auto sr = sub_renderer(rend);
-  list.render(sr);
   auto rgba_sep = rend.individual_colours();
-  auto& [r, g, b, a] = rgba_sep;
+  auto &[r, g, b, a] = rgba_sep;
+  auto do_render = [&] {
+    list.render(sr);
+    rgba_sep = rend.individual_colours();
+  };
+
+  do_render();
   EXPECT_THAT(r, AllOf(SizeIs(3), Each(red(state2colour(relaxed_off)))));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+
+  call::handle(list, dummy_mouse_move_event{{0, 0}});
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(hover_off), state2bright(relaxed_off),
+                             state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
   FAIL() << "Not yet implemented. Need to interact with mouse events.";
 }
-
 
 struct mock_widget_resize {
 

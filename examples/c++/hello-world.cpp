@@ -84,10 +84,10 @@ int main(int, char **) {
                 auto& texts = std::get<1>(random_toggle.displays());
                 using enum cgui::toggle_button_states;
                 auto a = random_toggle.area();
-                get<off>(texts).set_displayed(a, "I'm a happy off'ed button");
+                get<relaxed_off>(texts).set_displayed(a, "I'm a happy off'ed button");
                 get<hover_off>(texts).set_displayed(a, "Don't you dare to click me!");
                 get<hold_off>(texts).set_displayed(a, "You are clicking...");
-                get<on>(texts).set_displayed(a, "Noo, come back and fix this. You must click me again!");
+                get<relaxed_on>(texts).set_displayed(a, "Noo, come back and fix this. You must click me again!");
                 get<hover_on>(texts).set_displayed(a, "Click me back please...");
                 get<hold_on>(texts).set_displayed(a, "Pressing, and now... let it goooo!");
               }

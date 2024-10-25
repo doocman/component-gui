@@ -630,19 +630,15 @@ class widget
     return self.get(std::type_identity<TOnResize>{});
   }
 
-  constexpr auto set_state_callback(widget_back_propagater auto &display_cb) {
-    // At this point, the state handler can change its state and propagate the
-    // state change to all affected display aspects.
-    return [this, &display_cb]<typename TS>(TS const &state) {
-      auto display_setter = [&state, &display_cb]<typename TD>(TD &display) {
-        if constexpr (has_set_state<TD, TS, decltype(display_cb)>) {
-          call::set_state(display, state, display_cb);
-        } else {
-          unused(display, state, display_cb);
-        }
-      };
-      call::for_each(display_, display_setter);
+  constexpr auto set_state(widget_back_propagater auto &display_cb, auto const& state) {
+    auto display_setter = [&state, &display_cb]<typename TD>(TD &display) {
+      if constexpr (has_set_state<TD, decltype(state), decltype(display_cb)>) {
+        call::set_state(display, state, display_cb);
+      } else {
+        unused(display, state, display_cb);
+      }
     };
+    call::for_each(display_, display_setter);
   }
 
   constexpr void call_resize() {
@@ -725,14 +721,14 @@ public:
       auto prev_state = state();
       do_handle();
       if (auto new_state = state(); prev_state != new_state) {
-        set_state_callback(display_callbacks)(new_state);
+        set_state(display_callbacks, new_state);
       }
     } else {
       do_handle();
     }
   }
   constexpr bounding_box auto handle(auto &&evt)
-    requires has_handle<TEventHandler, TArea const &, decltype(evt)>
+    requires has_handle<widget&, decltype(evt), display_state_callbacks_t&>
   {
     display_state_callbacks_t display_callbacks(area());
     handle(std::forward<decltype(evt)>(evt), display_callbacks);
@@ -1482,21 +1478,34 @@ struct momentary_button {
 };
 
 enum class toggle_button_states {
-  off = 0,
+  relaxed_off = 0,
   hover_off = 1,
   hold_off = 2,
-  on = 4,
+  relaxed_on = 4,
   hover_on = 5,
   hold_on = 6
 };
+constexpr toggle_button_states combine_toggled_hover_states(bool is_on, bool hovered, bool hold) noexcept {
+  using enum toggle_button_states;
+  using underlying_int = std::underlying_type_t<toggle_button_states>;
+  auto on_part = is_on ? static_cast<underlying_int>(relaxed_on) : underlying_int{};
+  auto hover_hold_part = underlying_int{};
+  if (hold) {
+    hover_hold_part = static_cast<underlying_int>(hold_off);
+  } else if (hovered) {
+    hover_hold_part = static_cast<underlying_int>(hover_off);
+  }
+  return static_cast<toggle_button_states>(on_part + hover_hold_part);
+}
+
 template <typename TState, bp::invocable_or_invocable_args<TState &> TToOn,
           bp::invocable_or_invocable_args<TState &> TToOff>
 class toggle_button_impl : bp::empty_structs_optimiser<TState, TToOn, TToOff> {
 
   using state_t = widget_state_marker<
-      toggle_button_states, toggle_button_states::off,
+      toggle_button_states, toggle_button_states::relaxed_off,
       toggle_button_states::hover_off, toggle_button_states::hold_off,
-      toggle_button_states::on, toggle_button_states::hover_on,
+      toggle_button_states::relaxed_on, toggle_button_states::hover_on,
       toggle_button_states::hold_on>;
 
   static constexpr std::size_t state_i = 0;
@@ -1525,15 +1534,7 @@ public:
       : base_t(std::forward<Ts>(args)...) {}
 
   [[nodiscard]] constexpr state_t state() const {
-    using enum toggle_button_states;
-    auto on_part = on_ ? static_cast<underlying_int>(on) : underlying_int{};
-    auto hover_hold_part = underlying_int{};
-    if (hold_) {
-      hover_hold_part = static_cast<underlying_int>(hold_off);
-    } else if (hover_) {
-      hover_hold_part = static_cast<underlying_int>(hover_off);
-    }
-    return static_cast<toggle_button_states>(on_part + hover_hold_part);
+    return combine_toggled_hover_states(on_, hover_, hold_);
   }
 
   constexpr void handle(button_state_events::click const &) {
@@ -1718,6 +1719,8 @@ concept button_list_args = requires(T const &t, std::size_t i) {
 };
 
 namespace radio_button {
+using element_state =toggle_button_states;
+/*
 enum class element_state {
   relaxed_off,
   relaxed_on,
@@ -1726,6 +1729,7 @@ enum class element_state {
   hold_off,
   hold_on,
 };
+*/
 static constexpr auto max_element_state = element_state::hold_on;
 template <element_state TState> struct state_event {
   static constexpr auto value = TState;
@@ -1856,6 +1860,7 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
 
   std::optional<reset_active_f> reset_active_;
   element_id_t current_element_ = highest_possible;
+  element_id_t hovered_element_ = highest_possible;
 
   static constexpr decltype(auto) elements(auto &&self) noexcept {
     using t = bp::copy_cvref_t<base_t, decltype(self)>;
@@ -1872,6 +1877,23 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
               static_cast<basic_widget_back_propagater<default_rect>>(
                   back_prop)});
     }
+  }
+  template <widget_back_propagater BP>
+  constexpr void reset_hovered(BP && back_prop) {
+    call::find_sub(elements(), [id = hovered_element_] (auto&&, auto&& id_in) {
+      return id == id_in;
+    }, [this, &back_prop] <typename S>(S&& s, element_id_t const& i) {
+      using enum radio_button::element_state;
+      if (i == current_element_) {
+        // TODO: add testcase before implementation
+      //if constexpr(has_set_state<>)
+      } else {
+        // TODO: add testcase before implementation
+        //if constexpr(has_set_state<S, radio_button::state_event<relaxed_off>, BP>) {
+        //  call::set_state(s, radio_button::state_event<relaxed_off>{}, std::forward<BP>(back_prop));
+        //}
+      }
+    });
   }
 
   constexpr std::ptrdiff_t get_active_offset(auto const &e) const {
@@ -1916,7 +1938,20 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
             self.reset_active_ = std::nullopt;
             self.current_element_ = highest_possible;
           }
-        }) //
+        }), //
+        event_case<mouse_move>([this] (auto&& event, data_t&& data) {
+          auto& [self, back_prop, sub, sub_index] = data;
+          call::find_sub_at_location(elements(), call::position(event), [this, &back_prop] <typename S>(S&& s, element_id_t const&e) {
+            if (e != hovered_element_) {
+              reset_hovered(back_prop);
+              hovered_element_ = e;
+              using namespace radio_button;
+              if constexpr(has_set_state<S, state_event<element_state::hover_on>, BackProp>) {
+                call::set_state(s, state_event<element_state::hover_on>{}, back_prop);
+              }
+            }
+          });
+        })//
     );
   }
 
@@ -1941,8 +1976,8 @@ public:
 
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
     auto bargs = basic_button_list_args(
-        call::width(args), call::height(args), [](element_id_t) {
-          return radio_button::state_marker_t(radio_button::element_state{});
+        call::width(args), call::height(args), [this](element_id_t const& i) {
+          return radio_button::state_marker_t(combine_toggled_hover_states(i == current_element_, i == hovered_element_, false));
         });
     call::render(elements(), std::forward<decltype(r)>(r), bargs);
   }
