@@ -1722,112 +1722,33 @@ concept button_list_args = requires(T const &t, std::size_t i) {
 };
 
 namespace radio_button {
+/// Enum class to define the various render-related states for a radio button.
 using element_state = toggle_button_states;
+
 static constexpr auto max_element_state = element_state::hold_on;
-template <element_state TState> struct state_event {
-  static constexpr auto value = TState;
-};
+
+/// Struct to signal that a radio button is activated.
 struct trigger_on {};
+
+/// Struct to signal that a radio button is deactivated.
 struct trigger_off {};
+
+/// State marker containing all states for the radio button.
 using state_marker_t = make_widget_state_marker_sequence_t<
     element_state, element_state::relaxed_off, max_element_state>;
+
 using all_states_t = all_states_in_marker<state_marker_t>;
-template <typename T, typename TRender = dummy_renderer>
+template <typename T, typename TRender = dummy_renderer,
+          typename Position = default_pixel_coord>
 concept element = has_render<
     T, TRender,
     basic_button_list_args<
-        bp::return_constant_t<state_marker_t, element_state{}>, int>>;
-template <typename T, typename TRender = dummy_renderer,
-          typename Position = default_pixel_coord>
-concept element_list =
-    has_render<T, TRender, state_marker_t> &&
-    requires(T &&t, Position const &p) {
-      call::find_sub_at_location(t, p, bp::false_predicate, bp::no_op);
-    };
+        bp::return_constant_t<state_marker_t, element_state{}>, int>> &&
+                  requires(T &&t, Position const &p) {
+                    call::find_sub(t, bp::false_predicate, bp::no_op);
+                  };
 struct sub_constraint {
   constexpr void operator()(element auto &&) const {}
-};
-
-template <std::invocable Act, std::invocable Deact, typename Area,
-          typename Display>
-class basic_element : bp::empty_structs_optimiser<Act, Deact, Area, Display> {
-  using base_t = bp::empty_structs_optimiser<Act, Deact, Area, Display>;
-  template <std::size_t tI> static constexpr decltype(auto) _get(auto &&self) {
-    using t =
-        decltype(bp::forward_like<decltype(self)>(std::declval<base_t &>()));
-    return get<tI>(static_cast<t>(self));
-  }
-
-public:
-  using base_t::base_t;
-  constexpr void render(renderer auto &&, state_marker_t const &) const {}
-  constexpr void handle(trigger_on, auto &&) { _get<0> (*this)(); }
-  constexpr void handle(trigger_off, auto &&) { _get<1> (*this)(); }
-  constexpr Area area() const
-    requires(bounding_box<Area>)
-  {
-    return _get<2>(*this);
-  }
-  constexpr Area area(bounding_box auto &&in)
-    requires(bounding_box<Area>)
-  {
-    _get<2>(*this) = copy_box<Area>(std::forward<decltype(in)>(in));
-  }
-};
-template <std::invocable Activate = bp::no_op_t,
-          std::invocable Deactivate = bp::no_op_t, typename Area = empty_state,
-          typename Display = std::tuple<>>
-class element_builder
-    : bp::empty_structs_optimiser<Activate, Deactivate, Area, Display> {
-  using base_t =
-      bp::empty_structs_optimiser<Activate, Deactivate, Area, Display>;
-  constexpr bp::as_forward<base_t> move_this_as_base() {
-    return static_cast<base_t &&>(*this);
-  }
-  using state_arg_t = widget_render_args<int, state_marker_t>;
-  using display_constraint_t =
-      builder_display_element_constraint<dummy_renderer, state_arg_t>;
-
-public:
-  using base_t::base_t;
-  constexpr auto on_activate(
-      auto &&v) && -> element_builder<std::unwrap_ref_decay_t<decltype(v)>,
-                                      Deactivate, Area, Display> {
-    auto s = move_this_as_base();
-    return {std::forward<decltype(v)>(v), get<1>(*s), get<2>(*s), get<3>(*s)};
-  }
-  constexpr auto on_deactivate(auto &&v)
-      && -> element_builder<Activate, std::unwrap_ref_decay_t<decltype(v)>,
-                            Area, Display> {
-    auto s = move_this_as_base();
-    return {get<0>(*s), std::forward<decltype(v)>(v), get<2>(*s)};
-  }
-  template <typename T, typename TPure = std::remove_cvref_t<T>>
-    requires bounding_box<T> || std::is_same_v<TPure, empty_state>
-  constexpr auto
-  area(T &&area) && -> element_builder<Activate, Deactivate, TPure, Display> {
-    auto s = move_this_as_base();
-    return {get<0>(*s), get<1>(*s), std::forward<decltype(area)>(area)};
-  }
-
-  template <typename... TD2> constexpr auto display(TD2 &&...vs) && {
-    using TRes =
-        element_builder<Activate, Deactivate, Area,
-                        impl::args_to_group_t<display_constraint_t, TD2 &&...>>;
-    auto s = bp::as_forward(std::move(*this));
-    return TRes{
-        get<0>(*s), get<1>(*s), get<2>(*s),
-        impl::args_to_group(display_constraint_t{}, std::forward<TD2>(vs)...)};
-  }
-
-  constexpr auto build() && {
-    using built_display_t = decltype(impl::build_displays(
-        get<2>(move_this_as_base()), all_states_t()));
-    using result_t = basic_element<Activate, Deactivate, Area, built_display_t>;
-    auto s = move_this_as_base();
-    return result_t(get<0>(*s), get<1>(*s),
-                    impl::build_displays(get<2>(*s), all_states_t()));
-  }
 };
 } // namespace radio_button
 
@@ -2036,7 +1957,7 @@ class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
 
   static constexpr auto do_build_group(auto &&g) {
     return impl::build_group(radio_button::sub_constraint{},
-                             std::forward<decltype(g)>(g));
+                             std::forward<decltype(g)>(g), radio_button::all_states_t{});
   }
 
   using built_elements_t =
@@ -2047,13 +1968,6 @@ class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
 
 public:
   using base_t::base_t;
-  /*
-    template <typename... Ts,
-              typename TE = impl::args_to_group_t<element_constraint, Ts &&...>>
-    constexpr radio_button_trigger<TE> elements(Ts &&...vs) && {
-      return radio_button_trigger<TE>(
-          impl::args_to_group(element_constraint{}, std::forward<Ts>(vs)...));
-    }*/
 
   template <typename TE, typename TR = std::unwrap_ref_decay_t<TE>>
   constexpr radio_button_trigger<TR> elements(TE &&e) && {

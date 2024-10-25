@@ -6,6 +6,7 @@
 #include <cgui/embedded/cgui_example_font.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/sdl.hpp>
+#include <cgui/dynamic.hpp>
 
 int main(int argc, char **argv) {
   try {
@@ -37,11 +38,12 @@ int main(int argc, char **argv) {
         cgui::gui_context_builder()
             .widgets(cgui::widget_builder()
                          .area(area_t{})
-                         .event(button_list_trigger())
-                         .state(radio_button_state())
-                         .subcomponents(vertical_widget_list<std::vector>(
-                             cgui::widget_builder().display()) //
-                             )
+                         .event(cgui::radio_button_trigger().elements(
+                             cgui::dynamic::uni_sized_widget_list_builder().displays(
+                                 cgui::display_per_state(cgui::fill_rect()),
+                                 cgui::text_renderer(std::ref(cached_font))
+                                 )
+                             ))
                          .build())
             .on_resize([]() {})
             .build();
