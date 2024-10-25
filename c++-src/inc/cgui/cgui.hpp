@@ -697,6 +697,10 @@ public:
       call::render(display, r, arg);
     };
     call::for_each(display_, std::move(render_callback));
+    if constexpr (has_render<TEventHandler const &, decltype(r) &,
+                             decltype(arg) &>) {
+      call::render(event_handler(*this), r, arg);
+    }
     if constexpr (!std::is_empty_v<TSubs>) {
       call::for_each(subs(*this),
                      [&r](auto &&sub_w) { sub_w.render(r.sub(sub_w.area())); });
@@ -1686,6 +1690,10 @@ public:
     requires(std::constructible_from<TState, T>)
   constexpr basic_button_list_args(B const &b, T &&s)
       : _base_t(std::forward<T>(s)), w_(call::width(b)), h_(call::height(b)) {}
+  template <typename T>
+    requires(std::constructible_from<TState, T>)
+  constexpr basic_button_list_args(TWH w, TWH h, T &&s)
+      : _base_t(std::forward<T>(s)), w_(w), h_(h) {}
 
   constexpr TWH width() const { return w_; }
   constexpr TWH height() const { return h_; }
@@ -1693,6 +1701,14 @@ public:
     return std::invoke(this->get_first(), i);
   }
 };
+
+template <bounding_box B, typename T>
+basic_button_list_args(B const &, T &&) -> basic_button_list_args<
+    std::unwrap_ref_decay_t<T>,
+    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+template <typename TWH, typename T>
+basic_button_list_args(TWH const &, TWH const &, T &&)
+    -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;
 
 template <typename T>
 concept button_list_args = requires(T const &t, std::size_t i) {
@@ -1833,12 +1849,13 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
       }
     }
   };
+  using element_id_t = std::size_t;
   using reset_active_f =
-      decltype(call::sub_accessor(std::declval<TElements &>(), std::size_t{},
+      decltype(call::sub_accessor(std::declval<TElements &>(), element_id_t{},
                                   arguments_marker<do_trigger_off>));
 
   std::optional<reset_active_f> reset_active_;
-  std::size_t current_element_ = highest_possible;
+  element_id_t current_element_ = highest_possible;
 
   static constexpr decltype(auto) elements(auto &&self) noexcept {
     using t = bp::copy_cvref_t<base_t, decltype(self)>;
@@ -1872,7 +1889,7 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   template <typename TEvt, subable_widget_back_propagator BackProp,
             typename Sub>
   constexpr auto event_switch(TEvt &&evt, BackProp &back_prop, Sub &&sub,
-                              std::size_t sub_index) {
+                              element_id_t sub_index) {
     using enum ui_events;
     using data_t =
         decltype(std::forward_as_tuple(*this, back_prop, sub, sub_index));
@@ -1912,13 +1929,22 @@ public:
           TEvt>
   constexpr void handle(T const &, TEvt &&evt,
                         subable_widget_back_propagator auto &&back_prop) {
-    if (call::find_sub_at_location(
-            elements(), call::position(evt),
-            [this, &back_prop, &evt]<typename Sub>(Sub &&s, std::size_t index) {
-              event_switch(std::forward<TEvt>(evt), back_prop,
-                           std::forward<Sub>(s), index);
-            })) {
+    if (call::find_sub_at_location(elements(), call::position(evt),
+                                   [this, &back_prop, &evt]<typename Sub>(
+                                       Sub &&s, element_id_t index) {
+                                     event_switch(std::forward<TEvt>(evt),
+                                                  back_prop,
+                                                  std::forward<Sub>(s), index);
+                                   })) {
     }
+  }
+
+  constexpr void render(renderer auto &&r, render_args auto &&args) const {
+    auto bargs = basic_button_list_args(
+        call::width(args), call::height(args), [](element_id_t) {
+          return radio_button::state_marker_t(radio_button::element_state{});
+        });
+    call::render(elements(), std::forward<decltype(r)>(r), bargs);
   }
 };
 

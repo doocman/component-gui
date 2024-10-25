@@ -103,32 +103,30 @@ struct find_sub_at_location_t {
 };
 
 struct sub_accessor_t {
-  template <typename SubId>
-  struct index_finder {
+  template <typename SubId> struct index_finder {
     SubId i;
-    constexpr bool operator()(auto &&, SubId const& i2) const { return i == i2; }
-  };
-  template <typename Sub>
-  struct pointer_finder {
-
+    constexpr bool operator()(auto &&, SubId const &i2) const {
+      return i == i2;
+    }
   };
   template <typename T, typename SubId> struct callback {
     SubId id;
     template <typename F>
-    constexpr void operator()(bp::cvref_type<T> auto&& t, F &&f) {
+    constexpr void operator()(bp::cvref_type<T> auto &&t, F &&f) {
       find_sub_t{}(
           std::forward<T>(t),
-          [this] (auto const&,  auto const& id) {
-            return this->id == id;
-          },
+          [this](auto const &, auto const &id) { return this->id == id; },
           std::forward<F>(f));
     }
   };
 
   template <typename T, typename SubId, typename F>
     requires(has_sub_accessor<T &, SubId, arguments_marker_t<F>> ||
-             requires(T&& t, index_finder<SubId> finder) { find_sub_t{}(t, finder, bp::no_op); } )
-  constexpr std::invocable<T&&, F> auto operator()(T &&t, SubId const&s, arguments_marker_t<F> am) const {
+             requires(T &&t, index_finder<SubId> finder) {
+               find_sub_t{}(t, finder, bp::no_op);
+             })
+  constexpr std::invocable<T &&, F> auto
+  operator()(T &&t, SubId const &s, arguments_marker_t<F> am) const {
     if constexpr (has_sub_accessor<T, SubId, arguments_marker_t<F>>) {
       return _do_sub_accessor(std::forward<T>(t), s, am);
     } else {
@@ -149,7 +147,8 @@ inline constexpr impl::find_sub_t find_sub;
 inline constexpr impl::find_sub_at_location_t find_sub_at_location;
 
 /// Retrieves a function-like object for fast re-access of a specific element.
-/// The function signature is Collection, Sub, Function-On-Sub, [Extra arguments...]
+/// The function signature is Collection, Sub, Function-On-Sub, [Extra
+/// arguments...]
 inline constexpr impl::sub_accessor_t sub_accessor;
 } // namespace call
 
