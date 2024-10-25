@@ -2284,6 +2284,10 @@ struct test_button_list {
       parent.on_deactivate(index);
       bp.rerender(default_rect{{index, 0}, {index + 1, 1}});
     }
+    template <radio_button::element_state S, widget_back_propagater T>
+    constexpr void set_state(radio_button::state_event<S>, T&& t) const {
+      t.rerender(default_rect{{index, 0}, {index + 1, 1}});
+    }
   };
   std::function<void(int)> on_activate = bp::no_op;
   std::function<void(int)> on_deactivate = bp::no_op;
@@ -2393,11 +2397,12 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(r, AllOf(SizeIs(3), Each(red(state2colour(relaxed_off)))));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 
-  call::handle(list, dummy_mouse_move_event{{0, 0}});
+  auto re_area = call::handle(list, dummy_mouse_move_event{{0, 0}});
   do_render();
   EXPECT_THAT(r, ElementsAre(state2bright(hover_off), state2bright(relaxed_off),
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+  expect_box_equal(re_area, default_rect{{0, 0}, {1, 1}});
   FAIL() << "Not yet implemented. Need to interact with mouse events.";
 }
 
