@@ -379,11 +379,11 @@ private:
   using _int_t = std::underlying_type_t<T>;
   static constexpr auto min_v = static_cast<_int_t>(tMin);
   static constexpr auto max_v = static_cast<_int_t>(tMax);
-  static constexpr auto size = max_v - min_v;
+  static constexpr auto size = max_v - min_v + 1;
 
 public:
   using type = decltype(impl::deduce_state_marker<T>(
-      std::make_integer_sequence<_int_t, static_cast<_int_t>(size)>{},
+      std::make_integer_sequence<_int_t, size>{},
       std::integral_constant<_int_t, min_v>{}));
 };
 template <typename T, T tMin, T tMax>

@@ -159,6 +159,7 @@ constexpr subset_ui_events<tEvt> event_type(dummy_event<tEvt> const &) {
 }
 
 template <> struct dummy_event<ui_events::system> {};
+template <> struct dummy_event<ui_events::mouse_exit> {};
 template <> struct dummy_event<ui_events::mouse_move> {
   default_pixel_coord pos;
 };
@@ -201,6 +202,7 @@ constexpr auto size_of(T const &t) {
 using dummy_mouse_move_event = dummy_event<ui_events::mouse_move>;
 using dummy_mouse_down_event = dummy_event<ui_events::mouse_button_down>;
 using dummy_mouse_up_event = dummy_event<ui_events::mouse_button_up>;
+using dummy_mouse_exit_event = dummy_event<ui_events::mouse_exit>;
 using dummy_window_resized_event = dummy_event<ui_events::window_resized>;
 
 struct cgui_mouse_exit_event {
