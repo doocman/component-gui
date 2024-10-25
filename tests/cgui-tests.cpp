@@ -1167,7 +1167,7 @@ TEST(SubFind, FindInTuple) // NOLINT
     last_index = index;
     ++calls;
   };
-  auto found = find_first_cb(equals(2), cb, v);
+  auto found = call::find_sub(v, equals(2), cb);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&std::get<1>(v)));
   EXPECT_THAT(calls, Eq(1));
@@ -1179,14 +1179,14 @@ TEST(SubFind, FindInTuple) // NOLINT
     last_index = -1;
   };
   reset();
-  found = find_first_cb(equals(3), cb, v);
+  found = call::find_sub(v, equals(3), cb);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&std::get<2>(v)));
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_index, Eq(2));
 
   reset();
-  found = find_first_cb(equals(4), cb, v);
+  found = call::find_sub(v, equals(4), cb);
   EXPECT_THAT(found, IsFalse());
   EXPECT_THAT(res, IsNull());
   EXPECT_THAT(calls, Eq(0));
@@ -1215,7 +1215,7 @@ TEST(SubFind, FindInForEach) // NOLINT
     last_index = index;
     ++calls;
   };
-  auto found = find_first_cb(equals(2), cb, v);
+  auto found = call::find_sub(v, equals(2), cb);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&v.i2));
   EXPECT_THAT(calls, Eq(1));
@@ -1227,14 +1227,14 @@ TEST(SubFind, FindInForEach) // NOLINT
     last_index = highest_possible;
   };
   reset();
-  found = find_first_cb(equals(3), cb, v);
+  found = call::find_sub(v, equals(3), cb);
   EXPECT_THAT(found, IsTrue());
   EXPECT_THAT(res, Eq(&v.i3));
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_index, Eq(2));
 
   reset();
-  found = find_first_cb(equals(4), cb, v);
+  found = call::find_sub(v, equals(4), cb);
   EXPECT_THAT(found, IsFalse());
   EXPECT_THAT(res, IsNull());
   EXPECT_THAT(calls, Eq(0));
@@ -2474,15 +2474,23 @@ TEST(Widget, RadioButtonListRender) // NOLINT
                           state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 
+  exp_states[0] = hover_on;
   call::handle(list, dummy_mouse_down_event{});
   call::handle(list, dummy_mouse_move_event{{-1, 0}});
   call::handle(list, dummy_mouse_up_event{{-1, 0}});
   call::handle(list, dummy_mouse_move_event{});
   EXPECT_THAT(states, ElementsAreArray(exp_states));
   do_render();
-  EXPECT_THAT(r,
-              ElementsAre(state2bright(relaxed_on), state2bright(relaxed_off),
-                          state2bright(relaxed_off)));
+  EXPECT_THAT(r, ElementsAre(state2bright(hover_on), state2bright(relaxed_off),
+                             state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+
+  click_widget(list, default_pixel_coord{});
+  exp_states[0] = hover_off;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(hover_off), state2bright(relaxed_off),
+                             state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 }
 

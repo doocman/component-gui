@@ -1950,7 +1950,8 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
             if constexpr (has_set_state<Sub, state_marker_t, BackProp>) {
               call::set_state(sub,
                               state_marker_t(combine_toggled_hover_states(
-                                  false, true, false)),
+                                  sub_index == self.current_element_, true,
+                                  self.mouse_down_)),
                               back_prop);
             }
           }
@@ -1990,15 +1991,18 @@ public:
                               ui_events::mouse_button_down,
                               ui_events::mouse_button_up>) {
       if (!call::find_sub_at_location(elements(), call::position(evt),
-                                     [this, &back_prop, &evt]<typename Sub>(
-                                         Sub &&s, element_id_t index) {
-                                       event_switch(
-                                           std::forward<TEvt>(evt), back_prop,
-                                           std::forward<Sub>(s), index);
-                                     })) {
+                                      [this, &back_prop, &evt]<typename Sub>(
+                                          Sub &&s, element_id_t index) {
+                                        event_switch(
+                                            std::forward<TEvt>(evt), back_prop,
+                                            std::forward<Sub>(s), index);
+                                      })) {
         reset_hovered(back_prop);
         hovered_element_ = highest_possible;
-        event_case<ui_events::mouse_button_up>([this] (auto&&...) { mouse_down_ = false; })(evt);
+        event_case<ui_events::mouse_button_up>(
+            [this](auto &&...) { mouse_down_ = false; })(evt);
+        event_case<ui_events::mouse_button_down>(
+            [this](auto &&...) { mouse_down_ = true; })(evt);
       }
     }
   }

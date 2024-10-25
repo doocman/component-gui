@@ -23,8 +23,8 @@ struct find_sub_t {
   constexpr bool operator()(T &&tr, Predicate &&pr, FindFunction &&fr) const {
     auto t = bp::as_forward<T>(tr);
     auto p = bp::as_forward<Predicate>(pr);
-    auto pfix = [&p] <typename S, typename ID>(S&& s, ID&& i) {
-      if constexpr(std::predicate<Predicate, S, ID>) {
+    auto pfix = [&p]<typename S, typename ID>(S &&s, ID &&i) {
+      if constexpr (std::predicate<Predicate, S, ID>) {
         return std::invoke(*p, std::forward<S>(s), std::forward<ID>(i));
       } else {
         static_assert(std::predicate<Predicate, S>);
@@ -50,7 +50,7 @@ struct find_sub_t {
           auto run_all = [&pfix, &call_f]<std::size_t... is>(
                              std::index_sequence<is...>, Ts &&...vs) {
             auto run_condition = [&pfix, &call_f]<typename T0>(T0 v,
-                                                            std::size_t fi) {
+                                                               std::size_t fi) {
               if (pfix(v.as_cref(), fi)) {
                 call_f(v, fi);
                 return true;
@@ -66,8 +66,8 @@ struct find_sub_t {
       } else if constexpr (std::invocable<do_for_each, T, bp::no_op_t>) {
         // Fallback implementation that must run on all elements using for_each.
         bool found = false;
-        auto run_condition = [&found, &pfix, &call_f]<typename T2>(T2 &&v,
-                                                                std::size_t i) {
+        auto run_condition = [&found, &pfix,
+                              &call_f]<typename T2>(T2 &&v, std::size_t i) {
           if (!found && std::invoke(pfix, std::as_const(v), i)) {
             found = true;
             call_f(bp::as_forward<T2>(v), i);
@@ -160,66 +160,17 @@ inline constexpr impl::find_sub_at_location_t find_sub_at_location;
 inline constexpr impl::sub_accessor_t sub_accessor;
 } // namespace call
 
+/// @brief Generates a predicate that compares any incoming argument with the
+/// stored value v.
+/// @param v value to compare with.
+/// @return A predicate type that accepts anything that has a equality
+/// comparator with 'v'.
 constexpr auto equals(auto &&v) {
   return [v = std::forward<decltype(v)>(v)](
              std::equality_comparable_with<decltype(v)> auto &&rhs) {
     return v == rhs;
   };
 }
-
-template <typename Pred, typename OnFind, typename Tuple>
-  requires has_for_each<Tuple, Pred> &&
-           (has_for_each<Tuple, OnFind> ||
-            has_for_each<Tuple, bp::trailing_curried<OnFind &&, std::size_t>>)
-constexpr bool find_first_cb(Pred &&predicate, OnFind &&find_func,
-                             Tuple &&values) {
-  auto call_f = [&find_func]<typename T>(bp::as_forward<T> t,
-                                         std::ptrdiff_t i) {
-    if constexpr (std::invocable<OnFind, T &&, std::size_t>) {
-      std::invoke(std::forward<OnFind>(find_func), *t,
-                  static_cast<std::size_t>(i));
-    } else {
-      std::invoke(std::forward<OnFind>(find_func), *t);
-    }
-  };
-  if constexpr (requires() { call::apply_to(values, bp::no_op); }) {
-    // Tuple-like. We use the shortcutting from OR operators to only search up
-    // til the correct values.
-    return call::apply_to(
-        std::forward<Tuple>(values),
-        [&predicate, &call_f]<typename... Ts>(Ts &&...vs_in) {
-          auto run_all = [&predicate, &call_f]<std::size_t... is>(
-                             std::index_sequence<is...>, Ts &&...vs) {
-            auto run_condition = [&predicate,
-                                  &call_f]<typename T0>(T0 v, std::size_t fi) {
-              if (predicate(v.as_cref())) {
-                call_f(v, fi);
-                return true;
-              }
-              return false;
-            };
-
-            return (... || run_condition(bp::as_forward<Ts>(vs), is));
-          };
-          return run_all(std::make_index_sequence<sizeof...(Ts)>{},
-                         std::forward<Ts>(vs_in)...);
-        });
-  } else {
-    // Fallback implementation that must run on all elements using for_each.
-    bool found = false;
-    auto run_condition = [&found, &predicate,
-                          &call_f]<typename T>(T &&v, std::size_t i) {
-      if (!found && predicate(v)) {
-        found = true;
-        call_f(bp::as_forward<T>(v), i);
-      }
-      return found;
-    };
-    call::for_each(std::forward<Tuple>(values), run_condition);
-    return found;
-  }
-}
-
 } // namespace cgui
 
 #endif

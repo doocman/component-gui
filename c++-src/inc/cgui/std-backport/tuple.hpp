@@ -5,9 +5,8 @@
 
 namespace cgui::bp {
 template <typename T>
-concept has_tuple_size = requires() {
-  std::tuple_size<std::remove_cvref_t<T>>::value;
-};
-}
+concept has_tuple_size =
+    requires() { std::tuple_size<std::remove_cvref_t<T>>::value; };
+} // namespace cgui::bp
 
 #endif // COMPONENT_GUI_TUPLE_HPP
