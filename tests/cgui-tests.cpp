@@ -2287,11 +2287,13 @@ struct test_button_list {
     template <radio_button::element_state S, widget_back_propagater T>
     constexpr void set_state(radio_button::state_event<S>, T&& t) const {
       t.rerender(default_rect{{index, 0}, {index + 1, 1}});
+      parent.state_change(S, index);
     }
   };
   std::function<void(int)> on_activate = bp::no_op;
   std::function<void(int)> on_deactivate = bp::no_op;
   int sz{};
+  std::function<void(radio_button::element_state, int)> state_change = bp::no_op;
   using element_id = std::size_t;
   constexpr bool find_sub_at_location(
       pixel_coord auto const &pos,
@@ -2377,11 +2379,18 @@ TEST(Widget, RadioButtonListRender) // NOLINT
     return default_colour_t{val, val, val, 255};
   };
   using enum radio_button::element_state;
+  std::vector<radio_button::element_state> states {relaxed_off, relaxed_off, relaxed_off};
+  auto exp_states = states;
+  std::vector<std::pair<radio_button::element_state, int>> state_changes;
   auto list =
       widget_builder()
           .area(full_area)
           .event(radio_button_trigger()
-                     .elements(test_button_list{bp::no_op, bp::no_op, 3})
+                     .elements(test_button_list{bp::no_op, bp::no_op, 3, [&] (auto s, auto i) {
+                       state_changes.emplace_back(s, i);
+                       ASSERT_THAT(i, Lt(ssize(states)));
+                       states.at(i) = s;
+                     }})
                      .build())
           .build();
   auto rend = test_renderer{full_area};
@@ -2398,11 +2407,27 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 
   auto re_area = call::handle(list, dummy_mouse_move_event{{0, 0}});
+  EXPECT_THAT(state_changes, ElementsAre(Pair(hover_off, 0)));
+  exp_states[0] = hover_off;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
   do_render();
   EXPECT_THAT(r, ElementsAre(state2bright(hover_off), state2bright(relaxed_off),
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
   expect_box_equal(re_area, default_rect{{0, 0}, {1, 1}});
+
+  state_changes.clear();
+  re_area = call::handle(list, dummy_mouse_move_event{{1, 0}});
+  EXPECT_THAT(state_changes, UnorderedElementsAre(Pair(relaxed_off, 0),Pair(hover_off, 1)));
+  exp_states[0] = relaxed_off;
+  exp_states[1] = hover_off;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(relaxed_off), state2bright(hover_off),
+                             state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+  expect_box_equal(re_area, default_rect{{0, 0}, {2, 1}});
+
   FAIL() << "Not yet implemented. Need to interact with mouse events.";
 }
 
