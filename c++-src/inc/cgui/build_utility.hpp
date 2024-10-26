@@ -168,17 +168,7 @@ constexpr auto build_group(Constraint &&, T &&g, TArgs &&...args) {
       std::forward<TArgs>(args)...);
   if constexpr (std::invocable<decltype(b_args), T>) {
     return b_args(*gf);
-  } /* else if constexpr (std::invocable<decltype(call::apply_to), T,
-                                       bp::no_op_t>) {
-     return call::apply_to(
-         *gf, [do_build = bp::trailing_curried<Builder, TArgs...>(
-                   b, std::forward<TArgs>(args)...)]<typename... Ts>(
-                  Ts &&...elements) {
-           return std::tuple(do_build(std::forward<Ts>(elements))...);
-         });
-   }
-   */
-  else {
+  } else {
     if constexpr (std::ranges::range<std::remove_cvref_t<T>>) {
       return bp::transform_range(std::forward<T>(g), std::move(b_args));
     } else if constexpr (usable_in_build_tuples<T>) {
@@ -192,6 +182,10 @@ constexpr auto build_group(Constraint &&, T &&g, TArgs &&...args) {
 template <typename TConstraint, typename... TArgs>
 using args_to_group_t =
     decltype(args_to_group(TConstraint{}, std::declval<TArgs &&>()...));
+template <typename Constraint, typename Group, typename... Args>
+using build_group_t =
+    decltype(build_group(std::declval<Constraint>(), std::declval<Group>(),
+                         std::declval<Args>()...));
 
 } // namespace cgui::build
 

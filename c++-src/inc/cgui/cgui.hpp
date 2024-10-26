@@ -946,6 +946,7 @@ public:
   constexpr explicit display_per_state_impl(auto &&...args)
     requires(std::constructible_from<T, decltype(args)...>)
       : d_(bp::array_from_args<T, state_count>(args...)) {}
+
   constexpr auto render(renderer auto &&r, render_args auto const &args) const {
     unused(r, args);
     auto disp_index = state2index(args.widget_state());
@@ -953,6 +954,7 @@ public:
     auto &active_display = d_[disp_index];
     call::render(active_display, std::forward<decltype(r)>(r), args);
   }
+
   template <TState tI>
     requires((tI == tStates) || ...)
   static constexpr auto &&
@@ -1558,6 +1560,10 @@ template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;
 
+template <typename StateVal = widget_state_marker<int>>
+using dummy_button_list_args =
+    basic_button_list_args<bp::return_constant_t<StateVal>, int>;
+
 template <typename T>
 concept button_list_args = requires(T const &t, std::size_t i) {
   t.width();
@@ -1581,7 +1587,7 @@ struct trigger_off {};
 using state_marker_t = make_widget_state_marker_sequence_t<
     element_state, element_state::relaxed_off, max_element_state>;
 
-using all_states_t = all_states_in_marker<state_marker_t>;
+using all_states_t = all_states_in_marker_t<state_marker_t>;
 template <typename T, typename TRender = dummy_renderer,
           typename Position = default_pixel_coord>
 concept element =

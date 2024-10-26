@@ -342,6 +342,7 @@ template <std::equality_comparable T, T... values> class widget_state_marker {
 
 public:
   T value_;
+  constexpr widget_state_marker() : value_(bp::first_of(values...)) {}
 
   constexpr explicit(false) widget_state_marker(T val) : value_(val) {
     CGUI_ASSERT(((value_ == values) || ...));
