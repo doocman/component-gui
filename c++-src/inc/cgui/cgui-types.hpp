@@ -29,6 +29,10 @@ concept builder = requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {
   call::build(*t, *args...);
 };
 
+template <typename T, typename TConstraint = bp::no_op_t>
+concept each_constraint =
+    requires(T &g, TConstraint f) { call::for_each(g, f); };
+
 template <typename...> struct build_result {};
 template <typename... Ts, builder<Ts...> T> struct build_result<T, Ts...> {
   using type =

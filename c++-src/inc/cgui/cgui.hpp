@@ -15,6 +15,7 @@
 #include <cgui/stl_extend.hpp>
 #include <cgui/ui_events.hpp>
 #include <cgui/widget_algorithm.hpp>
+#include <cgui/build_utility.hpp>
 
 namespace cgui {
 template <typename TX, typename TY> class nudger {
@@ -236,10 +237,6 @@ public:
   }
 };
 
-template <typename T, typename TConstraint = bp::no_op_t>
-concept each_constraint =
-    requires(T &g, TConstraint f) { call::for_each(g, f); };
-
 namespace impl {
 template <typename> constexpr bool is_tuple = false;
 template <typename... Ts> constexpr bool is_tuple<std::tuple<Ts...>> = true;
@@ -325,90 +322,6 @@ constexpr auto build_displays(T &&t, TStates const &states) {
     return std::forward<T>(t);
   }
 }
-
-template <typename TElementConstraint, typename... TD2,
-          typename TTuple = std::tuple<std::unwrap_ref_decay_t<TD2>...>>
-  requires((std::invocable<TElementConstraint, std::unwrap_ref_decay_t<TD2>> &&
-            ...))
-TTuple args_to_group(TElementConstraint, TD2 &&...d2) {
-  return TTuple(std::forward<TD2>(d2)...);
-}
-
-template <typename TElementConstraint, typename TGroup2,
-          typename TG2UW = std::unwrap_ref_decay_t<TGroup2>>
-  requires each_constraint<TG2UW, TElementConstraint>
-TG2UW args_to_group(TElementConstraint, TGroup2 &&g) {
-  return TG2UW(std::forward<TGroup2>(g));
-}
-
-#if CGUI_HAS_NAMED_ARGS
-template <typename TElementConstraint, typename... TArgs>
-  requires(((dooc::arg_with_any_name<std::unwrap_ref_decay_t<TArgs>> &&
-             std::invocable<
-                 TElementConstraint,
-                 std::unwrap_ref_decay_t<
-                     typename dooc::named_arg_properties<TArgs>::type> &>) &&
-            ...))
-constexpr auto args_to_group(TElementConstraint, TArgs &&...args) {
-  using tuple_t = dooc::named_tuple<std::remove_cvref_t<TArgs>...>;
-  return tuple_t(std::forward<TArgs>(args)...);
-}
-#endif
-
-template <typename Constraint, typename... Args> struct maybe_build_constraint {
-  template <typename T>
-    requires(std::invocable<Constraint, T &&> ||
-             (builder<T, Args...> &&
-              std::invocable<Constraint, build_result_t<T, Args...>>))
-  constexpr void operator()(T &&) const {}
-};
-
-template <typename Constraint>
-constexpr auto optional_build =
-    []<typename T, typename... Args>(T &&e, Args &&...args) {
-      if constexpr (!std::invocable<Constraint, T>) {
-        static_assert(
-            builder<T, Args...>,
-            "Element did not satisfy constraint and it could not be built");
-        static_assert(std::invocable<Constraint, build_result_t<T, Args...>>,
-                      "Built element did not satisfy constraint");
-        return call::build(std::forward<T>(e), std::forward<Args>(args)...);
-      } else {
-        unused(args...);
-        return std::forward<T>(e);
-      }
-    };
-
-template <typename Constraint,
-          typename Builder = decltype(optional_build<Constraint>), typename T,
-          typename... TArgs>
-constexpr auto build_group(Constraint &&, T &&g, Builder b = {},
-                           TArgs &&...args) {
-  auto gf = bp::as_forward<T>(g);
-  if constexpr (std::invocable<Constraint, T>) {
-    return std::forward<T>(g);
-  } else if constexpr (builder<T, TArgs &&...>) {
-    return call::build(*gf, std::forward<TArgs>(args)...);
-  } else if constexpr (std::invocable<decltype(call::apply_to), T,
-                                      bp::no_op_t>) {
-    return call::apply_to(
-        *gf, [do_build = bp::trailing_curried<Builder, TArgs...>(
-                  b, std::forward<TArgs>(args)...)]<typename... Ts>(
-                 Ts &&...elements) {
-          return std::tuple(do_build(std::forward<Ts>(elements))...);
-        });
-  } else if constexpr (std::ranges::range<std::remove_cvref_t<T>>) {
-    return bp::transform_range(std::forward<T>(g),
-                               bp::trailing_curried<Builder, TArgs...>(
-                                   b, std::forward<TArgs>(args)...));
-  } else {
-    static_assert(std::is_void_v<T>, "Type does not satisfy constraint");
-  }
-}
-
-template <typename TConstraint, typename... TArgs>
-using args_to_group_t =
-    decltype(args_to_group(TConstraint{}, std::declval<TArgs &&>()...));
 
 } // namespace impl
 
@@ -754,6 +667,11 @@ struct builder_display_element_constraint {
   operator()(builder_display_args<TR, TStateArgs> auto &&) const {}
 };
 
+template <renderer TR>
+struct display_element_constraint {
+  constexpr void operator()(display_component<TR> auto&&) const {}
+};
+
 template <typename TArea, typename TDisplay, widget_states_aspect TState,
           typename TEventHandler, typename TSubs, typename TOnResize>
 class widget_builder_impl {
@@ -787,12 +705,12 @@ public:
 
   template <typename... TD2> constexpr auto display(TD2 &&...vs) && {
     using TRes = widget_builder_impl<
-        TArea, impl::args_to_group_t<display_constraint_t, TD2 &&...>, TState,
+        TArea, build::args_to_group_t<display_constraint_t, TD2 &&...>, TState,
         TEventHandler, TSubs, TOnResize>;
     auto s = bp::as_forward(std::move(*this));
     return TRes{
         (*s).area_,
-        impl::args_to_group(display_constraint_t{}, std::forward<TD2>(vs)...),
+        build::args_to_group(display_constraint_t{}, std::forward<TD2>(vs)...),
         (*s).state_,
         (*s).event_,
         (*s).subs_,
@@ -805,13 +723,16 @@ public:
     static_assert(bounding_box<TArea>,
                   "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
-    using display_t = decltype(impl::build_displays(
-        std::move(displays_), all_states<TEventHandler>()));
+    //using display_t = decltype(impl::build_displays(
+    //    std::move(displays_), all_states<TEventHandler>()));
+    using display_t = decltype(build::build_group(display_element_constraint<dummy_renderer>{}, std::move(*this).displays_, all_states<TEventHandler>()));
+
     using subs_t = decltype(impl::build_gui_context_widgets(std::move(subs_)));
     auto s = bp::as_forward(std::move(*this));
     return widget<TArea, display_t, TState, TEventHandler, subs_t, TOnResize>(
         (*s).area_,
-        impl::build_displays((*s).displays_, all_states<TEventHandler>()),
+        //impl::build_displays((*s).displays_, all_states<TEventHandler>()),
+        build::build_group(display_element_constraint<dummy_renderer>{}, (*s).displays_, all_states<TEventHandler>()),
         (*s).state_, (*s).event_, impl::build_gui_context_widgets((*s).subs_),
         (*s).on_resize_);
   }
@@ -1949,14 +1870,14 @@ class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
 
   using element_constraint =
-      impl::maybe_build_constraint<radio_button::sub_constraint>;
+      build::maybe_build_constraint<radio_button::sub_constraint>;
 
   constexpr base_t &&move_base() {
     return std::move(static_cast<base_t &>(*this));
   }
 
   static constexpr auto do_build_group(auto &&g) {
-    return impl::build_group(radio_button::sub_constraint{},
+    return build::build_group(radio_button::sub_constraint{},
                              std::forward<decltype(g)>(g), radio_button::all_states_t{});
   }
 
