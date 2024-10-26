@@ -5,6 +5,8 @@
 #include <tuple>
 
 #include <cgui/cgui-call.hpp>
+#include <cgui/cgui-types.hpp>
+#include <cgui/std-backport/ranges.hpp>
 
 namespace cgui::build {
 template <typename> struct all_tuple_tags {};
@@ -24,8 +26,7 @@ template <typename... Ts> struct template_base<std::tuple<Ts...>> {
     return std::tuple{std::forward<Args>(args)...};
   }
   template <typename... Args>
-  static constexpr auto raw_make(Args &&...args)
-      -> std::tuple<Args...> {
+  static constexpr auto raw_make(Args &&...args) -> std::tuple<Args...> {
     return std::tuple<Args...>{std::forward<Args>(args)...};
   }
 };
@@ -33,7 +34,8 @@ template <typename T, std::size_t sz> struct template_base<std::array<T, sz>> {
   template <typename... Args> static constexpr auto decay_make(Args &&...args) {
     return std::array{{std::forward<Args>(args)...}};
   }
-  template <typename... Args, typename Res = std::common_type_t<Args...>> static constexpr auto raw_make(Args &&...args) {
+  template <typename... Args, typename Res = std::common_type_t<Args...>>
+  static constexpr auto raw_make(Args &&...args) {
     return std::array<Res, sizeof...(Args)>{{std::forward<Args>(args)...}};
   }
 };
@@ -59,7 +61,9 @@ inline namespace {
 template <typename Constraint, typename... Args>
 constexpr auto optional_builder(Args &&...args) {
   return [at = std::tuple(bp::as_forward<Args>(args)...)]<typename B>(
-             B &&b) -> decltype(auto) requires(std::invocable<Constraint, B> || builder<B, Args...>) {
+             B &&b) -> decltype(auto)
+           requires(std::invocable<Constraint, B> || builder<B, Args...>)
+  {
     if constexpr (std::invocable<Constraint, B>) {
       return std::forward<B>(b);
     } else {
@@ -74,8 +78,7 @@ constexpr auto optional_builder(Args &&...args) {
 } // namespace
 } // namespace impl
 
-template <typename Tup, typename Builder,
-          std::size_t... tIs>
+template <typename Tup, typename Builder, std::size_t... tIs>
 constexpr auto build_tuple(Tup &&t, std::index_sequence<tIs...>,
                            Builder const &b) {
   return template_base_t<Tup>::raw_make(
@@ -121,14 +124,12 @@ constexpr auto args_to_group(TElementConstraint, TArgs &&...args) {
   return tuple_t(std::forward<TArgs>(args)...);
 }
 
-
 template <dooc::template_string tName, typename T>
 constexpr dooc::named_arg_t<tName, T> forward_named_arg(T &&t) {
   return dooc::named_arg_t<tName, T>{std::forward<T>(t)};
 }
 
-template <typename Tup, typename Builder,
-          dooc::template_string... tags>
+template <typename Tup, typename Builder, dooc::template_string... tags>
 constexpr auto build_tuple(Tup &&t, dooc::template_string_list_t<tags...>,
                            Builder const &b) {
   return dooc::named_tuple(
@@ -160,13 +161,11 @@ constexpr auto optional_build =
       }
     };
 
-template <typename Constraint,
-          typename T,
-          typename... TArgs>
-constexpr auto build_group(Constraint &&, T &&g,
-                           TArgs &&...args) {
+template <typename Constraint, typename T, typename... TArgs>
+constexpr auto build_group(Constraint &&, T &&g, TArgs &&...args) {
   auto gf = bp::as_forward<T>(g);
-  auto b_args = impl::optional_builder<Constraint, TArgs&&...>(std::forward<TArgs>(args)...);
+  auto b_args = impl::optional_builder<Constraint, TArgs &&...>(
+      std::forward<TArgs>(args)...);
   if constexpr (std::invocable<decltype(b_args), T>) {
     return b_args(*gf);
   } /* else if constexpr (std::invocable<decltype(call::apply_to), T,
@@ -181,12 +180,9 @@ constexpr auto build_group(Constraint &&, T &&g,
    */
   else {
     if constexpr (std::ranges::range<std::remove_cvref_t<T>>) {
-      return bp::transform_range(
-          std::forward<T>(g),
-          std::move(b_args));
+      return bp::transform_range(std::forward<T>(g), std::move(b_args));
     } else if constexpr (usable_in_build_tuples<T>) {
-      return build_tuple(*gf, all_tuple_tags_t<T>{},
-                                     std::move(b_args));
+      return build_tuple(*gf, all_tuple_tags_t<T>{}, std::move(b_args));
     } else {
       static_assert(std::is_void_v<T>, "Type does not satisfy constraint");
     }

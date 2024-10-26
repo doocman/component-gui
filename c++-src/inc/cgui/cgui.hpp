@@ -8,6 +8,7 @@
 #include <variant>
 #include <vector>
 
+#include <cgui/build_utility.hpp>
 #include <cgui/cgui-types.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/std-backport/array.hpp>
@@ -15,7 +16,6 @@
 #include <cgui/stl_extend.hpp>
 #include <cgui/ui_events.hpp>
 #include <cgui/widget_algorithm.hpp>
-#include <cgui/build_utility.hpp>
 
 namespace cgui {
 template <typename TX, typename TY> class nudger {
@@ -238,90 +238,9 @@ public:
 };
 
 namespace impl {
-template <typename> constexpr bool is_tuple = false;
-template <typename... Ts> constexpr bool is_tuple<std::tuple<Ts...>> = true;
-
-constexpr decltype(auto) gui_context_build_or_forward(auto &&v) {
-  auto vf = bp::as_forward<decltype(v)>(v);
-  if constexpr (widget_display<decltype(v)>) {
-    return *vf;
-  } else {
-    return (*vf).build();
-  }
-}
-
-template <typename... Ts, std::size_t... tIs>
-constexpr auto build_context_display_tuple(std::tuple<Ts...> &&t,
-                                           std::index_sequence<tIs...>) {
-  return std::tuple<bp::remove_rvalue_reference_t<
-      decltype(gui_context_build_or_forward(std::declval<Ts &&>()))>...>{
-      gui_context_build_or_forward(std::forward<Ts>(std::get<tIs>(t)))...};
-}
-
-constexpr decltype(auto) widget_build_or_forward(auto &&v, auto const &states) {
-  if constexpr (display_component<decltype(v)>) {
-    return std::forward<decltype(v)>(v);
-  } else {
-    return call::build(std::forward<decltype(v)>(v), states);
-  }
-}
-
-template <typename... Ts, typename TStates, std::size_t... tIs>
-constexpr auto build_tuple(std::tuple<Ts...> &&t, TStates const &states,
-                           std::index_sequence<tIs...>)
-    -> std::tuple<bp::remove_rvalue_reference_t<
-        decltype(widget_build_or_forward(std::declval<Ts &&>(), states))>...> {
-  return {
-      widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)), states)...};
-}
-#if CGUI_HAS_NAMED_ARGS
-template <typename... Ts>
-constexpr bool is_tuple<dooc::named_tuple<Ts...>> = true;
-
-template <dooc::template_string... tNames, typename... Ts>
-constexpr auto
-build_tuple(dooc::named_tuple<dooc::named_arg_t<tNames, Ts>...> &&t, auto &&)
-    -> dooc::named_tuple<dooc::named_arg_t<
-        tNames,
-        bp::remove_rvalue_reference_t<decltype(gui_context_build_or_forward(
-            std::declval<Ts &&>()))>>...> {
-  return {gui_context_build_or_forward(
-      static_cast<Ts &&>(dooc::get<tNames>(t)))...};
-}
-
-template <dooc::template_string... tNames, typename... Ts>
-constexpr auto
-build_tuple(dooc::named_tuple<dooc::named_arg_t<tNames, Ts>...> &&t,
-            auto const &states, auto &&)
-    -> dooc::named_tuple<dooc::named_arg_t<
-        tNames, bp::remove_rvalue_reference_t<decltype(widget_build_or_forward(
-                    std::declval<Ts &&>(), states))>>...> {
-  return {widget_build_or_forward(static_cast<Ts &&>(dooc::get<tNames>(t)),
-                                  states)...};
-}
-#endif
-template <typename T> constexpr auto build_gui_context_widgets(T &&t) {
-  auto tf = bp::as_forward<T>(t);
-  if constexpr (widget_display_builder<T>) {
-    return call::build(*tf);
-  } else if constexpr (is_tuple<std::remove_cvref_t<T>>) {
-    return build_context_display_tuple(
-        *tf,
-        std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>{});
-  } else {
-    return *tf;
-  }
-}
-template <typename T, typename TStates>
-constexpr auto build_displays(T &&t, TStates const &states) {
-  if constexpr (is_tuple<std::remove_cvref_t<T>>) {
-    return build_tuple(
-        std::forward<T>(t), states,
-        std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>{});
-  } else {
-    return std::forward<T>(t);
-  }
-}
+struct widget_display_constraint {
+  constexpr void operator()(widget_display auto &&) const {}
+};
 
 } // namespace impl
 
@@ -436,12 +355,14 @@ public:
     return {std::move(widgets_), std::forward<TORSZ2>(onrsz)};
   }
   template <bounding_box TArea = default_rect,
-            typename TW =
-                decltype(impl::build_gui_context_widgets(std::move(widgets_)))>
+            typename TW = decltype(build::build_group(
+                impl::widget_display_constraint{}, std::move(widgets_)))>
   constexpr gui_context<TArea, TOnResize, TW>
   build(TArea const &start_area) && {
     return {std::move(on_resize_),
-            impl::build_gui_context_widgets(std::move(widgets_)), start_area};
+            build::build_group(impl::widget_display_constraint{},
+                               std::move(widgets_)),
+            start_area};
   }
 };
 
@@ -667,9 +588,8 @@ struct builder_display_element_constraint {
   operator()(builder_display_args<TR, TStateArgs> auto &&) const {}
 };
 
-template <renderer TR>
-struct display_element_constraint {
-  constexpr void operator()(display_component<TR> auto&&) const {}
+template <renderer TR> struct display_element_constraint {
+  constexpr void operator()(display_component<TR> auto &&) const {}
 };
 
 template <typename TArea, typename TDisplay, widget_states_aspect TState,
@@ -723,17 +643,20 @@ public:
     static_assert(bounding_box<TArea>,
                   "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
-    //using display_t = decltype(impl::build_displays(
-    //    std::move(displays_), all_states<TEventHandler>()));
-    using display_t = decltype(build::build_group(display_element_constraint<dummy_renderer>{}, std::move(*this).displays_, all_states<TEventHandler>()));
+    using display_t = decltype(build::build_group(
+        display_element_constraint<dummy_renderer>{},
+        std::move(*this).displays_, all_states<TEventHandler>()));
 
-    using subs_t = decltype(impl::build_gui_context_widgets(std::move(subs_)));
+    using subs_t = decltype(build::build_group(
+        impl::widget_display_constraint{}, std::move(*this).subs_));
     auto s = bp::as_forward(std::move(*this));
     return widget<TArea, display_t, TState, TEventHandler, subs_t, TOnResize>(
         (*s).area_,
-        //impl::build_displays((*s).displays_, all_states<TEventHandler>()),
-        build::build_group(display_element_constraint<dummy_renderer>{}, (*s).displays_, all_states<TEventHandler>()),
-        (*s).state_, (*s).event_, impl::build_gui_context_widgets((*s).subs_),
+        build::build_group(display_element_constraint<dummy_renderer>{},
+                           (*s).displays_, all_states<TEventHandler>()),
+        (*s).state_, (*s).event_,
+        build::build_group(impl::widget_display_constraint{},
+                           std::move(*this).subs_),
         (*s).on_resize_);
   }
 
@@ -1661,13 +1584,14 @@ using state_marker_t = make_widget_state_marker_sequence_t<
 using all_states_t = all_states_in_marker<state_marker_t>;
 template <typename T, typename TRender = dummy_renderer,
           typename Position = default_pixel_coord>
-concept element = has_render<
-    T, TRender,
-    basic_button_list_args<
-        bp::return_constant_t<state_marker_t, element_state{}>, int>> &&
-                  requires(T &&t, Position const &p) {
-                    call::find_sub(t, bp::false_predicate, bp::no_op);
-                  };
+concept element =
+    has_render<
+        T, TRender,
+        basic_button_list_args<
+            bp::return_constant_t<state_marker_t, element_state{}>, int>> &&
+    requires(T &&t, Position const &p) {
+      call::find_sub(t, bp::false_predicate, bp::no_op);
+    };
 struct sub_constraint {
   constexpr void operator()(element auto &&) const {}
 };
@@ -1878,7 +1802,8 @@ class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
 
   static constexpr auto do_build_group(auto &&g) {
     return build::build_group(radio_button::sub_constraint{},
-                             std::forward<decltype(g)>(g), radio_button::all_states_t{});
+                              std::forward<decltype(g)>(g),
+                              radio_button::all_states_t{});
   }
 
   using built_elements_t =
