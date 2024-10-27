@@ -86,6 +86,26 @@ struct find_sub_t {
   }
 };
 
+struct find_sub_id_t {
+  template <typename ID> struct finder {
+    ID id;
+
+    constexpr bool operator()(auto &&, auto &&id2) const { return id == id2; }
+  };
+  template <typename T, typename ID, typename F>
+    requires(has_find_sub_id<T, ID, F> ||
+             std::invocable<find_sub_t, T, finder<ID>, F>)
+  constexpr bool operator()(T &&t, ID i, F &&f) const {
+    auto tf = bp::as_forward<T>(t);
+    auto ff = bp::as_forward<F>(f);
+    if constexpr (has_find_sub_id<T, ID, F>) {
+      return _do_find_sub_id::call(*t, i, *f);
+    } else {
+      return find_sub_t{}(*tf, finder<ID>(i), *ff);
+    }
+  }
+};
+
 struct find_sub_at_location_t {
   template <typename Pos> struct finder {
     Pos p;
@@ -136,7 +156,7 @@ struct sub_accessor_t {
   constexpr std::invocable<T &&, F> auto
   operator()(T &&t, SubId const &s, arguments_marker_t<F> am) const {
     if constexpr (has_sub_accessor<T, SubId, arguments_marker_t<F>>) {
-      return _do_sub_accessor(std::forward<T>(t), s, am);
+      return _do_sub_accessor::call(std::forward<T>(t), s, am);
     } else {
       return callback<std::remove_cvref_t<T>, SubId>(s);
     }
@@ -149,6 +169,9 @@ struct sub_accessor_t {
 /// function with the found object if found and returns true on found and false
 /// otherwise.
 inline constexpr impl::find_sub_t find_sub;
+/// Finds element with ID. Signature: elements, ID, callback function. Returns
+/// true if found, false otherwise.
+inline constexpr impl::find_sub_id_t find_sub_id;
 /// Iterates through list or tuple of objects with an area, calls a
 /// function with the found object if it finds and object that covers the
 /// specific position and returns true on found and false otherwise.

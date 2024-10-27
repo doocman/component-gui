@@ -300,6 +300,7 @@ CGUI_CALL_CONCEPT(area)
 CGUI_CALL_CONCEPT(glyph)
 CGUI_CALL_CONCEPT(text_colour)
 CGUI_CALL_CONCEPT(find_sub)
+CGUI_CALL_CONCEPT(find_sub_id)
 CGUI_CALL_CONCEPT(find_sub_at_location)
 CGUI_CALL_CONCEPT(sub_accessor)
 

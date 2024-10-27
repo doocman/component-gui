@@ -36,6 +36,10 @@ int main(int argc, char **argv) {
 
     auto gui =
         cgui::gui_context_builder()
+            .on_resize([] (auto&& sz, auto&& ws) {
+              auto& [w] = ws;
+              cgui::call::area(w, cgui::box_from_xywh<area_t>(0, 0, cgui::call::width(sz), cgui::call::height(sz)));
+            })
             .widgets(cgui::widget_builder()
                          .area(area_t{})
                          .event(cgui::radio_button_trigger().elements(
@@ -43,14 +47,18 @@ int main(int argc, char **argv) {
                                  cgui::display_per_state(cgui::fill_rect()),
                                  cgui::text_renderer(std::ref(cached_font))
                                  )
-                             ))
+                             ).build())
                          .build())
-            .on_resize([]() {})
-            .build();
+            .build(full_area);
+    auto& [list] = gui.widgets();
+    list.event_component().mutate_elements([] (auto&&...) {});
+
+    return EXIT_SUCCESS;
 
   } catch (std::exception const &e) {
     std::cout << "Uncaught exception: " << e.what() << '\n';
   } catch (...) {
     std::cout << "Uncaught exception UNKNOWN\n";
   }
+  return EXIT_FAILURE;
 }

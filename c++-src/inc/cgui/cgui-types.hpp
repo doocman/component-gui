@@ -449,6 +449,11 @@ public:
     requires(std::constructible_from<TState, Ts && ...>)
   constexpr widget_render_args(TWH w, TWH h, Ts &&...state_args)
       : TState(std::forward<Ts>(state_args)...), w_(w), h_(h) {}
+  template <typename... Ts>
+    requires(std::constructible_from<TState, Ts && ...>)
+  constexpr widget_render_args(bounding_box auto const &b, Ts &&...state_args)
+      : widget_render_args(call::width(b), call::height(b),
+                           std::forward<Ts>(state_args)...) {}
 
   constexpr TWH width() const noexcept { return w_; }
   constexpr TWH height() const noexcept { return h_; }
@@ -460,6 +465,11 @@ template <typename TWH, typename TState>
 widget_render_args(TWH, TWH, TState &&)
     -> widget_render_args<TWH, std::remove_cvref_t<TState>>;
 template <typename TWH> widget_render_args(TWH, TWH) -> widget_render_args<TWH>;
+template <bounding_box B, typename TState>
+widget_render_args(B const &, TState &&)
+    -> widget_render_args<
+        std::remove_cvref_t<decltype(call::width(std::declval<B>()))>,
+        std::remove_cvref_t<TState>>;
 
 template <typename T>
 concept canvas = requires(T const &tc) {

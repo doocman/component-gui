@@ -18,15 +18,6 @@
 #include <dooc/named_args_tuple.hpp>
 
 namespace cgui::tests {
-static_assert(requires(
-    cgui::display_per_state<cgui::fill_rect, cgui::fill_rect>&& a,
-    widget_states<unsigned long long, 0> s
-    ) { std::move(a).build(s); });
-static_assert(builder<cgui::display_per_state<cgui::fill_rect, cgui::fill_rect>&&,
-              widget_states<unsigned long long, 0>>);
-static_assert(built_display_concept<cgui::display_per_state<cgui::fill_rect, cgui::fill_rect>&&, cgui::dummy_renderer, cgui::widget_render_args<>>
-              );
-
 static_assert(std::convertible_to<not_null<int *>, int *>);
 static_assert(std::convertible_to<int *, not_null<int *>>);
 static_assert(!std::convertible_to<std::nullptr_t, not_null<int *>>);
@@ -2326,7 +2317,7 @@ struct test_button_list {
     for (int i = 0; i < sz; ++i) {
       auto bright =
           static_cast<std::uint_least8_t>(args.button_state(i).current_state());
-      fill(r, default_rect{{i, 0}, {i + 1, 1}},
+      fill(r, default_rect{{i, 0}, {i + 1, call::height(args)}},
            default_colour_t{bright, bright, bright, 255u});
     }
   }

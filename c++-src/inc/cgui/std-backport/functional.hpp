@@ -7,6 +7,7 @@
 
 #include <functional>
 
+#include <cgui/std-backport/tuple.hpp>
 #include <cgui/std-backport/utility.hpp>
 
 namespace cgui::bp {
