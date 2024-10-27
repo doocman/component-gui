@@ -57,10 +57,15 @@ public:
   constexpr auto sub_accessor(std::size_t index, auto&&) const {
     return sub_accessor(index);
   }
+  static constexpr Displays display_prototype() requires std::is_default_constructible_v<Displays> {
+    return Displays{};
+  }
+  constexpr Displays display_prototype() const requires(!std::is_default_constructible_v<Displays> && std::is_copy_constructible_v<Displays>) {
+    return this->get_first();
+  }
 
   constexpr bool find_sub(std::predicate<ref_element_t &&, std::size_t> auto &&p,
                           std::invocable<ref_element_t, std::size_t> auto &&e) {
-    // if (empty(elements_)) {return false;}
     return call::find_sub(std::views::transform(elements_, [this](auto &e) {
       return ref_element_t(
           *this, static_cast<std::size_t>(std::distance(elements_.data(), &e)));
@@ -103,7 +108,7 @@ struct widget_list_builder_constraint {
     requires(pass_or_build_pass<T, widget_list_constraint<State>, all_states_t>)
   constexpr void operator()(T &&) const {}
 };
-template <typename Displays>
+template <typename Displays, typename Functions>
 class uni_sized_widget_list_builder_impl
     : bp::empty_structs_optimiser<Displays> {
   using _base_t = bp::empty_structs_optimiser<Displays>;
@@ -134,7 +139,9 @@ public:
   }
 };
 
-constexpr uni_sized_widget_list_builder_impl<std::tuple<>>
+struct no_function_list {};
+
+constexpr uni_sized_widget_list_builder_impl<std::tuple<>, no_function_list>
 uni_sized_widget_list_builder() {
   return {};
 }
