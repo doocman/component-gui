@@ -45,20 +45,24 @@ int main(int, char **) {
                     .area(area_t{})
                     .display(cgui::display_per_state(cgui::fill_rect()),
                              cgui::text_renderer(std::ref(cached_font)))
-                    .event(cgui::buttonlike_trigger())
-                    .state(cgui::momentary_button{}
-                               .click([&do_exit] { do_exit = true; })
-                               .build()),
-                cgui::widget_builder().area(area_t{}).display(
-                    cgui::fill_rect(),
-                    cgui::display_per_state(
-                        cgui::text_renderer(std::ref(cached_font)))).event(cgui::buttonlike_trigger()).state(cgui::toggle_button_state().build()),
+                    .event(cgui::buttonlike_trigger(
+                        cgui::momentary_button{}
+                            .click([&do_exit] { do_exit = true; })
+                            .build())),
+                cgui::widget_builder()
+                    .area(area_t{})
+                    .display(cgui::fill_rect(),
+                             cgui::display_per_state(
+                                 cgui::text_renderer(std::ref(cached_font))))
+                    .event(cgui::buttonlike_trigger(
+                        cgui::toggle_button_state().build())),
                 cgui::widget_builder().area(area_t{}).display(
                     cgui::text_renderer(std::ref(cached_font))) //
                 )
             .on_resize([](cgui::size_wh auto const &sz, auto &&widgets) {
               using namespace cgui;
-              auto &[hello_world_header, quit_button, random_toggle, lorum_ipsum] = widgets;
+              auto &[hello_world_header, quit_button, random_toggle,
+                     lorum_ipsum] = widgets;
               auto full_area = cgui::box_from_xywh<area_t>(
                   0, 0, call::width(sz), call::height(sz));
               hello_world_header.area(trim_from_above(
@@ -81,15 +85,20 @@ int main(int, char **) {
                   &button_bar_area, cgui::call::width(button_bar_area) / 2));
               random_toggle.area(button_bar_area);
               {
-                auto& texts = std::get<1>(random_toggle.displays());
+                auto &texts = std::get<1>(random_toggle.displays());
                 using enum cgui::toggle_button_states;
                 auto a = random_toggle.area();
-                get<relaxed_off>(texts).set_displayed(a, "I'm a happy off'ed button");
-                get<hover_off>(texts).set_displayed(a, "Don't you dare to click me!");
+                get<relaxed_off>(texts).set_displayed(
+                    a, "I'm a happy off'ed button");
+                get<hover_off>(texts).set_displayed(
+                    a, "Don't you dare to click me!");
                 get<hold_off>(texts).set_displayed(a, "You are clicking...");
-                get<relaxed_on>(texts).set_displayed(a, "Noo, come back and fix this. You must click me again!");
-                get<hover_on>(texts).set_displayed(a, "Click me back please...");
-                get<hold_on>(texts).set_displayed(a, "Pressing, and now... let it goooo!");
+                get<relaxed_on>(texts).set_displayed(
+                    a, "Noo, come back and fix this. You must click me again!");
+                get<hover_on>(texts).set_displayed(a,
+                                                   "Click me back please...");
+                get<hold_on>(texts).set_displayed(
+                    a, "Pressing, and now... let it goooo!");
               }
 
               std::get<1>(quit_button.displays())

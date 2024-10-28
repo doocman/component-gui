@@ -2322,6 +2322,7 @@ struct test_button_list {
     }
   }
 };
+static_assert(radio_button::element<test_button_list>);
 
 TEST(Widget, RadioButtonDecorator) // NOLINT
 {

@@ -1600,7 +1600,7 @@ concept element =
         T, TRender,
         basic_button_list_args<
             bp::return_constant_t<state_marker_t, element_state{}>, int>> &&
-    can_trigger<T, BP> && requires(T &&t, Position const &p) {
+    requires(T &&t, Position const &p) {
       call::find_sub(t, bp::false_predicate, bp::no_op);
     };
 struct sub_constraint {

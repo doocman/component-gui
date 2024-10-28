@@ -38,6 +38,7 @@ int main(int argc, char **argv) {
     // TODO: Remove these two variables by adding sensible logic into the gui
     int win_width{};
     bool rerender_all{};
+    // TODO: Fix render-beyond-borders bug for button list.
 
     auto gui =
         cgui::gui_context_builder()
@@ -68,9 +69,9 @@ int main(int argc, char **argv) {
                     .build(),
                 cgui::widget_builder()
                     .area(area_t{})
-                    .event(cgui::momentary_button()
+                    .event(cgui::buttonlike_trigger(cgui::momentary_button()
                                .click([&do_exit] { do_exit = true; })
-                               .build())
+                               .build()))
                     .display(cgui::text_renderer(std::ref(cached_font)))
                     .build())
             .build(full_area);

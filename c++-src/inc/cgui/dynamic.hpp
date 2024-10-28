@@ -19,10 +19,10 @@ class uni_sized_widget_list_impl
     using _ebase_t::_ebase_t;
 
     constexpr decltype(auto) display() {
-      return get<0>(*this);
+      return get<0>(static_cast<_ebase_t&>(*this));
     }
     constexpr decltype(auto) functions() {
-      return get<1>(*this);
+      return get<1>(static_cast<_ebase_t&>(*this));
     }
   };
   std::vector<raw_element_t> elements_;
@@ -52,15 +52,16 @@ public:
     constexpr void set_state(auto &&, widget_back_propagater auto &&b) const {
       b.rerender();
     }
+    template <typename T, typename BP>
+      requires(has_handle<Functions, T, BP>)
+    constexpr void handle(T &&t, BP &&b) {
+      CGUI_ASSERT(index_ < size(container_->elements_));
+      call::handle(container_->elements_[index_].functions(), std::forward<T>(t), std::forward<BP>(b));
+    }
   };
 
   using _base_t::_base_t;
 
-  template <typename T, typename BP>
-    requires(has_handle<Functions, T, BP>)
-  constexpr void handle(T &&t, BP &&b) {
-    call::handle(get<1>(base()), std::forward<T>(t), std::forward<BP>(b));
-  }
   constexpr void render(renderer auto &&r_org, auto &&b_arg) const {
     for (std::ptrdiff_t i = {}; auto &e : elements_) {
       auto const iu = static_cast<std::size_t>(i);
