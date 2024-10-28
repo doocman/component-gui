@@ -198,7 +198,7 @@ class basic_widget_back_propagater {
   template <bounding_box A2> friend class basic_widget_back_propagater;
 
   explicit(false) constexpr basic_widget_back_propagater(
-      recursive_area_navigator<TArea> nav, TArea const& to_re = {})
+      recursive_area_navigator<TArea> nav, TArea const &to_re = {})
       : full_area_(nav), to_rerender_(to_re) {}
 
 public:
@@ -1589,17 +1589,18 @@ using all_states_t = all_states_in_marker_t<state_marker_t>;
 using all_triggers_t = triggers<trigger_on, trigger_off>;
 
 template <typename T, typename BP = basic_widget_back_propagater<>>
-concept can_trigger = has_handle<T, trigger_on, BP&&> && has_handle<T, trigger_off, BP&&>;
+concept can_trigger =
+    has_handle<T, trigger_on, BP &&> && has_handle<T, trigger_off, BP &&>;
 
 template <typename T, typename TRender = dummy_renderer,
-          typename Position = default_pixel_coord, typename BP = basic_widget_back_propagater<>>
+          typename Position = default_pixel_coord,
+          typename BP = basic_widget_back_propagater<>>
 concept element =
     has_render<
         T, TRender,
         basic_button_list_args<
             bp::return_constant_t<state_marker_t, element_state{}>, int>> &&
-    can_trigger<T, BP> &&
-    requires(T &&t, Position const &p) {
+    can_trigger<T, BP> && requires(T &&t, Position const &p) {
       call::find_sub(t, bp::false_predicate, bp::no_op);
     };
 struct sub_constraint {
@@ -1620,9 +1621,7 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
                                      BP &&back_prop) {
     using namespace radio_button;
     if constexpr (has_set_state<Sub, state_marker_t, BP>) {
-      auto sbp = back_prop.sub(call::area(sub));
       call::set_state(sub, state, back_prop);
-      back_prop.merge_sub(sbp);
     } else {
       // If the group itself does not provide a handler to tell what really
       // needs to be re-rendered, we have to assume all will be.
@@ -1705,7 +1704,6 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
                                BP &&back_prop) {
     hovered_element_ = sub_index;
     using namespace radio_button;
-    static_assert(has_set_state<Sub, state_marker_t, BP>);
     if constexpr (has_set_state<Sub, state_marker_t, BP>) {
       call::set_state(sub,
                       state_marker_t(combine_toggled_hover_states(
@@ -1848,7 +1846,7 @@ class subs_group {
 public:
   constexpr void render(auto &&...) const {}
   constexpr bool find_sub(auto &&...) { return false; }
-  constexpr void handle(auto&&...) {}
+  constexpr void handle(auto &&...) {}
 };
 
 template <typename TElements = subs_group>
@@ -1863,10 +1861,9 @@ class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
   }
 
   static constexpr auto do_build_group(auto &&g) {
-    return build::build_group(radio_button::sub_constraint{},
-                              std::forward<decltype(g)>(g),
-                              radio_button::all_states_t{},
-                              radio_button::all_triggers_t{});
+    return build::build_group(
+        radio_button::sub_constraint{}, std::forward<decltype(g)>(g),
+        radio_button::all_states_t{}, radio_button::all_triggers_t{});
   }
 
   using built_elements_t =

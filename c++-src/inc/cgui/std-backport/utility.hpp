@@ -107,7 +107,7 @@ constexpr void run_for_each(auto &&cb, auto &&...vals)
                           invoke_arg1_or_arg1_2(cb, *t, i);
                         }]<typename... Ts, std::size_t... is>(
                        std::index_sequence<is...>, Ts &&...vs) {
-    if constexpr(sizeof...(vals) > 0) {
+    if constexpr (sizeof...(vals) > 0) {
       using expander = char const[sizeof...(vals)];
       auto wrem = [&f]<typename... Us>(Us &&...args) {
         (void)f(std::forward<Us>(args)...);

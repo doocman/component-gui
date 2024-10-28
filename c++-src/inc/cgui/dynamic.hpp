@@ -17,6 +17,13 @@ class uni_sized_widget_list_impl
   struct raw_element_t : bp::empty_structs_optimiser<Displays, Functions> {
     using _ebase_t = bp::empty_structs_optimiser<Displays, Functions>;
     using _ebase_t::_ebase_t;
+
+    constexpr decltype(auto) display() {
+      return get<0>(*this);
+    }
+    constexpr decltype(auto) functions() {
+      return get<1>(*this);
+    }
   };
   std::vector<raw_element_t> elements_;
   int element_size_{128};
@@ -41,11 +48,8 @@ public:
   public:
     constexpr ref_element_t(uni_sized_widget_list_impl &c, std::size_t i)
         : container_(&c), index_(i) {}
-    [[nodiscard]] constexpr bounding_box auto area() const {
-      return container_->element_area(index_);
-    }
 
-    constexpr void handle(auto&&, widget_back_propagater auto&& b) {
+    constexpr void set_state(auto &&, widget_back_propagater auto &&b) const {
       b.rerender();
     }
   };
@@ -60,12 +64,12 @@ public:
   constexpr void render(renderer auto &&r_org, auto &&b_arg) const {
     for (std::ptrdiff_t i = {}; auto &e : elements_) {
       auto const iu = static_cast<std::size_t>(i);
-      auto w_arg = widget_render_args(element_area(0, call::width(b_arg)), b_arg.button_state(i));
+      auto w_arg = widget_render_args(element_area(0, call::width(b_arg)),
+                                      b_arg.button_state(i));
       auto r = r_org.sub(element_area(iu, call::width(b_arg)));
       unused(r);
-      call::for_each(e.get_first(), [&] (auto&& v) {
-        call::render(v, r, w_arg);
-      });
+      call::for_each(e.get_first(),
+                     [&](auto &&v) { call::render(v, r, w_arg); });
       ++i;
     }
   }
@@ -80,21 +84,17 @@ public:
   constexpr auto sub_accessor(std::size_t index, auto &&) const {
     return sub_accessor(index);
   }
-  static constexpr Displays display_prototype()
-    requires std::is_default_constructible_v<Displays>
-  {
-    return Displays{};
-  }
-  constexpr Displays display_prototype() const
-    requires(!std::is_default_constructible_v<Displays> &&
-             std::is_copy_constructible_v<Displays>)
+  constexpr decltype(auto) display_prototype() const
   {
     return this->get_first();
   }
+  constexpr decltype(auto) function_prototype() const {
+    return get<1>(static_cast<_base_t const&>(*this));
+  }
 
-  constexpr bool
-  find_sub(std::predicate<ref_element_t, std::size_t> auto &&p,
-           std::invocable<ref_element_t, std::size_t> auto &&e) {
+
+  constexpr bool find_sub(std::predicate<ref_element_t, std::size_t> auto &&p,
+                          std::invocable<ref_element_t, std::size_t> auto &&e) {
     return call::find_sub(
         std::views::transform(elements_,
                               [this](auto &e) {
@@ -105,22 +105,21 @@ public:
                               }),
         std::forward<decltype(p)>(p), std::forward<decltype(e)>(e));
   }
-  constexpr bool find_sub_at_location(pixel_coord auto &&pos,
-                                      std::invocable<ref_element_t, std::size_t> auto &&e) {
+  constexpr bool
+  find_sub_at_location(pixel_coord auto &&pos,
+                       std::invocable<ref_element_t, std::size_t> auto &&e) {
     if (element_size_ == 0) {
       return false;
     }
     auto pos_index = static_cast<std::size_t>(call::y_of(pos) / element_size_);
     if (pos_index < size(elements_)) {
-      std::invoke(std::forward<decltype(e)>(e),
-                  ref_element_t(*this, pos_index), pos_index);
+      std::invoke(std::forward<decltype(e)>(e), ref_element_t(*this, pos_index),
+                  pos_index);
       return true;
     }
     return false;
   }
-  constexpr auto& list() {
-    return elements_;
-  }
+  constexpr auto &list() { return elements_; }
 };
 template <typename State = widget_state_marker<int>>
 struct widget_list_constraint {
@@ -197,18 +196,19 @@ template <typename TriggerTuple> class std_function_list {
   arr_t fs_;
 
   template <typename T>
-  static constexpr bool valid_tag = requires() { bp::tuple_element_index_v<T, TriggerTuple>; };
+  static constexpr bool valid_tag =
+      requires() { bp::tuple_element_index_v<T, TriggerTuple>; };
 
 public:
   std_function_list() { std::ranges::fill(fs_, bp::no_op); }
   template <typename T>
     requires(valid_tag<T>)
-  constexpr std::function<void()>& get(T const&) {
+  constexpr std::function<void()> &get(T const &) {
     return fs_[bp::tuple_element_index_v<T, TriggerTuple>];
   }
   template <typename T, typename BP>
     requires(valid_tag<T>)
-  void handle(T const & t, BP &&) {
+  void handle(T const &t, BP &&) {
     get(t)();
   }
 };

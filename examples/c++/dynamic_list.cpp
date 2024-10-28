@@ -1,12 +1,13 @@
 
+#include <format>
 #include <iostream>
 #include <stdexcept>
 
 #include <cgui/cgui.hpp>
+#include <cgui/dynamic.hpp>
 #include <cgui/embedded/cgui_example_font.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/sdl.hpp>
-#include <cgui/dynamic.hpp>
 
 int main(int argc, char **argv) {
   try {
@@ -34,26 +35,51 @@ int main(int argc, char **argv) {
 
     using area_t = decltype(full_area);
 
+    // TODO: Remove these two variables by adding sensible logic into the gui
+    int win_width{};
+    bool rerender_all{};
+
     auto gui =
         cgui::gui_context_builder()
-            .on_resize([] (auto&& sz, auto&& ws) {
-              auto& [w] = ws;
-              cgui::call::area(w, cgui::box_from_xywh<area_t>(0, 0, cgui::call::width(sz), cgui::call::height(sz)));
+            .on_resize([&win_width](auto &&sz, auto &&ws) {
+              win_width = cgui::call::width(sz);
+              auto &[w, end_button] = ws;
+              auto full_area = cgui::box_from_xywh<area_t>(
+                  0, 0, cgui::call::width(sz), cgui::call::height(sz));
+              // TODO: 240 should be lesser, but we need to define it in
+              // "points" rather than pixels.
+              auto button_area = cgui::trim_from_below(
+                  &full_area, std::min(240, cgui::call::height(full_area)));
+              cgui::call::area(end_button, button_area);
+              cgui::call::area(w, full_area);
             })
-            .widgets(cgui::widget_builder()
-                         .area(area_t{})
-                         .event(cgui::radio_button_trigger().elements(
-                             cgui::dynamic::uni_sized_widget_list_builder().displays(
-                                 cgui::display_per_state(cgui::fill_rect()),
-                                 cgui::text_renderer(std::ref(cached_font))
-                                 )
-                             ).build())
-                         .build())
+            .widgets(
+                cgui::widget_builder()
+                    .area(area_t{})
+                    .event(
+                        cgui::radio_button_trigger()
+                            .elements(
+                                cgui::dynamic::uni_sized_widget_list_builder()
+                                    .displays(cgui::display_per_state(
+                                                  cgui::fill_rect()),
+                                              cgui::text_renderer(
+                                                  std::ref(cached_font))))
+                            .build())
+                    .build(),
+                cgui::widget_builder()
+                    .area(area_t{})
+                    .event(cgui::momentary_button()
+                               .click([&do_exit] { do_exit = true; })
+                               .build())
+                    .display(cgui::text_renderer(std::ref(cached_font)))
+                    .build())
             .build(full_area);
-    auto& [list] = gui.widgets();
-    list.event_component().mutate_elements([argc, argv, &full_area] (auto& elements) {
+    auto &[list, end_button] = gui.widgets();
+    list.event_component().mutate_elements([argc, argv, &full_area, &end_button,
+                                            &win_width,
+                                            &rerender_all](auto &elements) {
       auto prototype = elements.display_prototype();
-      auto& [background, textr] = prototype;
+      auto &[background, textr] = prototype;
       using enum cgui::radio_button::element_state;
       get<relaxed_off>(background).colour() = {100, 40, 40, 255};
       get<relaxed_on>(background).colour() = {40, 40, 100, 255};
@@ -62,19 +88,36 @@ int main(int argc, char **argv) {
       get<hold_off>(background).colour() = {80, 10, 10, 255};
       get<hold_on>(background).colour() = {10, 10, 80, 255};
       textr.text_colour({255, 255, 255, 255});
-      auto display_creator = [&prototype, &full_area] (std::string_view text) {
-        auto res = prototype;
-        std::get<1>(res).set_displayed(full_area, text);
-        return res;
+      decltype(auto) f_prototype = elements.function_prototype();
+      auto display_creator = [&prototype, &full_area, &f_prototype, &end_button,
+                              &win_width, &rerender_all,
+                              &dest = elements.list()](std::string_view text) {
+        auto disp = prototype;
+        std::get<1>(disp).set_displayed(full_area, text);
+        auto f = f_prototype;
+        f.get(cgui::radio_button::trigger_on{}) =
+            [&end_button, &win_width, &rerender_all,
+             ftext = std::format("End program (last button clicked was {})",
+                                 text)] {
+              auto &[textrenderer] = end_button.displays();
+              textrenderer.set_displayed(win_width, 0, ftext);
+              rerender_all = true;
+            };
+        dest.emplace_back(std::move(disp), std::move(f));
       };
-      elements.list().emplace_back(display_creator("This is a list"));
-      elements.list().emplace_back(display_creator("containing the"));
-      elements.list().emplace_back(display_creator("arguments from"));
-      elements.list().emplace_back(display_creator("main:"));
-      for(int i = 0; i < argc; ++i) {
-        elements.list().emplace_back(display_creator(argv[i]));
+      display_creator("This is a list");
+      display_creator("containing the");
+      display_creator("arguments from");
+      display_creator("main:");
+      for (int i = 0; i < argc; ++i) {
+        display_creator(argv[i]);
       }
     });
+    {
+      auto &[etxt] = end_button.displays();
+      etxt.text_colour({255, 255, 255, 255});
+      etxt.set_displayed(win_width, {}, "End program");
+    }
 
     gui.render(renderer);
     renderer.present();
@@ -94,7 +137,11 @@ int main(int argc, char **argv) {
                cgui::unused(e);
              }) != 0) {
       }
-      if (!cgui::empty_box(to_rerender)) {
+      // TODO: This first branch should be removed.
+      if (rerender_all) {
+        gui.render(renderer);
+        renderer.present();
+      } else if (!cgui::empty_box(to_rerender)) {
         gui.render(renderer, to_rerender);
         renderer.present();
       }

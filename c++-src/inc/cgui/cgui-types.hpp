@@ -225,7 +225,8 @@ concept widget_back_propagater =
 
 template <typename T, typename TBox = default_rect, typename U = T>
 concept subable_widget_back_propagator =
-    widget_back_propagater<T, TBox> && requires(T &t, TBox const &box, U const& u) {
+    widget_back_propagater<T, TBox> &&
+    requires(T &t, TBox const &box, U const &u) {
       { t.sub(box) } -> widget_back_propagater<TBox>;
       t.merge_sub(u);
     };
@@ -440,8 +441,7 @@ constexpr std::size_t state2index(widget_state_marker<T, values...> const &v) {
   }
 }
 
-template <typename... Ts>
-struct triggers {
+template <typename... Ts> struct triggers {
   static constexpr auto size = sizeof...(Ts);
 };
 

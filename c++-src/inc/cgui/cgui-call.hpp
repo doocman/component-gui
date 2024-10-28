@@ -12,9 +12,9 @@
 #endif
 
 #include <cgui/std-backport/concepts.hpp>
-#include <cgui/std-backport/utility.hpp>
-#include <cgui/std-backport/tuple.hpp>
 #include <cgui/std-backport/functional.hpp>
+#include <cgui/std-backport/tuple.hpp>
+#include <cgui/std-backport/utility.hpp>
 
 #define CGUI_CALL_CONCEPT(NAME)                                                \
   [[maybe_unused]] inline void NAME() {}                                       \
