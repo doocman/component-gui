@@ -223,10 +223,11 @@ concept widget_back_propagater =
       t.rerender(cbox);
     };
 
-template <typename T, typename TBox = default_rect>
+template <typename T, typename TBox = default_rect, typename U = T>
 concept subable_widget_back_propagator =
-    widget_back_propagater<T, TBox> && requires(T &t, TBox const &box) {
+    widget_back_propagater<T, TBox> && requires(T &t, TBox const &box, U const& u) {
       { t.sub(box) } -> widget_back_propagater<TBox>;
+      t.merge_sub(u);
     };
 
 template <typename T, bounding_box TBox = default_rect>
@@ -438,6 +439,11 @@ constexpr std::size_t state2index(widget_state_marker<T, values...> const &v) {
     return i;
   }
 }
+
+template <typename... Ts>
+struct triggers {
+  static constexpr auto size = sizeof...(Ts);
+};
 
 template <typename TWH = int, typename TState = no_state_t>
 class widget_render_args : TState {

@@ -107,12 +107,16 @@ constexpr void run_for_each(auto &&cb, auto &&...vals)
                           invoke_arg1_or_arg1_2(cb, *t, i);
                         }]<typename... Ts, std::size_t... is>(
                        std::index_sequence<is...>, Ts &&...vs) {
-    using expander = char const[sizeof...(vals)];
-    auto wrem = [&f]<typename... Us>(Us &&...args) {
-      (void)f(std::forward<Us>(args)...);
-      return char{};
-    };
-    unused(expander{wrem(bp::as_forward<Ts>(vs), is)...});
+    if constexpr(sizeof...(vals) > 0) {
+      using expander = char const[sizeof...(vals)];
+      auto wrem = [&f]<typename... Us>(Us &&...args) {
+        (void)f(std::forward<Us>(args)...);
+        return char{};
+      };
+      unused(expander{wrem(bp::as_forward<Ts>(vs), is)...});
+    } else {
+      unused(f);
+    }
   };
   cb_return(std::make_index_sequence<sizeof...(vals)>{},
             std::forward<decltype(vals)>(vals)...);

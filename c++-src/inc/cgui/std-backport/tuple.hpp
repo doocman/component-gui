@@ -205,6 +205,27 @@ constexpr decltype(auto) apply_to(T &&t, F &&f) {
 template <typename... Ts>
 using empty_structs_optimiser = impl::empty_structs_optimiser_impl<0u, Ts...>;
 
+template <typename, typename>
+struct tuple_element_index;
+
+namespace impl {
+template <typename T, typename U, typename... Us, std::size_t i, std::size_t... is>
+consteval std::size_t find_element_index(std::index_sequence<i, is...>) {
+  if constexpr(std::is_same_v<T, U>) {
+    return i;
+  } else {
+    return find_element_index<T, Us...>(std::index_sequence<is...>{});
+  }
+}
+}
+template <typename T, typename... Ts>
+requires ((std::is_same_v<T, Ts> || ...) && requires(std::tuple<Ts...>& v) { std::get<T>(v); })
+struct tuple_element_index<T, std::tuple<Ts...>> {
+  static constexpr auto value = impl::find_element_index<T, Ts...>(std::make_index_sequence<sizeof...(Ts)>());
+};
+template <typename T, typename U>
+constexpr auto tuple_element_index_v = tuple_element_index<T, U>::value;
+
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_TUPLE_HPP
