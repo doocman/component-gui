@@ -1,3 +1,7 @@
+/// @file
+/// This file implements std::expected for C++ pre-23.
+///
+
 
 #ifndef CGUI_CGUI_STD_BACKPORT_EXPECTED
 #define CGUI_CGUI_STD_BACKPORT_EXPECTED
