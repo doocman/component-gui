@@ -11,10 +11,14 @@
 namespace cgui::build {
 template <typename> struct all_tuple_tags {};
 template <typename> struct template_base {};
-template <typename T>
-  requires(bp::has_tuple_size<T> && bp::pure_value<T>)
-struct all_tuple_tags<T> {
-  using type = std::make_index_sequence<std::tuple_size_v<T>>;
+template <typename... Ts> struct all_tuple_tags<std::tuple<Ts...>> {
+  using type = std::make_index_sequence<sizeof...(Ts)>;
+};
+template <typename T, std::size_t sz> struct all_tuple_tags<std::array<T, sz>> {
+  using type = std::make_index_sequence<sz>;
+};
+template <typename T, typename U> struct all_tuple_tags<std::pair<T, U>> {
+  using type = std::make_index_sequence<2>;
 };
 template <typename T>
   requires(!bp::pure_value<T>)
@@ -46,7 +50,7 @@ using template_base_t = template_base<std::remove_cvref_t<T>>;
 
 template <typename T>
 concept usable_in_build_tuples =
-    requires() { typename all_tuple_tags<T>::type; };
+    bp::has_tuple_size<T> || requires() { typename all_tuple_tags<T>::type; };
 
 constexpr decltype(auto) widget_build_or_forward(auto &&v, auto const &states) {
   if constexpr (display_component<decltype(v)>) {

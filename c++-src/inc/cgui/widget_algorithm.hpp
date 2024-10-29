@@ -9,6 +9,26 @@ namespace cgui {
 namespace call {
 namespace impl {
 
+// This was a needed work around as the previous lambda did not do the intended
+// stuff...
+template <typename T, typename U> struct find_sub_run_all_t {
+  T &pfix;
+  U &call_f;
+
+  template <std::size_t... is, typename... Ts>
+  constexpr bool operator()(std::index_sequence<is...>, Ts &&...vs) const {
+    auto run_condition = [this]<typename T0>(T0 v, std::size_t fi) {
+      if (pfix(v.as_cref(), fi)) {
+        call_f(v, fi);
+        return true;
+      }
+      return false;
+    };
+
+    return (... || run_condition(bp::as_forward<Ts>(vs), is));
+  }
+};
+
 struct find_sub_t {
   template <typename F> struct find_func_constraint {
     template <typename T>
@@ -47,19 +67,8 @@ struct find_sub_t {
         // up til the correct values.
         return do_apply_to::call(*t, [&pfix,
                                       &call_f]<typename... Ts>(Ts &&...vs_in) {
-          auto run_all = [&pfix, &call_f]<std::size_t... is>(
-                             std::index_sequence<is...>, Ts &&...vs) {
-            auto run_condition = [&pfix, &call_f]<typename T0>(T0 v,
-                                                               std::size_t fi) {
-              if (pfix(v.as_cref(), fi)) {
-                call_f(v, fi);
-                return true;
-              }
-              return false;
-            };
-
-            return (... || run_condition(bp::as_forward<Ts>(vs), is));
-          };
+          auto run_all = find_sub_run_all_t<decltype(pfix), decltype(call_f)>(
+              pfix, call_f);
           return run_all(std::make_index_sequence<sizeof...(Ts)>{},
                          std::forward<Ts>(vs_in)...);
         });
