@@ -11,6 +11,7 @@
 #include <tuple>
 #include <utility>
 
+#include <cgui/std-backport/algorithm.hpp>
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/functional.hpp>
 #include <cgui/std-backport/tuple.hpp>
@@ -27,6 +28,10 @@ template <typename T, typename... Ts>
 concept builder = requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {
   call::build(*t, *args...);
 };
+
+template <typename T, typename TConstraint = bp::no_op_t>
+concept each_constraint =
+    requires(T &g, TConstraint f) { call::for_each(g, f); };
 
 template <typename...> struct build_result {};
 template <typename... Ts, builder<Ts...> T> struct build_result<T, Ts...> {
@@ -77,6 +82,8 @@ public:
 };
 
 template <typename T> not_null(T *) -> not_null<T *>;
+
+struct empty_state {};
 
 template <typename T>
 concept colour = requires(T &&t) {
@@ -210,11 +217,23 @@ concept set_state_with_rerender =
     };
 
 template <typename T, typename TBox = default_rect>
-concept display_state_callbacks =
+concept widget_back_propagater =
     bounding_box<TBox> && requires(T &t, TBox const &cbox) {
       t.rerender();
       t.rerender(cbox);
     };
+
+template <typename T, typename TBox = default_rect, typename U = T>
+concept subable_widget_back_propagator =
+    widget_back_propagater<T, TBox> &&
+    requires(T &t, TBox const &box, U const &u) {
+      { t.sub(box) } -> widget_back_propagater<TBox>;
+      t.merge_sub(u);
+    };
+
+template <typename T, bounding_box TBox = default_rect>
+using sub_of_type_t =
+    decltype(std::declval<T &&>().sub(std::declval<TBox const &>()));
 
 template <typename T, typename TCoord = default_pixel_coord,
           typename TColour = default_colour_t>
@@ -271,123 +290,6 @@ concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb,
   t.with(col);
 };
 
-enum class ui_events {
-  system,
-  mouse_move,
-  mouse_button_down,
-  mouse_button_up,
-  mouse_exit,
-  window_resized,
-};
-
-template <ui_events tEvt> struct ui_event_identity {
-  static constexpr ui_events value = tEvt;
-};
-
-template <ui_events> struct ui_event_constraints {
-  template <typename> static constexpr bool type_passes = true;
-};
-template <> struct ui_event_constraints<ui_events::mouse_button_down> {
-  template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> pixel_coord;
-    call::mouse_button(t);
-  };
-};
-template <> struct ui_event_constraints<ui_events::mouse_button_up> {
-  template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> pixel_coord;
-    call::mouse_button(t);
-  };
-};
-template <> struct ui_event_constraints<ui_events::mouse_move> {
-  template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> pixel_coord;
-  };
-};
-template <> struct ui_event_constraints<ui_events::window_resized> {
-  template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::size_of(t) } -> size_wh;
-  };
-};
-
-template <typename T, ui_events tEvt>
-concept ui_event_c = ui_event_constraints<tEvt>::template type_passes<T>;
-
-/// Return type for event deduction function. Use template parameter to indicate
-/// what events a backend event *could* be, while using the return value for
-/// what it actually *is*.
-/// \tparam evts CGUI event types that an event could be.
-template <ui_events... evts> struct subset_ui_events {
-  static_assert(sizeof...(evts) > 0, "You must at least specify 1 event type");
-  ui_events val;
-  constexpr explicit(false) subset_ui_events(ui_events v) noexcept : val(v) {
-    CGUI_ASSERT(((v == evts) || ...));
-  }
-  constexpr explicit(false) operator ui_events() const noexcept { return val; }
-
-  template <ui_events tEvt>
-  static consteval bool can_be_event(ui_event_identity<tEvt>) noexcept {
-    return ((tEvt == evts) || ...);
-  }
-};
-
-/// Single event optimisation specialisation, that lacks any member field, and
-/// also does not need any input arguments.
-/// \tparam evt Event type that this particular subset is.
-template <ui_events evt> struct subset_ui_events<evt> {
-  constexpr explicit(false) subset_ui_events(ui_events v) noexcept {
-    assert(v == evt);
-    unused(v);
-  }
-  constexpr subset_ui_events() noexcept = default;
-  constexpr explicit(false) operator ui_events() const noexcept { return evt; }
-
-  template <ui_events tEvt>
-  static consteval bool can_be_event(ui_event_identity<tEvt> = {}) noexcept {
-    return (tEvt == evt);
-  }
-};
-
-template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
-  requires()
-{
-  {
-    std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
-  } -> std::convertible_to<bool>;
-  {
-    std::remove_cvref_t<T>::can_be_event(
-        ui_event_identity<ui_events::mouse_move>{})
-  } -> std::convertible_to<bool>;
-  {
-    std::remove_cvref_t<T>::can_be_event(
-        ui_event_identity<ui_events::mouse_button_up>{})
-  } -> std::convertible_to<bool>;
-  {
-    std::remove_cvref_t<T>::can_be_event(
-        ui_event_identity<ui_events::mouse_button_down>{})
-  } -> std::convertible_to<bool>;
-};
-
-namespace call {
-namespace impl {
-struct do_event_type {
-  template <typename T>
-    requires(requires(T &&t) {
-      { _do_event_type{}(std::forward<T>(t)) } -> subset_ui_event_c;
-    })
-  constexpr subset_ui_event_c auto operator()(T &&t) const {
-    return _do_event_type{}(std::forward<T>(t));
-  }
-};
-} // namespace impl
-inline constexpr impl::do_event_type event_type;
-} // namespace call
-
 template <typename T, typename... TVals>
 concept has_native_fill =
     requires(bp::as_forward<T> t, bp::as_forward<TVals>... args) {
@@ -399,10 +301,6 @@ concept has_draw_pixels =
     requires(bp::as_forward<T> t, bp::as_forward<TVals>... args) {
       call::draw_pixels(*t, *args...);
     };
-
-template <typename T>
-concept has_event_type =
-    requires(bp::as_forward<T> t) { call::event_type(*t); };
 
 template <colour TC> struct fill_on_draw_pixel {
   TC c;
@@ -430,85 +328,6 @@ constexpr auto fill =
   }
 };
 
-template <ui_events tEvt, typename T> consteval bool can_be_event() {
-  if constexpr (has_event_type<T>) {
-    using subset_t =
-        std::remove_cvref_t<decltype(call::event_type(std::declval<T &&>()))>;
-    return subset_t::can_be_event(ui_event_identity<tEvt>{});
-  } else {
-    return false;
-  }
-}
-template <ui_events tEvt, typename T> constexpr bool is_event(T &&evt) {
-  if constexpr (can_be_event<tEvt, T>()) {
-    return static_cast<ui_events>(call::event_type(evt)) == tEvt;
-  } else {
-    unused(evt);
-    return false;
-  }
-}
-
-template <typename T, ui_events... tEvents>
-concept event_types = (can_be_event<tEvents, T>() || ...);
-
-template <ui_events> struct dummy_event;
-
-template <ui_events tEvt>
-constexpr subset_ui_events<tEvt> event_type(dummy_event<tEvt> const &) {
-  return {};
-}
-
-template <> struct dummy_event<ui_events::system> {};
-template <> struct dummy_event<ui_events::mouse_move> {
-  default_pixel_coord pos;
-};
-template <> struct dummy_event<ui_events::mouse_button_down> {
-  default_pixel_coord pos;
-  mouse_buttons button_id;
-};
-template <> struct dummy_event<ui_events::mouse_button_up> {
-  default_pixel_coord pos;
-  mouse_buttons button_id;
-};
-template <> struct dummy_event<ui_events::window_resized> {
-  default_size_wh sz;
-};
-
-template <typename> constexpr bool is_dummy_event_v = false;
-template <ui_events tEvt>
-constexpr bool is_dummy_event_v<dummy_event<tEvt>> = true;
-
-template <typename T>
-concept is_dummy_event_c = is_dummy_event_v<T>;
-
-template <is_dummy_event_c T>
-  requires(requires(T const &t) { t.pos; })
-constexpr auto position(T const &t) {
-  return t.pos;
-}
-
-template <is_dummy_event_c T>
-  requires(requires(T const &t) { t.button_id; })
-constexpr mouse_buttons mouse_button(T const &t) {
-  return t.button_id;
-}
-template <is_dummy_event_c T>
-  requires(requires(T const &t) { t.sz; })
-constexpr auto size_of(T const &t) {
-  return t.sz;
-}
-
-using dummy_mouse_move_event = dummy_event<ui_events::mouse_move>;
-using dummy_mouse_down_event = dummy_event<ui_events::mouse_button_down>;
-using dummy_mouse_up_event = dummy_event<ui_events::mouse_button_up>;
-using dummy_window_resized_event = dummy_event<ui_events::window_resized>;
-
-struct cgui_mouse_exit_event {
-  static constexpr subset_ui_events<ui_events::mouse_exit> event_type(auto &&) {
-    return {};
-  }
-};
-
 template <typename>
 concept render_args = true;
 
@@ -522,9 +341,11 @@ concept widget_states_aspect = requires(T const &t) {
 };
 
 template <std::equality_comparable T, T... values> class widget_state_marker {
-  T value_;
 
 public:
+  T value_;
+  constexpr widget_state_marker() : value_(bp::first_of(values...)) {}
+
   constexpr explicit(false) widget_state_marker(T val) : value_(val) {
     CGUI_ASSERT(((value_ == values) || ...));
   }
@@ -554,6 +375,27 @@ constexpr bool operator==(widget_state_marker<T, tS1...> const &l,
                           widget_state_marker<T, tS2...> const &r) {
   return l.current_state() == r.current_state();
 }
+namespace impl {
+template <typename T, typename TInt, TInt... tVals, TInt tOffset>
+inline widget_state_marker<T, static_cast<T>(tVals + tOffset)...>
+    deduce_state_marker(std::integer_sequence<TInt, tVals...>,
+                        std::integral_constant<TInt, tOffset>);
+}
+template <typename T, T tMin, T tMax> struct make_widget_state_marker_sequence {
+private:
+  using _int_t = std::underlying_type_t<T>;
+  static constexpr auto min_v = static_cast<_int_t>(tMin);
+  static constexpr auto max_v = static_cast<_int_t>(tMax);
+  static constexpr auto size = max_v - min_v + 1;
+
+public:
+  using type = decltype(impl::deduce_state_marker<T>(
+      std::make_integer_sequence<_int_t, size>{},
+      std::integral_constant<_int_t, min_v>{}));
+};
+template <typename T, T tMin, T tMax>
+using make_widget_state_marker_sequence_t =
+    typename make_widget_state_marker_sequence<T, tMin, tMax>::type;
 
 template <typename T, T... values> struct widget_states {
   static constexpr std::size_t size() { return sizeof...(values); }
@@ -567,16 +409,41 @@ struct all_states_in_marker<widget_state_marker<T, values...>> {
 template <typename T>
 using all_states_in_marker_t = typename all_states_in_marker<T>::type;
 
+template <typename T>
+using state_marker_t = decltype(call::state(std::declval<T const &>()));
+template <typename T>
+using all_states_t = all_states_in_marker_t<state_marker_t<T>>;
+template <typename T>
+concept stateful_aspect = requires(T const &t) {
+  call::state(t);
+} && requires() { typename all_states_in_marker<state_marker_t<T>>::type; };
+template <typename T> constexpr auto all_states() noexcept {
+  if constexpr (stateful_aspect<T>) {
+    return all_states_t<T>{};
+  } else {
+    return no_state_t{};
+  }
+}
+
 template <typename T, T... values>
 constexpr std::size_t state2index(widget_state_marker<T, values...> const &v) {
   if constexpr (sizeof...(values) < 2) {
     return 0;
+  } else if constexpr (bp::is_sequential(values...)) {
+    auto const i = static_cast<std::size_t>(v.current_state()) -
+                   static_cast<std::size_t>(bp::first_of(values...));
+    CGUI_ASSERT(static_cast<std::size_t>(i) < sizeof...(values));
+    return i;
   } else {
-    auto const i = static_cast<std::size_t>(v.current_state());
-    CGUI_ASSERT(i < sizeof...(values));
+    auto i = bp::find_template_index<T, values...>(v.current_state());
+    CGUI_ASSERT(static_cast<std::size_t>(i) < sizeof...(values));
     return i;
   }
 }
+
+template <typename... Ts> struct triggers {
+  static constexpr auto size = sizeof...(Ts);
+};
 
 template <typename TWH = int, typename TState = no_state_t>
 class widget_render_args : TState {
@@ -588,6 +455,11 @@ public:
     requires(std::constructible_from<TState, Ts && ...>)
   constexpr widget_render_args(TWH w, TWH h, Ts &&...state_args)
       : TState(std::forward<Ts>(state_args)...), w_(w), h_(h) {}
+  template <typename... Ts>
+    requires(std::constructible_from<TState, Ts && ...>)
+  constexpr widget_render_args(bounding_box auto const &b, Ts &&...state_args)
+      : widget_render_args(call::width(b), call::height(b),
+                           std::forward<Ts>(state_args)...) {}
 
   constexpr TWH width() const noexcept { return w_; }
   constexpr TWH height() const noexcept { return h_; }
@@ -599,6 +471,11 @@ template <typename TWH, typename TState>
 widget_render_args(TWH, TWH, TState &&)
     -> widget_render_args<TWH, std::remove_cvref_t<TState>>;
 template <typename TWH> widget_render_args(TWH, TWH) -> widget_render_args<TWH>;
+template <bounding_box B, typename TState>
+widget_render_args(B const &, TState &&)
+    -> widget_render_args<
+        std::remove_cvref_t<decltype(call::width(std::declval<B>()))>,
+        std::remove_cvref_t<TState>>;
 
 template <typename T>
 concept canvas = requires(T const &tc) {

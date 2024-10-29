@@ -7,13 +7,41 @@
 
 #include <functional>
 
+#include <cgui/std-backport/tuple.hpp>
 #include <cgui/std-backport/utility.hpp>
 
 namespace cgui::bp {
 struct no_op_t {
+  template <typename T> using function = T;
+
+  template <typename... Ts> static constexpr void call(Ts...) noexcept {}
   constexpr void operator()(auto &&...) const noexcept {}
+
+  template <typename... Ts>
+  constexpr explicit(false) operator function<void(Ts...)> *() const noexcept {
+    return &call<Ts...>;
+  }
 };
+template <typename T, T result_v = T{}> struct return_constant_t {
+  template <typename U> using function = U;
+
+  template <typename... Ts> static constexpr T call(Ts...) noexcept {
+    return result_v;
+  }
+  constexpr T operator()(auto &&...) const noexcept { return result_v; }
+  template <typename... Ts>
+  constexpr explicit(false) operator function<T(Ts...)> *() const noexcept {
+    return &call<Ts...>;
+  }
+};
+template <bool result_v>
+using pretend_predicate_t = return_constant_t<bool, result_v>;
+
 inline constexpr no_op_t no_op;
+template <typename T, T r>
+inline constexpr return_constant_t<T, r> return_constant;
+template <bool r> inline constexpr pretend_predicate_t<r> pretend_predicate;
+inline constexpr auto false_predicate = pretend_predicate<false>;
 
 template <typename TF, typename... TVals> class trailing_curried {
   TF f_;
@@ -53,6 +81,7 @@ class invoke_if_applicable : empty_structs_optimiser<T> {
     }
   }
   std::tuple<Ts...> args_;
+
 public:
   constexpr explicit invoke_if_applicable(T t, Ts &&...args)
       : base_t(std::move(t)), args_(std::forward<Ts>(args)...) {}

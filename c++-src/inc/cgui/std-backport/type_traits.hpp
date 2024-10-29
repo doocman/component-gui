@@ -45,6 +45,19 @@ struct ct_value_wrapper {
 };
 template <typename T>
 ct_value_wrapper(T) -> ct_value_wrapper<T>;
+
+template <typename TEnum>
+struct value_wrapper {
+  TEnum value;
+  consteval explicit(false) value_wrapper(TEnum v) : value(v) {}
+  constexpr bool operator==(value_wrapper const&) const = default;
+  constexpr auto operator<=>(value_wrapper const&) const = default;
+};
+template <typename T>
+value_wrapper(T) -> value_wrapper<std::remove_cvref_t<T>>;
+
+template <value_wrapper v, typename T>
+struct value_type_pair {};
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_TYPE_TRAITS_HPP

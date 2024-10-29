@@ -157,27 +157,22 @@ public:
     }
     auto bmg = bitmap_glyph();
     auto &bitmap = bmg->bitmap;
-    call::draw_alpha(
-        rend,
-        default_rect{
-            {},
-            {static_cast<int>(bitmap.width), static_cast<int>(bitmap.rows)}},
-        [&](bounding_box auto const &b, auto &&px_rend) {
-          CGUI_ASSERT(
-              box_includes_box(default_rect{{},
-                                            {static_cast<int>(bitmap.width),
-                                             static_cast<int>(bitmap.rows)}},
-                               b));
-          CGUI_ASSERT(bitmap.pitch >= 0);
-          CGUI_ASSERT(static_cast<unsigned int>(bitmap.pitch) <= bitmap.width);
-          for (auto y : cgui::y_view(b)) {
-            for (auto x : cgui::x_view(b)) {
-              px_rend(
-                  default_pixel_coord{static_cast<int>(x), static_cast<int>(y)},
-                  bitmap.buffer[y * bitmap.pitch + x]);
-            }
-          }
-        });
+    call::draw_alpha(rend,
+                     default_rect{{},
+                                  {static_cast<int>(bitmap.width),
+                                   static_cast<int>(bitmap.rows)}},
+                     [&](bounding_box auto const &b, auto &&px_rend) {
+                       CGUI_ASSERT(bitmap.pitch >= 0);
+                       CGUI_ASSERT(static_cast<unsigned int>(bitmap.pitch) <=
+                                   bitmap.width);
+                       for (auto y : cgui::y_view(b)) {
+                         for (auto x : cgui::x_view(b)) {
+                           px_rend(default_pixel_coord{static_cast<int>(x),
+                                                       static_cast<int>(y)},
+                                   bitmap.buffer[y * bitmap.pitch + x]);
+                         }
+                       }
+                     });
 #else
     call::draw_alpha(
         rend,
@@ -286,7 +281,8 @@ public:
   auto ascender() const { return handle()->ascender >> 6; }
 };
 
-expected<ft_font_glyph, FT_Error> glyph(ft_font_face const &face, char v) {
+inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face const &face,
+                                               char v) {
   auto gl_index = FT_Get_Char_Index(face.handle(), v);
   if (auto ec = FT_Load_Glyph(face.handle(), gl_index, FT_LOAD_DEFAULT);
       ec != 0) {

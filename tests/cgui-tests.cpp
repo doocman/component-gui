@@ -4,6 +4,7 @@
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/expected.hpp>
 #include <cgui/stl_extend.hpp>
+#include <cgui/widget_algorithm.hpp>
 
 #include <array>
 #include <optional>
@@ -24,6 +25,18 @@ static_assert(bounding_box<default_rect>);
 static_assert(requires(std::tuple<int> t) {
   call::impl::do_apply_to{}(t, bp::no_op);
 });
+
+struct type_test_base {};
+struct type_test_derived : type_test_base {};
+
+static_assert(std::is_same_v<
+              type_test_base &,
+              decltype(bp::forward_cast<type_test_base, type_test_derived &>(
+                  std::declval<type_test_derived &>()))>);
+static_assert(std::is_same_v<
+              type_test_base &&,
+              decltype(bp::forward_cast<type_test_base, type_test_derived &&>(
+                  std::declval<type_test_derived &>()))>);
 
 using namespace ::testing;
 
@@ -73,6 +86,34 @@ TEST(EtdExpected, VoidTypes) // NOLINT
   val = expected<void, int>(unexpected(2));
   EXPECT_THAT(val.has_value(), Eq(false));
   EXPECT_THAT(val.error(), Eq(2));
+}
+TEST(EtdEmptyBaseOptimiser, Empty) // NOLINT
+{
+  EXPECT_THAT(sizeof(bp::empty_structs_optimiser<>), Eq(1));
+  EXPECT_THAT(sizeof(bp::empty_structs_optimiser<empty_state>), Eq(1));
+  EXPECT_THAT(sizeof(bp::empty_structs_optimiser<empty_state, empty_state>),
+              Eq(1));
+}
+TEST(EtdEmptyBaseOptimiser, GetType) // NOLINT
+{
+  auto tested = bp::empty_structs_optimiser<int, float, double>();
+  tested.get(std::type_identity<int>{}) = 1;
+  tested.get(std::type_identity<float>{}) = 2.f;
+  tested.get(std::type_identity<double>{}) = 3.;
+  EXPECT_THAT(tested.get(std::type_identity<int>{}), Eq(1));
+  EXPECT_THAT(tested.get(std::type_identity<float>{}), Eq(2.f));
+  EXPECT_THAT(tested.get(std::type_identity<double>{}), Eq(3.));
+}
+TEST(EtdEmptyBaseOptimiser, GetIndex) // NOLINT
+{
+  auto tested = bp::empty_structs_optimiser<int, int, empty_state, int>();
+  get<0>(tested) = 1;
+  get<1>(tested) = 2;
+  get<3>(tested) = 3;
+  EXPECT_THAT(sizeof(tested), Eq(sizeof(int) * 3));
+  EXPECT_THAT(get<0>(tested), Eq(1));
+  EXPECT_THAT(get<1>(tested), Eq(2));
+  EXPECT_THAT(get<3>(tested), Eq(3));
 }
 
 TEST(XxWh, BasicXy2Wh) // NOLINT
@@ -748,7 +789,7 @@ static_assert(mutable_bounding_box<tlbr_mut, int>);
 static_assert(mutable_bounding_box<tlbr_static_set, int>);
 
 static_assert(has_assignable_get<xywh_bbox<access_type::extend_mut> &,
-                                       call::impl::_do_width, int>);
+                                 call::impl::_do_width, int>);
 
 TYPED_TEST_SUITE(PixCoordFixture, PixCoordTypes);
 TYPED_TEST_SUITE(BoxApiFixture, RectApiTypes);
@@ -908,7 +949,7 @@ TYPED_TEST(BoxApiFixture, ConstructTLBR) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
   auto v = box_from_tlbr<box_t>(default_pixel_coord{1, 2},
-                                      default_pixel_coord{3, 4});
+                                default_pixel_coord{3, 4});
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
   EXPECT_THAT(call::l_x(v), Eq(1));
   EXPECT_THAT(call::t_y(v), Eq(2));
@@ -1029,14 +1070,14 @@ TYPED_TEST(BoxApiFixture, BoxUnion) // NOLINT
 {
   using box_t = decltype(this->value);
   auto result = box_union(box_from_xyxy<box_t>(1, 2, 3, 4),
-                                box_from_xyxy<box_t>(1, 2, 3, 4));
+                          box_from_xyxy<box_t>(1, 2, 3, 4));
   EXPECT_THAT(call::l_x(result), Eq(1));
   EXPECT_THAT(call::t_y(result), Eq(2));
   EXPECT_THAT(call::r_x(result), Eq(3));
   EXPECT_THAT(call::b_y(result), Eq(4));
 
   result = box_union(box_from_xyxy<box_t>(1, 2, 3, 4),
-                           box_from_xyxy<box_t>(2, 3, 4, 5));
+                     box_from_xyxy<box_t>(2, 3, 4, 5));
   EXPECT_THAT(call::l_x(result), Eq(1));
   EXPECT_THAT(call::t_y(result), Eq(2));
   EXPECT_THAT(call::r_x(result), Eq(4));
@@ -1046,18 +1087,22 @@ TYPED_TEST(BoxApiFixture, BoxIntersection) // NOLINT
 {
   using box_t = decltype(this->value);
   auto result = box_intersection(box_from_xyxy<box_t>(1, 2, 3, 4),
-                                       box_from_xyxy<box_t>(1, 2, 3, 4));
+                                 box_from_xyxy<box_t>(1, 2, 3, 4));
   EXPECT_THAT(call::l_x(result), Eq(1));
   EXPECT_THAT(call::t_y(result), Eq(2));
   EXPECT_THAT(call::r_x(result), Eq(3));
   EXPECT_THAT(call::b_y(result), Eq(4));
 
   result = box_intersection(box_from_xyxy<box_t>(1, 2, 3, 4),
-                                  box_from_xyxy<box_t>(2, 3, 4, 5));
+                            box_from_xyxy<box_t>(2, 3, 4, 5));
   EXPECT_THAT(call::l_x(result), Eq(2));
   EXPECT_THAT(call::t_y(result), Eq(3));
   EXPECT_THAT(call::r_x(result), Eq(3));
   EXPECT_THAT(call::b_y(result), Eq(4));
+
+  result = box_intersection(box_from_xyxy<box_t>(1, 1, 2, 2),
+                            box_from_xyxy<box_t>(3, 3, 4, 4));
+  EXPECT_TRUE(empty_box(result));
 }
 TYPED_TEST(BoxApiFixture, HitTest) // NOLINT
 {
@@ -1073,12 +1118,9 @@ TYPED_TEST(BoxApiFixture, BoxIncludesBox) // NOLINT
 {
   using box_t = decltype(this->value);
   auto b = box_from_xyxy<box_t>(1, 2, 4, 5);
-  EXPECT_TRUE(
-      box_includes_box(b, box_from_xyxy<box_t>(1, 2, 2, 3)));
-  EXPECT_FALSE(
-      box_includes_box(b, box_from_xyxy<box_t>(0, 2, 2, 3)));
-  EXPECT_TRUE(
-      box_includes_box(b, box_from_xyxy<default_rect>(1, 2, 2, 3)));
+  EXPECT_TRUE(box_includes_box(b, box_from_xyxy<box_t>(1, 2, 2, 3)));
+  EXPECT_FALSE(box_includes_box(b, box_from_xyxy<box_t>(0, 2, 2, 3)));
+  EXPECT_TRUE(box_includes_box(b, box_from_xyxy<default_rect>(1, 2, 2, 3)));
   EXPECT_TRUE(box_includes_box(b, b));
 }
 TYPED_TEST(BoxApiFixture, NudgeLeft) // NOLINT
@@ -1113,6 +1155,133 @@ TYPED_TEST(BoxApiFixture, MoveTlTo) // NOLINT
 }
 
 } // namespace apitests
+
+TEST(SubFind, FindInTuple) // NOLINT
+{
+  auto v = std::tuple(1, 2, 3, 3);
+  int const *res = nullptr;
+  int calls{};
+  std::size_t last_index = -1;
+  auto cb = [&res, &calls, &last_index](int const &i, std::size_t index) {
+    res = &i;
+    last_index = index;
+    ++calls;
+  };
+  auto found = call::find_sub(v, equals(2), cb);
+  EXPECT_THAT(found, IsTrue());
+  EXPECT_THAT(res, Eq(&std::get<1>(v)));
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_index, Eq(1));
+
+  auto reset = [&] {
+    res = nullptr;
+    calls = 0;
+    last_index = -1;
+  };
+  reset();
+  found = call::find_sub(v, equals(3), cb);
+  EXPECT_THAT(found, IsTrue());
+  EXPECT_THAT(res, Eq(&std::get<2>(v)));
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_index, Eq(2));
+
+  reset();
+  found = call::find_sub(v, equals(4), cb);
+  EXPECT_THAT(found, IsFalse());
+  EXPECT_THAT(res, IsNull());
+  EXPECT_THAT(calls, Eq(0));
+  EXPECT_THAT(last_index, Eq(std::size_t{highest_possible}));
+}
+
+struct dummy_for_eachable {
+  int i1, i2, i3, i4;
+
+  constexpr void for_each(auto &&cb) {
+    cb(i1, 0);
+    cb(i2, 1);
+    cb(i3, 2);
+    cb(i4, 3);
+  }
+};
+
+TEST(SubFind, FindInForEach) // NOLINT
+{
+  auto v = dummy_for_eachable{1, 2, 3, 3};
+  int const *res = nullptr;
+  int calls{};
+  std::size_t last_index = -1;
+  auto cb = [&res, &calls, &last_index](int const &i, std::size_t index) {
+    res = &i;
+    last_index = index;
+    ++calls;
+  };
+  auto found = call::find_sub(v, equals(2), cb);
+  EXPECT_THAT(found, IsTrue());
+  EXPECT_THAT(res, Eq(&v.i2));
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_index, Eq(1));
+
+  auto reset = [&] {
+    res = nullptr;
+    calls = 0;
+    last_index = highest_possible;
+  };
+  reset();
+  found = call::find_sub(v, equals(3), cb);
+  EXPECT_THAT(found, IsTrue());
+  EXPECT_THAT(res, Eq(&v.i3));
+  EXPECT_THAT(calls, Eq(1));
+  EXPECT_THAT(last_index, Eq(2));
+
+  reset();
+  found = call::find_sub(v, equals(4), cb);
+  EXPECT_THAT(found, IsFalse());
+  EXPECT_THAT(res, IsNull());
+  EXPECT_THAT(calls, Eq(0));
+  EXPECT_THAT(last_index, Eq(std::size_t{highest_possible}));
+}
+
+TEST(UiEventsMatcher, Basics) // NOLINT
+{
+  auto f = MockFunction<void(std::string_view)>();
+  InSequence s;
+  EXPECT_CALL(f, Call(StrEq("Move")));
+  EXPECT_CALL(f, Call(StrEq("Down")));
+  EXPECT_CALL(f, Call(StrEq("Up")));
+
+  using enum ui_events;
+  auto my_switch = [&f](auto &&evt) {
+    ui_event_switch(evt,
+                    event_case<mouse_button_down>([&f] { f.Call("Down"); }),
+                    event_case<mouse_button_up>([&f] { f.Call("Up"); }),
+                    event_case<mouse_move>([&f] { f.Call("Move"); }));
+  };
+  my_switch(dummy_mouse_move_event{});
+  my_switch(dummy_mouse_down_event{});
+  my_switch(dummy_mouse_up_event{});
+}
+
+TEST(UiEventsMatcher, BasicsState) // NOLINT
+{
+  auto f = MockFunction<void(std::string_view)>();
+  InSequence s;
+  EXPECT_CALL(f, Call(StrEq("Move")));
+  EXPECT_CALL(f, Call(StrEq("Down")));
+  EXPECT_CALL(f, Call(StrEq("Up")));
+
+  using enum ui_events;
+  auto my_switch = [&f](auto &&evt) {
+    ui_event_switch(
+        evt, f, event_case<mouse_button_down>([](auto &&, auto &f2) {
+          f2.Call("Down");
+        }),
+        event_case<mouse_button_up>([](auto &&, auto &f2) { f2.Call("Up"); }),
+        event_case<mouse_move>([&f] { f.Call("Move"); }));
+  };
+  my_switch(dummy_mouse_move_event{});
+  my_switch(dummy_mouse_down_event{});
+  my_switch(dummy_mouse_up_event{});
+}
 
 struct test_renderer {
   struct individual_colours_t {
@@ -1738,18 +1907,27 @@ struct mock_button_callback {
   MOCK_METHOD(void, do_on_button_click, (mouse_buttons b));
   MOCK_METHOD(void, do_on_button_exit, ());
 
-  void handle(buttonlike_trigger::hover_event) { do_on_button_hover(); }
-  void handle(buttonlike_trigger::hold_event) { do_on_button_hold(); }
-  void handle(buttonlike_trigger::click_event const &e) {
+  void handle(button_state_events::hover) { do_on_button_hover(); }
+  void handle(button_state_events::hold) { do_on_button_hold(); }
+  void handle(button_state_events::click const &e) {
     do_on_button_click(e.button);
   }
-  void handle(buttonlike_trigger::exit_event) { do_on_button_exit(); }
+  void handle(button_state_events::exit) { do_on_button_exit(); }
+  void operator()(auto const &e) { handle(e); }
+  no_state_t state() const { return {}; }
+};
+static_assert(button_state<mock_button_callback>);
+
+struct dummy_widget {
+  default_rect a;
+
+  constexpr default_rect const &area() const { return a; }
 };
 
 TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
 {
-  auto trig = buttonlike_trigger();
   auto button_state = mock_button_callback();
+  auto trig = buttonlike_trigger(std::ref(button_state));
   auto checkpoint = MockFunction<void()>();
   InSequence s;
   EXPECT_CALL(button_state, do_on_button_hover());
@@ -1757,15 +1935,16 @@ TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
   EXPECT_CALL(checkpoint, Call());
   EXPECT_CALL(button_state, do_on_button_click(Eq(mouse_buttons::primary)));
   EXPECT_CALL(button_state, do_on_button_exit());
-  constexpr auto dummy_area = default_rect{{0, 0}, {4, 4}};
-  auto callback = [&button_state](auto &&evt) { button_state.handle(evt); };
-  trig.handle(dummy_area, dummy_mouse_move_event{{1, 1}}, callback);
-  trig.handle(dummy_area,
-              dummy_mouse_down_event{{1, 1}, mouse_buttons::primary}, callback);
+  constexpr auto dummy_w = dummy_widget{default_rect{{0, 0}, {4, 4}}};
+  // auto dummy_wref = widget_ref_no_set_area(dummy_w);
+  // auto callback = [&button_state](auto &&evt) { button_state.handle(evt); };
+  trig.handle(dummy_w.area(), dummy_mouse_move_event{{1, 1}});
+  trig.handle(dummy_w.area(),
+              dummy_mouse_down_event{{1, 1}, mouse_buttons::primary});
   checkpoint.Call();
-  trig.handle(dummy_area, dummy_mouse_up_event{{1, 1}, mouse_buttons::primary},
-              callback);
-  trig.handle(dummy_area, dummy_mouse_move_event{{-1, 1}}, callback);
+  trig.handle(dummy_w.area(),
+              dummy_mouse_up_event{{1, 1}, mouse_buttons::primary});
+  trig.handle(dummy_w.area(), dummy_mouse_move_event{{-1, 1}});
 }
 
 struct mock_renderable {
@@ -1818,6 +1997,7 @@ TEST(WidgetBuilder, SetColour) // NOLINT
   EXPECT_CALL(m1, do_render()).Times(1);
   EXPECT_CALL(m2, do_render()).Times(1);
   using namespace dooc::tuple_literals;
+
   auto w = widget_builder()
                .area(default_rect{})
                .display("text"_na = std::ref(m1), "fill"_na = std::ref(m2))
@@ -1845,8 +2025,7 @@ struct mock_state_aware_renderer {
       render_failed_type = std::string_view(typeid(state_t).name());
     }
   }
-  void set_state(state_marker auto const &i,
-                 display_state_callbacks auto &&cb) {
+  void set_state(state_marker auto const &i, widget_back_propagater auto &&cb) {
     do_set_state(i.current_state());
     cb.rerender();
   }
@@ -1864,7 +2043,9 @@ struct int_states {
 static_assert(has_handle<int_states, int>);
 
 struct int_as_event_handler {
-  void handle(auto const &, int i, auto &&cb) { cb(i); }
+  int state_ = 0;
+  void handle(auto const &, int i) { state_ = std::clamp(i, 0, 1); }
+  widget_state_marker<int, 0, 1> state() const { return state_; }
 };
 
 TEST(WidgetBuilder, BuildWithState) // NOLINT
@@ -1878,7 +2059,7 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   EXPECT_CALL(state_aware_rend, do_render(Eq(1)));
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
-               .state(int_states{})
+               //.state(int_states{})
                .event(int_as_event_handler{})
                .display(std::ref(state_aware_rend))
                .build();
@@ -1894,7 +2075,7 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
                .event(int_as_event_handler{})
-               .state(int_states{})
+               //.state(int_states{})
                .display(display_per_state(fill_rect{}))
                .build();
   auto &[per_state] = w.displays();
@@ -1921,6 +2102,66 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   EXPECT_THAT(alpha, Eq(255));
 }
 
+struct mock_widget {
+  default_rect a_{};
+  MOCK_METHOD(void, do_area, (default_rect const &));
+  MOCK_METHOD(void, do_render, (), (const));
+
+  default_rect const &area() const { return a_; }
+  void area(bounding_box auto const &a) {
+    a_ = copy_box<default_rect>(a);
+    do_area(a_);
+  }
+  void render(auto &&...) const { do_render(); }
+};
+
+TEST(WidgetBuilder, SubcomponentsResize) // NOLINT
+{
+  mock_widget subw;
+  int mock_calls{};
+  auto sc_area = default_rect{};
+  EXPECT_CALL(subw, do_area(_))
+      .WillRepeatedly([&mock_calls, &sc_area](auto const &a) {
+        ++mock_calls;
+        sc_area = a;
+      });
+  auto w = widget_builder()
+               .area(default_rect{{0, 1}, {3, 4}})
+               .subcomponents(std::ref(subw))
+               .on_resize([](auto &&self, bounding_box auto const &new_area) {
+                 self.subcomponent().area(new_area);
+               })
+               .build();
+  EXPECT_THAT(mock_calls, Eq(1)) << "Should be called once on creation";
+  expect_box_equal(sc_area, w.area());
+  w.area({{0, 2}, {4, 5}});
+  EXPECT_THAT(mock_calls, Eq(2));
+  expect_box_equal(sc_area, w.area());
+}
+
+TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
+{
+  auto s1 = NiceMock<mock_widget>{};
+  auto s2 = NiceMock<mock_widget>{};
+  EXPECT_CALL(s1, do_area(_)).Times(1);
+  EXPECT_CALL(s2, do_area(_)).Times(1);
+  {
+    InSequence s;
+    EXPECT_CALL(s1, do_render()).Times(1);
+    EXPECT_CALL(s2, do_render()).Times(1);
+  }
+  auto w = widget_builder()
+               .area(default_rect{{0, 0}, {3, 3}})
+               .subcomponents(std::ref(s1), std::ref(s2))
+               .on_resize([](auto &&self, bounding_box auto b) {
+                 auto &[s1, s2] = self.subcomponents();
+                 s1.area(trim_from_left(&b, 1));
+                 s2.area(b);
+               })
+               .build();
+  w.render(dummy_renderer{});
+}
+
 TEST(Widget, BasicButton) // NOLINT
 {
   bool clicked{};
@@ -1929,25 +2170,25 @@ TEST(Widget, BasicButton) // NOLINT
   int calls{};
   auto w = widget_builder()
                .area(default_rect{0, 0, 1, 1})
-               .event(buttonlike_trigger{})
-               .state(momentary_button{}
-                          .click([&clicked, &calls](auto &&...) {
-                            clicked = true;
-                            ++calls;
-                          })
-                          .hover([&last_state, &calls](auto &&...) {
-                            last_state = hover;
-                            ++calls;
-                          })
-                          .hold([&last_state, &calls](auto &&...) {
-                            last_state = hold;
-                            ++calls;
-                          })
-                          .exit([&last_state, &calls](auto &&...) {
-                            last_state = off;
-                            ++calls;
-                          })
-                          .build())
+               .event(buttonlike_trigger(
+                   momentary_button()
+                       .click([&clicked, &calls](auto &&...) {
+                         clicked = true;
+                         ++calls;
+                       })
+                       .hover([&last_state, &calls](auto &&...) {
+                         last_state = hover;
+                         ++calls;
+                       })
+                       .hold([&last_state, &calls](auto &&...) {
+                         last_state = hold;
+                         ++calls;
+                       })
+                       .exit([&last_state, &calls](auto &&...) {
+                         last_state = off;
+                         ++calls;
+                       })
+                       .build()))
                .display(display_per_state(fill_rect{}))
                .build();
   auto &[filler] = w.displays();
@@ -2007,10 +2248,257 @@ TEST(Widget, BasicButton) // NOLINT
   reset();
 }
 
+constexpr void click_widget(auto &w, default_pixel_coord const &pos = {},
+                            auto &&...args) {
+  w.handle(dummy_mouse_down_event{.pos = pos, .button_id = {}}, args...);
+  w.handle(dummy_mouse_up_event{.pos = pos, .button_id = {}}, args...);
+}
+
+TEST(Widget, ButtonSharedStateCallback) // NOLINT
+{
+  int i{};
+  auto w = widget_builder()
+               .area(default_rect{{0, 0}, {2, 2}})
+               .event(buttonlike_trigger(momentary_button()
+                                             .callback_state(std::ref(i))
+                                             .click([](int &i_in) { ++i_in; })
+                                             .build()))
+               .build();
+  EXPECT_THAT(i, Eq(0));
+  click_widget(w);
+  EXPECT_THAT(i, Eq(1));
+}
+
+struct test_button_list {
+  struct element_t {
+    test_button_list &parent;
+    int index;
+
+    constexpr void handle(radio_button::trigger_on,
+                          widget_back_propagater auto &&bp) {
+      parent.on_activate(index);
+      bp.rerender(default_rect{{index, 0}, {index + 1, 1}});
+    }
+    constexpr void handle(radio_button::trigger_off,
+                          widget_back_propagater auto &&bp) {
+      parent.on_deactivate(index);
+      bp.rerender(default_rect{{index, 0}, {index + 1, 1}});
+    }
+    template <state_marker S, widget_back_propagater T>
+    constexpr void set_state(S const &s, T &&t) const {
+      t.rerender(default_rect{{index, 0}, {index + 1, 1}});
+      parent.state_change(s.current_state(), index);
+    }
+  };
+  std::function<void(int)> on_activate = bp::no_op;
+  std::function<void(int)> on_deactivate = bp::no_op;
+  int sz{};
+  std::function<void(radio_button::element_state, int)> state_change =
+      bp::no_op;
+  using element_id = std::size_t;
+  constexpr bool find_sub_at_location(
+      pixel_coord auto const &pos,
+      std::invocable<element_t &, std::size_t> auto &&on_find) {
+    if (call::x_of(pos) >= 0 && call::x_of(pos) < sz) {
+      auto i = call::x_of(pos);
+      auto e = element_t(*this, i);
+      on_find(e, i);
+      return true;
+    }
+    return false;
+  }
+  constexpr void for_each(auto &&f) {
+    for (int i = 0; i < sz; ++i) {
+      f(element_t{*this, i}, static_cast<std::size_t>(i));
+    }
+  }
+
+  constexpr void render(renderer auto &&r, button_list_args auto &&args) const {
+    for (int i = 0; i < sz; ++i) {
+      auto bright =
+          static_cast<std::uint_least8_t>(args.button_state(i).current_state());
+      fill(r, default_rect{{i, 0}, {i + 1, call::height(args)}},
+           default_colour_t{bright, bright, bright, 255u});
+    }
+  }
+};
+static_assert(radio_button::element<test_button_list>);
+
+TEST(Widget, RadioButtonDecorator) // NOLINT
+{
+  int current_element = lowest_possible;
+  int activations{};
+  int deactivations{};
+  auto constexpr full_area = default_rect{0, 0, 16, 10};
+  auto list =
+      widget_builder()
+          .area(full_area)
+          .event(radio_button_trigger()
+                     .elements(test_button_list{
+                         [&activations, &current_element](int element) {
+                           ++activations;
+                           current_element = element;
+                         },
+                         [&deactivations, &current_element](int element) {
+                           ++deactivations;
+                           current_element = -1;
+                         },
+                         3})
+                     .build())
+          .build();
+  // activate button 0
+  auto backprop = basic_widget_back_propagater(full_area);
+  click_widget(list, {}, backprop);
+  EXPECT_THAT(activations, Eq(1));
+  EXPECT_THAT(deactivations, Eq(0));
+  EXPECT_THAT(current_element, Eq(0));
+  // deactivate button 0
+  click_widget(list, {}, backprop);
+  EXPECT_THAT(activations, Eq(1));
+  EXPECT_THAT(deactivations, Eq(1));
+  EXPECT_THAT(current_element, Eq(-1));
+  // click outside any subcomponents
+  click_widget(list, {12, 0}, backprop);
+  EXPECT_THAT(activations, Eq(1));
+  EXPECT_THAT(deactivations, Eq(1));
+  EXPECT_THAT(current_element, Eq(-1));
+
+  // activate button 1
+  click_widget(list, {1, 7}, backprop);
+  EXPECT_THAT(activations, Eq(2));
+  EXPECT_THAT(deactivations, Eq(1));
+  EXPECT_THAT(current_element, Eq(1));
+}
+
+TEST(Widget, RadioButtonListRender) // NOLINT
+{
+  constexpr auto full_area = default_rect{{0, 0}, {3, 1}};
+  constexpr auto state2bright = [](radio_button::element_state s) {
+    return static_cast<std::uint_least8_t>(s);
+  };
+  constexpr auto state2colour = [=](radio_button::element_state s) {
+    auto const val = state2bright(s);
+    return default_colour_t{val, val, val, 255};
+  };
+  using enum radio_button::element_state;
+  std::vector<radio_button::element_state> states{relaxed_off, relaxed_off,
+                                                  relaxed_off};
+  auto exp_states = states;
+  std::vector<std::pair<radio_button::element_state, int>> state_changes;
+  auto list = widget_builder()
+                  .area(full_area)
+                  .event(radio_button_trigger()
+                             .elements(test_button_list{
+                                 bp::no_op, bp::no_op, 3,
+                                 [&](auto s, auto i) {
+                                   state_changes.emplace_back(s, i);
+                                   ASSERT_THAT(i, Lt(ssize(states)));
+                                   states.at(i) = s;
+                                 }})
+                             .build())
+                  .build();
+  auto rend = test_renderer{full_area};
+  auto sr = sub_renderer(rend);
+  auto rgba_sep = rend.individual_colours();
+  auto &[r, g, b, a] = rgba_sep;
+  auto do_render = [&] {
+    list.render(sr);
+    rgba_sep = rend.individual_colours();
+  };
+
+  do_render();
+  EXPECT_THAT(r, AllOf(SizeIs(3), Each(red(state2colour(relaxed_off)))));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+
+  auto re_area = call::handle(list, dummy_mouse_move_event{{0, 0}});
+  EXPECT_THAT(state_changes, ElementsAre(Pair(hover_off, 0)));
+  exp_states[0] = hover_off;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(hover_off), state2bright(relaxed_off),
+                             state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+  expect_box_equal(re_area, default_rect{{0, 0}, {1, 1}});
+
+  state_changes.clear();
+  re_area = call::handle(list, dummy_mouse_move_event{{1, 0}});
+  EXPECT_THAT(state_changes,
+              UnorderedElementsAre(Pair(relaxed_off, 0), Pair(hover_off, 1)));
+  exp_states[0] = relaxed_off;
+  exp_states[1] = hover_off;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(relaxed_off), state2bright(hover_off),
+                             state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+  expect_box_equal(re_area, default_rect{{0, 0}, {2, 1}});
+
+  state_changes.clear();
+  re_area = call::handle(list, dummy_mouse_down_event{{1, 0}});
+  EXPECT_THAT(state_changes, UnorderedElementsAre(Pair(hold_off, 1)));
+  exp_states[0] = relaxed_off;
+  exp_states[1] = hold_off;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(relaxed_off), state2bright(hold_off),
+                             state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+  expect_box_equal(re_area, default_rect{{1, 0}, {2, 1}});
+
+  state_changes.clear();
+  re_area = call::handle(list, dummy_mouse_up_event{{1, 0}});
+  exp_states[0] = relaxed_off;
+  exp_states[1] = hover_on;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(relaxed_off), state2bright(hover_on),
+                             state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+  expect_box_equal(re_area, default_rect{{1, 0}, {2, 1}});
+
+  click_widget(list, {});
+  exp_states[0] = hover_on;
+  exp_states[1] = relaxed_off;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(hover_on), state2bright(relaxed_off),
+                             state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+
+  re_area = call::handle(list, dummy_mouse_exit_event{});
+  exp_states[0] = relaxed_on;
+  exp_states[1] = relaxed_off;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r,
+              ElementsAre(state2bright(relaxed_on), state2bright(relaxed_off),
+                          state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+
+  exp_states[0] = hover_on;
+  call::handle(list, dummy_mouse_down_event{});
+  call::handle(list, dummy_mouse_move_event{{-1, 0}});
+  call::handle(list, dummy_mouse_up_event{{-1, 0}});
+  call::handle(list, dummy_mouse_move_event{});
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(hover_on), state2bright(relaxed_off),
+                             state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+
+  click_widget(list, default_pixel_coord{});
+  exp_states[0] = hover_off;
+  EXPECT_THAT(states, ElementsAreArray(exp_states));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(state2bright(hover_off), state2bright(relaxed_off),
+                             state2bright(relaxed_off)));
+  EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
+}
+
 struct mock_widget_resize {
 
   MOCK_METHOD(void, do_resize, (int w, int h));
-  void set_size(bounding_box auto const &b) {
+  void area(bounding_box auto const &b) {
     do_resize(call::width(b), call::height(b));
   }
   void render(auto &&) const {}
@@ -2033,7 +2521,7 @@ TEST(GuiContext, BuildResize) // NOLINT
           .widgets(std::ref(w))
           .on_resize([](size_wh auto const &wh, auto &&widgets) {
             auto &[w] = widgets;
-            w.set_size(default_rect{0, 0, call::width(wh), call::height(wh)});
+            w.area(default_rect{0, 0, call::width(wh), call::height(wh)});
           })
           .build({{0, 0}, {2, 2}});
   auto area = gui.handle(dummy_window_resized_event{{3, 3}});
@@ -2045,7 +2533,7 @@ struct rerender_if_state {
 
   constexpr void render(auto &&...) const noexcept {}
   constexpr void set_state(state_marker auto const &i,
-                           display_state_callbacks auto &&cb) {
+                           widget_back_propagater auto &&cb) {
     if (i.current_state() == rerender_state) {
       cb.rerender();
     }
@@ -2057,17 +2545,14 @@ TEST(GuiContext, RerenderOutput) // NOLINT
   auto w1b = widget_builder()
                  .area(default_rect{{0, 0}, {1, 1}})
                  .event(int_as_event_handler{})
-                 .state(int_states{})
                  .display(rerender_if_state{0});
   auto w2b = widget_builder()
                  .area(default_rect{{1, 0}, {2, 1}})
                  .event(int_as_event_handler{})
-                 .state(int_states{})
                  .display(rerender_if_state{1});
   auto w3b = widget_builder()
                  .area(default_rect{{2, 0}, {3, 1}})
                  .event(int_as_event_handler{})
-                 .state(int_states{})
                  .display(rerender_if_state{0});
   auto r = test_renderer({{0, 0}, {3, 1}});
   auto guic = gui_context_builder()

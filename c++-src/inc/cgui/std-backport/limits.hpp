@@ -36,6 +36,30 @@ struct highest_possible_t {
   }
 };
 
+template <typename T>
+concept is_low_high_placeholder = cvref_type<T, lowest_possible_t> || cvref_type<T, highest_possible_t>;
+
+template <typename T, typename U>
+concept low_high_operand = is_low_high_placeholder<T> && _has_numeric_limits_minmax<U>;
+
+template <typename LT, low_high_operand<LT> RT>
+constexpr bool operator==(LT const& l, RT const& r) {
+  return l == static_cast<LT>(r);
+}
+template <typename LT, low_high_operand<LT> RT>
+constexpr bool operator<=>(LT const& l, RT const& r) {
+  return l <=> static_cast<LT>(r);
+}
+template <typename RT, low_high_operand<RT> LT>
+constexpr bool operator==(LT const& l, RT const& r) {
+  return static_cast<RT>(l) == r;
+}
+template <typename RT, low_high_operand<RT> LT>
+constexpr bool operator<=>(LT const& l, RT const& r) {
+  return static_cast<RT>(l) <=> r;
+}
+
+
 /// @brief Global constant instance for the minimum possible value.
 inline constexpr lowest_possible_t lowest_possible;
 

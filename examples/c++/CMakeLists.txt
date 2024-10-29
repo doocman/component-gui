@@ -21,8 +21,10 @@ function(cgui_add_example NAME)
             ${CGUI_SDL_LINK}
             SDL2::SDL2main
     )
+    target_include_directories(${NAME} PRIVATE "")
 endfunction()
 
+#[[
 set(PRESET_ADDRSAN ON CACHE BOOL "" FORCE)
 if (${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
     target_compile_options(freetype PRIVATE "/fsanitize=address")
@@ -30,9 +32,8 @@ if (${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
     set(CGUI_ADDRSAN_PATH "${CGUI_ADDRSAN_PATH}/clang_rt.asan_dynamic-x86_64.dll")
     file(COPY "${CGUI_ADDRSAN_PATH}" DESTINATION ".")
 endif ()
+]]
 
-cgui_add_example(hello-world)
-target_link_libraries(hello-world PRIVATE cgui_embedded::cgui_example_font)
 if (NOT CGUI_SDL_STATIC)
     add_custom_target(cgui_examples_copy_sdl
             COMMAND
@@ -40,5 +41,17 @@ if (NOT CGUI_SDL_STATIC)
             "$<TARGET_FILE:SDL2>" "$<TARGET_FILE_DIR:hello-world>"
             COMMENT "Copied SDL2 shared library file to example output"
     )
-    add_dependencies(hello-world cgui_examples_copy_sdl)
 endif ()
+
+function(cgui_add_sdl_example NAME)
+    cgui_add_example(${NAME})
+    if (NOT CGUI_SDL_STATIC)
+        add_dependencies(${NAME} cgui_examples_copy_sdl)
+    endif ()
+endfunction()
+
+cgui_add_sdl_example(hello-world)
+cgui_add_sdl_example(dynamic_list)
+
+target_link_libraries(hello-world PRIVATE cgui_embedded::cgui_example_font)
+target_link_libraries(dynamic_list PRIVATE cgui_embedded::cgui_example_font fmt::fmt)

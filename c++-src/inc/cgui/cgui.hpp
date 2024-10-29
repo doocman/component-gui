@@ -8,13 +8,16 @@
 #include <variant>
 #include <vector>
 
+#include <cgui/build_utility.hpp>
 #include <cgui/cgui-types.hpp>
 #include <cgui/ft_fonts.hpp>
 #include <cgui/std-backport/array.hpp>
+#include <cgui/std-backport/ranges.hpp>
 #include <cgui/stl_extend.hpp>
+#include <cgui/ui_events.hpp>
+#include <cgui/widget_algorithm.hpp>
 
 namespace cgui {
-
 template <typename TX, typename TY> class nudger {
   TX x_;
   TY y_;
@@ -38,6 +41,8 @@ template <bounding_box TB = default_rect> class recursive_area_navigator {
   using y_t = std::remove_cvref_t<decltype(call::t_y(relative_area_))>;
   x_t offset_x_{};
   y_t offset_y_{};
+
+  template <bounding_box A2> friend class recursive_area_navigator;
 
   constexpr recursive_area_navigator(TB const &b, x_t ox, y_t oy)
       : relative_area_(b), offset_x_(ox), offset_y_(oy) {}
@@ -70,6 +75,10 @@ public:
 
   constexpr nudger<x_t, y_t> relative_to_absolute_nudger() const noexcept {
     return {offset_x_, offset_y_};
+  }
+  template <typename A2>
+  constexpr explicit operator recursive_area_navigator<A2>() const {
+    return {copy_box<A2>(relative_area_), offset_x_, offset_y_};
   }
 };
 
@@ -108,7 +117,9 @@ public:
 
   template <bounding_box TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
+    CGUI_ASSERT(valid_box(dest));
     auto relative_dest = to_relative_dest(dest);
+    CGUI_ASSERT(valid_box(relative_dest));
     if (empty_box(relative_dest)) {
       using return_type =
           decltype(call::draw_pixels(*c_, dest, [](auto &&...) {}));
@@ -119,6 +130,7 @@ public:
       }
     }
     auto absolute_dest = to_absolute(relative_dest);
+    CGUI_ASSERT(valid_box(absolute_dest));
     return call::draw_pixels(
         *c_, absolute_dest,
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
@@ -139,6 +151,7 @@ public:
     }
     draw_pixels(std::forward<decltype(b)>(b),
                 [this, &cb](auto &&bbox, auto &&drawer) {
+                  CGUI_ASSERT(valid_box(bbox));
                   cb(bbox, [this, &drawer](auto &&point, auto &&alpha) {
                     drawer(point, multiply_alpha(set_colour_, alpha));
                   });
@@ -178,16 +191,18 @@ sub_renderer(T &t)
     -> sub_renderer<T, std::remove_cvref_t<decltype(call::area(t))>>;
 
 template <bounding_box TArea = default_rect>
-class widget_display_state_callbacks {
+class basic_widget_back_propagater {
   recursive_area_navigator<TArea> full_area_;
   TArea to_rerender_{};
 
-  explicit(false) constexpr widget_display_state_callbacks(
-      recursive_area_navigator<TArea> nav)
-      : full_area_(nav) {}
+  template <bounding_box A2> friend class basic_widget_back_propagater;
+
+  explicit(false) constexpr basic_widget_back_propagater(
+      recursive_area_navigator<TArea> nav, TArea const &to_re = {})
+      : full_area_(nav), to_rerender_(to_re) {}
 
 public:
-  explicit constexpr widget_display_state_callbacks(TArea full_area)
+  explicit constexpr basic_widget_back_propagater(TArea full_area)
       : full_area_(full_area) {}
 
   constexpr void rerender() { to_rerender_ = full_area_.relative_area(); }
@@ -201,106 +216,38 @@ public:
     return full_area_.move_to_absolute(to_rerender_);
   }
   constexpr bool empty_result() const { return empty_box(to_rerender_); }
+
   template <bounding_box TA2 = TArea>
-  constexpr widget_display_state_callbacks sub(TA2 rel_area) const {
+  constexpr basic_widget_back_propagater sub(TA2 rel_area) const {
     return {full_area_.sub(rel_area)};
   }
+
   template <bounding_box TA2 = TArea>
-  constexpr void merge_sub(widget_display_state_callbacks<TA2> const &s) {
+  constexpr void merge_sub(basic_widget_back_propagater<TA2> const &s) {
     if (!s.empty_result()) {
       auto sub_area = s.result_area();
       rerender(sub_area);
     }
   }
+
+  template <typename A2>
+  constexpr explicit operator basic_widget_back_propagater<A2>() const {
+    return {static_cast<recursive_area_navigator<A2>>(full_area_),
+            copy_box<A2>(to_rerender_)};
+  }
 };
 
 namespace impl {
-template <typename> constexpr bool is_tuple = false;
-template <typename... Ts> constexpr bool is_tuple<std::tuple<Ts...>> = true;
-
-constexpr decltype(auto) gui_context_build_or_forward(auto &&v) {
-  auto vf = bp::as_forward<decltype(v)>(v);
-  if constexpr (widget_display<decltype(v)>) {
-    return *vf;
-  } else {
-    return (*vf).build();
-  }
-}
-
-template <typename... Ts, std::size_t... tIs>
-constexpr auto build_context_display_tuple(std::tuple<Ts...> &&t,
-                                           std::index_sequence<tIs...>) {
-  return std::tuple<bp::remove_rvalue_reference_t<
-      decltype(gui_context_build_or_forward(std::declval<Ts &&>()))>...>{
-      gui_context_build_or_forward(std::forward<Ts>(std::get<tIs>(t)))...};
-}
-
-constexpr decltype(auto) widget_build_or_forward(auto &&v, auto const &states) {
-  if constexpr (display_component<decltype(v)>) {
-    return std::forward<decltype(v)>(v);
-  } else {
-    return call::build(std::forward<decltype(v)>(v), states);
-  }
-}
-
-template <typename... Ts, typename TStates, std::size_t... tIs>
-constexpr auto build_tuple(std::tuple<Ts...> &&t, TStates const &states,
-                           std::index_sequence<tIs...>)
-    -> std::tuple<bp::remove_rvalue_reference_t<
-        decltype(widget_build_or_forward(std::declval<Ts &&>(), states))>...> {
-  return {
-      widget_build_or_forward(static_cast<Ts &&>(std::get<tIs>(t)), states)...};
-}
-#if CGUI_HAS_NAMED_ARGS
-template <typename... Ts>
-constexpr bool is_tuple<dooc::named_tuple<Ts...>> = true;
-
-template <dooc::template_string... tNames, typename... Ts>
-constexpr auto
-build_tuple(dooc::named_tuple<dooc::named_arg_t<tNames, Ts>...> &&t, auto &&)
-    -> dooc::named_tuple<dooc::named_arg_t<
-        tNames,
-        bp::remove_rvalue_reference_t<decltype(gui_context_build_or_forward(
-            std::declval<Ts &&>()))>>...> {
-  return {gui_context_build_or_forward(
-      static_cast<Ts &&>(dooc::get<tNames>(t)))...};
-}
-
-template <dooc::template_string... tNames, typename... Ts>
-constexpr auto
-build_tuple(dooc::named_tuple<dooc::named_arg_t<tNames, Ts>...> &&t,
-            auto const &states, auto &&)
-    -> dooc::named_tuple<dooc::named_arg_t<
-        tNames, bp::remove_rvalue_reference_t<decltype(widget_build_or_forward(
-                    std::declval<Ts &&>(), states))>>...> {
-  return {widget_build_or_forward(static_cast<Ts &&>(dooc::get<tNames>(t)),
-                                  states)...};
-}
-#endif
-template <typename T> constexpr auto build_gui_context_widgets(T &&t) {
-  auto tf = bp::as_forward<T>(t);
-  if constexpr (widget_display_builder<T>) {
-    return call::build(*tf);
-  } else if constexpr (is_tuple<std::remove_cvref_t<T>>) {
-    return build_context_display_tuple(
-        *tf,
-        std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>{});
-  } else {
-    return *tf;
-  }
-}
-template <typename T, typename TStates>
-constexpr auto build_displays(T &&t, TStates const &states) {
-  if constexpr (is_tuple<std::remove_cvref_t<T>>) {
-    return build_tuple(
-        std::forward<T>(t), states,
-        std::make_index_sequence<std::tuple_size_v<std::remove_cvref_t<T>>>{});
-  } else {
-    return std::forward<T>(t);
-  }
-}
+struct widget_display_constraint {
+  constexpr void operator()(widget_display auto &&) const {}
+};
 
 } // namespace impl
+
+template <renderer TR = dummy_renderer>
+struct builder_widget_element_constraint {
+  constexpr void operator()(widget_display<TR> auto &&) const {}
+};
 
 template <bounding_box TArea, typename TOnResize = bp::no_op_t,
           widget_display_range TWidgets = std::tuple<>>
@@ -309,8 +256,7 @@ class gui_context : bp::empty_structs_optimiser<TOnResize> {
   TWidgets widgets_;
 
   constexpr void call_on_resize(size_wh auto const &sz) {
-    _base_t::get(static_cast<_base_t &>(*this),
-                 std::type_identity<TOnResize>{})(sz, widgets_);
+    gui_context::get(std::type_identity<TOnResize>{})(sz, widgets_);
   }
 
 public:
@@ -336,22 +282,10 @@ public:
         default_size_wh{call::width(start_area), call::height(start_area)});
   }
 
-  template <widget_display... TW2>
-  [[nodiscard]] constexpr auto with(TW2 &&...ws) && {
-    unused(ws...);
-    return gui_context<
-        TArea,
-        decltype(std::tuple_cat(
-            widgets_,
-            std::declval<std::tuple<std::unwrap_ref_decay_t<TW2>...>>()))>(
-        std::tuple_cat(std::move(widgets_),
-                       std::tuple<std::unwrap_ref_decay_t<TW2>...>(
-                           std::forward<TW2>(ws)...)));
-  }
-
   template <typename... Ts> constexpr void render(sub_renderer<Ts...> &&r) {
     cgui::fill(r, r.area(), default_colour_t{0, 0, 0, 255});
-    tuple_for_each([&r](auto &&v) { call::render(v, r); }, widgets_);
+    tuple_for_each([&r](auto &&v) { call::render(v, r.sub(call::area(v))); },
+                   widgets_);
   }
 
   constexpr void render(canvas auto &&c, bounding_box auto const &rarea) {
@@ -373,7 +307,7 @@ public:
         return ret_box;
       }
     }
-    auto b = widget_display_state_callbacks(
+    auto b = basic_widget_back_propagater(
         box_from_xyxy<native_box_t>(0, 0, highest_possible, highest_possible));
     call::for_each(widgets_, [&evt, &b]<typename TW>(TW &w) {
       if constexpr (has_handle<TW &, decltype(evt)>) {
@@ -383,6 +317,12 @@ public:
       }
     });
     return b.result_area();
+  }
+
+  constexpr TWidgets &widgets()
+    requires(!std::is_empty_v<TWidgets>)
+  {
+    return widgets_;
   }
 };
 
@@ -409,12 +349,14 @@ public:
     return {std::move(widgets_), std::forward<TORSZ2>(onrsz)};
   }
   template <bounding_box TArea = default_rect,
-            typename TW =
-                decltype(impl::build_gui_context_widgets(std::move(widgets_)))>
+            typename TW = decltype(build::build_group(
+                impl::widget_display_constraint{}, std::move(widgets_)))>
   constexpr gui_context<TArea, TOnResize, TW>
   build(TArea const &start_area) && {
     return {std::move(on_resize_),
-            impl::build_gui_context_widgets(std::move(widgets_)), start_area};
+            build::build_group(impl::widget_display_constraint{},
+                               std::move(widgets_)),
+            start_area};
   }
 };
 
@@ -456,11 +398,8 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
   constexpr auto operator()(TR &&r, TWH w, TWH h) const {
     auto arg = arg_t<TWH>(w, h, call::state(base(*this)));
     return [r = std::forward<TR>(r),
-            arg = std::move(arg)]<typename
-                                  // display_component<TR, arg_t<TWH>>
-                                  TD>(TD &&display) mutable {
-      call::render(display, r, arg);
-    };
+            arg = std::move(arg)]<display_component<TR, arg_t<TWH>> TD>(
+               TD &&display) mutable { call::render(display, r, arg); };
   }
   static constexpr decltype(auto)
   handle(bp::cvref_type<widget_state_wrapper> auto &&self, auto &&evt)
@@ -478,40 +417,61 @@ struct widget_mono_state {
 
 struct widget_no_event_handler {};
 
+template <typename T> class widget_ref_no_set_area {
+  T *t_;
+
+public:
+  constexpr explicit widget_ref_no_set_area(T &t) : t_(&t) {}
+
+  constexpr bounding_box decltype(auto) area() const { return t_->area(); }
+
+  constexpr decltype(auto) subcomponents() const
+    requires(requires() { t_->subcomponents(); })
+  {
+    return t_->subcomponents();
+  }
+  constexpr decltype(auto) subcomponent() const
+    requires(requires() { t_->subcomponent(); })
+  {
+    return t_->subcomponent();
+  }
+};
+
 template <bounding_box TArea, typename TDisplay, typename TState,
-          typename TEventHandler>
-class widget : bp::empty_structs_optimiser<TState, TEventHandler> {
-  using display_state_callbacks_t = widget_display_state_callbacks<TArea>;
+          typename TEventHandler, typename TSubs, typename TOnResize>
+class widget
+    : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
+  using display_state_callbacks_t = basic_widget_back_propagater<TArea>;
+  using widget_ref_t = widget_ref_no_set_area<widget>;
   TArea area_{};
   TDisplay display_;
-  using base_t = bp::empty_structs_optimiser<TState, TEventHandler>;
-  static constexpr decltype(auto) state(auto &&self) noexcept {
-    return base_t::get(
-        static_cast<bp::copy_cvref_t<base_t, decltype(self)>>(self),
-        std::type_identity<TState>{});
-  }
+  using base_t =
+      bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize>;
+
   static constexpr decltype(auto) event_handler(auto &&self) noexcept {
-    return base_t::get(
-        static_cast<bp::copy_cvref_t<base_t, decltype(self)>>(self),
-        std::type_identity<TEventHandler>{});
+    return self.get(std::type_identity<TEventHandler>{});
+  }
+  static constexpr decltype(auto) subs(auto &&self) noexcept {
+    return self.get(std::type_identity<TSubs>{});
+  }
+  static constexpr decltype(auto) on_resize(auto &&self) noexcept {
+    return self.get(std::type_identity<TOnResize>{});
   }
 
-  constexpr auto set_state_callback(display_state_callbacks auto &display_cb) {
-    // At this point, the state handler can change its state and propagate the
-    // state change to all affected display aspects.
-    return [this, &display_cb]<typename TS>(TS const &state) {
-      auto display_setter = [&state, &display_cb]<typename TD>(TD &display) {
-        if constexpr (has_set_state<TD, TS, decltype(display_cb)>) {
-          call::set_state(display, state, display_cb);
-        } else {
-          static_assert(!has_set_state<TD, TS>,
-                        "You are probably missing the display_state callback "
-                        "argument in your display set_state");
-          unused(display, state, display_cb);
-        }
-      };
-      call::for_each(display_, display_setter);
+  constexpr auto set_state(widget_back_propagater auto &display_cb,
+                           auto const &state) {
+    auto display_setter = [&state, &display_cb]<typename TD>(TD &display) {
+      if constexpr (has_set_state<TD, decltype(state), decltype(display_cb)>) {
+        call::set_state(display, state, display_cb);
+      } else {
+        unused(display, state, display_cb);
+      }
     };
+    call::for_each(display_, display_setter);
+  }
+
+  constexpr void call_resize() {
+    on_resize (*this)(widget_ref_no_set_area(*this), area_);
   }
 
 public:
@@ -522,160 +482,223 @@ public:
   template <typename... Ts>
     requires(std::constructible_from<TDisplay, Ts && ...>)
   constexpr explicit widget(Ts &&...d) : display_(std::forward<Ts>(d)...) {}
-  template <typename TD, typename TS, typename TE>
+  template <typename TD, typename TS, typename TE, typename TSC, typename TRSZ>
     requires(std::constructible_from<TDisplay, TD &&> &&
              std::constructible_from<TEventHandler, TE &&> &&
-             std::constructible_from<TState, TS &&>)
-  constexpr widget(TArea const &a, TD &&d, TS &&s, TE &&e)
-      : base_t(std::forward<TS>(s), std::forward<TE>(e)), area_(a),
-        display_(std::forward<TD>(d)) {}
+             std::constructible_from<TState, TS &&> &&
+             std::constructible_from<TSubs, TSC &&> &&
+             std::constructible_from<TOnResize, TRSZ &&>)
+  constexpr widget(TArea const &a, TD &&d, TS &&s, TE &&e, TSC &&sc, TRSZ &&rsz)
+      : base_t(std::forward<TS>(s), std::forward<TE>(e), std::forward<TSC>(sc),
+               std::forward<TRSZ>(rsz)),
+        area_(a), display_(std::forward<TD>(d)) {
+    call_resize();
+  }
 
   [[nodiscard]] TArea const &area() const { return area_; }
 
   widget &area(TArea const &a) {
     area_ = a;
+    call_resize();
     return *this;
   }
   constexpr TDisplay &displays() noexcept { return display_; }
   constexpr TDisplay const &displays() const noexcept { return display_; }
 
+  constexpr auto state() const {
+    if constexpr (stateful_aspect<TEventHandler>) {
+      return call::state(event_handler(*this));
+    } else {
+      return no_state_t{};
+    }
+  }
+
   constexpr void render(renderer auto &&r) const {
     auto w = call::width(area_);
     auto h = call::height(area_);
-    auto render_callback = state(*this)(r.sub(area_), w, h);
+    auto arg = widget_render_args(w, h, state());
+    auto render_callback = [&r, &arg]<typename TD>(TD &&display) {
+      call::render(display, r, arg);
+    };
     call::for_each(display_, std::move(render_callback));
+    if constexpr (has_render<TEventHandler const &, decltype(r) &,
+                             decltype(arg) &>) {
+      call::render(event_handler(*this), r, arg);
+    }
+    if constexpr (!std::is_empty_v<TSubs>) {
+      call::for_each(subs(*this),
+                     [&r](auto &&sub_w) { sub_w.render(r.sub(sub_w.area())); });
+    }
   }
-  template <typename TEvt, display_state_callbacks TCallback>
+  template <typename TEvt, widget_back_propagater TCallback>
   constexpr void handle(TEvt &&evt, TCallback &&display_callbacks)
-    requires(has_handle<TEventHandler, TArea const &, TEvt,
-                        decltype(set_state_callback(display_callbacks))>)
+    requires has_handle<TEventHandler, TArea const &, decltype(evt)> ||
+             has_handle<TEventHandler, TArea const &, decltype(evt), TCallback>
   {
-    // We expect that all default-constructed areas are empty.
-    // First level: we call the event handler that takes input events and
-    // translates it to a component state change.
-    call::handle(event_handler(*this), area(), std::forward<decltype(evt)>(evt),
-                 [this, &display_callbacks]<typename TStateEvent>(
-                     TStateEvent &&state_event) {
-                   // Second level: event handler has taken the event input and
-                   // now translates it to a behaviour event that the state
-                   // aspect can read.
-                   auto prev_state = call::state(state(*this));
-                   call::handle(state(*this),
-                                std::forward<TStateEvent>(state_event));
-                   auto new_state = call::state(state(*this));
-                   if (prev_state != new_state) {
-                     set_state_callback(display_callbacks)(new_state);
-                   }
-                 });
+    auto const do_handle = [this, &evt, &display_callbacks] {
+      if constexpr (has_handle<TEventHandler, TArea const &, decltype(evt),
+                               TCallback>) {
+        call::handle(event_handler(*this), area(),
+                     std::forward<decltype(evt)>(evt), display_callbacks);
+      } else {
+        call::handle(event_handler(*this), area(),
+                     std::forward<decltype(evt)>(evt));
+        unused(display_callbacks);
+      }
+    };
+    if constexpr (stateful_aspect<TState>) {
+      auto prev_state = state();
+      do_handle();
+      if (auto new_state = state(); prev_state != new_state) {
+        set_state(display_callbacks, new_state);
+      }
+    } else {
+      do_handle();
+    }
   }
   constexpr bounding_box auto handle(auto &&evt)
-    requires(has_handle<TEventHandler, TArea const &, decltype(evt),
-                        decltype(set_state_callback(
-                            std::declval<display_state_callbacks_t &>()))>)
+    requires has_handle<widget &, decltype(evt), display_state_callbacks_t &>
   {
     display_state_callbacks_t display_callbacks(area());
-    handle(evt, display_callbacks);
+    handle(std::forward<decltype(evt)>(evt), display_callbacks);
     return display_callbacks.result_area();
+  }
+  constexpr TSubs &subcomponents()
+    requires(!std::is_empty_v<TSubs>)
+  {
+    return subs(*this);
+  }
+  constexpr decltype(auto) subcomponent()
+    requires(!std::is_empty_v<TSubs> && bp::has_tuple_size<TSubs> &&
+             requires() { std::get<0>(subcomponents()); })
+  {
+    return std::get<0>(subcomponents());
+  }
+  constexpr TEventHandler &event_component()
+    requires(!std::is_empty_v<TEventHandler>)
+  {
+    return event_handler(*this);
   }
 };
 
+template <renderer TR, typename TStateArgs>
+struct builder_display_element_constraint {
+  constexpr void
+  operator()(builder_display_args<TR, TStateArgs> auto &&) const {}
+};
+
+template <renderer TR> struct display_element_constraint {
+  constexpr void operator()(display_component<TR> auto &&) const {}
+};
+
 template <typename TArea, typename TDisplay, widget_states_aspect TState,
-          typename TEventHandler>
+          typename TEventHandler, typename TSubs, typename TOnResize>
 class widget_builder_impl {
+  using state_wrapper = widget_state_wrapper<TState>;
+  using state_arg_t = typename state_wrapper::template arg_t<int>;
+  using display_constraint_t =
+      builder_display_element_constraint<dummy_renderer, state_arg_t>;
+
   TArea area_;
   TDisplay displays_;
   TState state_;
   TEventHandler event_;
-
-  using state_wrapper = widget_state_wrapper<TState>;
-  using state_arg_t = typename state_wrapper::template arg_t<int>;
+  TSubs subs_;
+  TOnResize on_resize_;
 
 public:
   static constexpr bool contract_fulfilled = bounding_box<TArea>;
 
   constexpr widget_builder_impl() = default;
-  template <typename TUs, typename TS, typename TE>
+  template <typename TUs, typename TS, typename TE, typename TSC, typename TRSZ>
     requires(std::constructible_from<TDisplay, TUs &&> &&
              std::constructible_from<TState, TS &&> &&
-             std::constructible_from<TEventHandler, TE &&>)
-  constexpr explicit widget_builder_impl(TArea const &a, TUs &&displ, TS &&s,
-                                         TE &&e)
+             std::constructible_from<TEventHandler, TE &&> &&
+             std::constructible_from<TSubs, TSC> &&
+             std::constructible_from<TOnResize, TRSZ>)
+  constexpr widget_builder_impl(TArea const &a, TUs &&displ, TS &&s, TE &&e,
+                                TSC &&sc, TRSZ &&rsz)
       : area_(a), displays_(std::forward<TUs>(displ)),
-        state_(std::forward<TS>(s)), event_(std::forward<TE>(e)) {}
+        state_(std::forward<TS>(s)), event_(std::forward<TE>(e)),
+        subs_(std::forward<TSC>(sc)), on_resize_(std::forward<TRSZ>(rsz)) {}
 
-  template <widget_states_aspect TS2,
-            typename TRes = widget_builder_impl<
-                TArea, TDisplay, std::remove_cvref_t<TS2>, TEventHandler>>
-  TRes state(TS2 &&s) && {
-    return TRes(std::move(area_), std::move(displays_), std::forward<TS2>(s),
-                std::move(event_));
+  template <typename... TD2> constexpr auto display(TD2 &&...vs) && {
+    using TRes = widget_builder_impl<
+        TArea, build::args_to_group_t<display_constraint_t, TD2 &&...>, TState,
+        TEventHandler, TSubs, TOnResize>;
+    auto s = bp::as_forward(std::move(*this));
+    return TRes{
+        (*s).area_,
+        build::args_to_group(display_constraint_t{}, std::forward<TD2>(vs)...),
+        (*s).state_,
+        (*s).event_,
+        (*s).subs_,
+        (*s).on_resize_};
   }
-
-  template <
-      typename... TD2,
-      typename TTuple = std::tuple<std::unwrap_ref_decay_t<TD2>...>,
-      typename TRes = widget_builder_impl<TArea, TTuple, TState, TEventHandler>>
-    requires((builder_display_args<TD2, dummy_renderer, state_arg_t>) && ...)
-  TRes display(TD2 &&...d2) && {
-    return TRes(std::move(area_), TTuple(std::forward<decltype(d2)>(d2)...),
-                std::move(state_), std::move(event_));
-  }
-
-  template <display_component_range<dummy_renderer,
-                                    typename state_wrapper::template arg_t<int>>
-                TTupleLike,
-            typename TRes = widget_builder_impl<
-                TArea, std::unwrap_reference_t<std::remove_cvref_t<TTupleLike>>,
-                state_wrapper, TEventHandler>>
-  TRes display(TTupleLike &&displays) && {
-    return TRes(std::move(area_), std::forward<TTupleLike>(displays),
-                std::move(state_), std::move(event_));
-  }
-
-#if CGUI_HAS_NAMED_ARGS
-  template <dooc::arg_with_any_name... TArgs>
-    requires(
-        builder_display_args<typename dooc::named_arg_properties<TArgs>::type,
-                             dummy_renderer, state_arg_t> &&
-        ...)
-  constexpr auto display(TArgs &&...args) && {
-    using tuple_t = dooc::named_tuple<std::remove_cvref_t<TArgs>...>;
-    return widget_builder_impl<TArea, tuple_t, TState, TEventHandler>(
-        std::move(area_), tuple_t(std::forward<TArgs>(args)...),
-        std::move(state_), std::move(event_));
-  }
-#endif
 
   auto build() &&
-    requires(contract_fulfilled)
+    requires contract_fulfilled
   {
     static_assert(bounding_box<TArea>,
                   "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
-    using display_t = decltype(impl::build_displays(
-        std::move(displays_), state_wrapper::all_states()));
-    return widget<TArea, display_t, state_wrapper, TEventHandler>(
-        std::move(area_),
-        impl::build_displays(std::move(displays_), state_wrapper::all_states()),
-        state_wrapper(std::move(state_)), std::move(event_));
-  }
-  template <typename TE2,
-            typename TRes = widget_builder_impl<TArea, TDisplay, TState,
-                                                std::remove_cvref_t<TE2>>>
-  TRes event(TE2 &&e) && {
-    return TRes(std::move(area_), std::move(displays_), std::move(state_),
-                std::forward<TE2>(e));
+    using display_t = decltype(build::build_group(
+        display_element_constraint<dummy_renderer>{},
+        std::move(*this).displays_, all_states<TEventHandler>()));
+
+    using subs_t = decltype(build::build_group(
+        impl::widget_display_constraint{}, std::move(*this).subs_));
+    auto s = bp::as_forward(std::move(*this));
+    return widget<TArea, display_t, TState, TEventHandler, subs_t, TOnResize>(
+        (*s).area_,
+        build::build_group(display_element_constraint<dummy_renderer>{},
+                           (*s).displays_, all_states<TEventHandler>()),
+        (*s).state_, (*s).event_,
+        build::build_group(impl::widget_display_constraint{},
+                           std::move(*this).subs_),
+        (*s).on_resize_);
   }
 
-  template <bounding_box TA, typename TRes = widget_builder_impl<
-                                 TA, TDisplay, TState, TEventHandler>>
+  template <typename TE2, typename TRes = widget_builder_impl<
+                              TArea, TDisplay, TState, std::remove_cvref_t<TE2>,
+                              TSubs, TOnResize>>
+  TRes event(TE2 &&e) && {
+    return TRes(std::move(area_), std::move(displays_), std::move(state_),
+                std::forward<TE2>(e), std::move(subs_), std::move(on_resize_));
+  }
+
+  template <bounding_box TA,
+            typename TRes = widget_builder_impl<
+                TA, TDisplay, TState, TEventHandler, TSubs, TOnResize>>
   TRes area(TA const &a) && {
-    return TRes(a, std::move(displays_), std::move(state_), std::move(event_));
+    return TRes(a, std::move(displays_), std::move(state_), std::move(event_),
+                std::move(subs_), std::move(on_resize_));
+  }
+
+  template <widget_display_args... Ts,
+            typename TTuple = std::tuple<std::unwrap_ref_decay_t<Ts>...>,
+            typename TRes = widget_builder_impl<
+                TArea, TDisplay, TState, TEventHandler, TTuple, TOnResize>>
+  TRes subcomponents(Ts &&...args) && {
+    return TRes{std::move(area_),
+                std::move(displays_),
+                std::move(state_),
+                std::move(event_),
+                TTuple(std::forward<Ts>(args)...),
+                std::move(on_resize_)};
+  }
+  template <typename T, typename TRes = widget_builder_impl<
+                            TArea, TDisplay, TState, TEventHandler, TSubs,
+                            std::unwrap_ref_decay_t<T>>>
+  TRes on_resize(T &&rsz) && {
+    return {std::move(area_),  std::move(displays_), std::move(state_),
+            std::move(event_), std::move(subs_),     std::forward<T>(rsz)};
   }
 };
 
 constexpr widget_builder_impl<default_rect, std::tuple<>, widget_mono_state,
-                              widget_no_event_handler>
+                              widget_no_event_handler, std::tuple<>,
+                              bp::no_op_t>
 widget_builder() {
   return {};
 }
@@ -723,7 +746,7 @@ public:
     }
     tokens_.reserve(std::ranges::ssize(t) +
                     1); // This may be slightly less than actual used depending
-                        // on line breaks.
+    // on line breaks.
     std::size_t cur_line_index{};
     auto current_line = [this, &cur_line_index]() -> newline_entry & {
       assert(cur_line_index < size(tokens_));
@@ -922,6 +945,7 @@ public:
   constexpr explicit display_per_state_impl(auto &&...args)
     requires(std::constructible_from<T, decltype(args)...>)
       : d_(bp::array_from_args<T, state_count>(args...)) {}
+
   constexpr auto render(renderer auto &&r, render_args auto const &args) const {
     unused(r, args);
     auto disp_index = state2index(args.widget_state());
@@ -929,6 +953,7 @@ public:
     auto &active_display = d_[disp_index];
     call::render(active_display, std::forward<decltype(r)>(r), args);
   }
+
   template <TState tI>
     requires((tI == tStates) || ...)
   static constexpr auto &&
@@ -938,7 +963,7 @@ public:
   }
 
   static constexpr void set_state(auto const &,
-                                  display_state_callbacks auto &&cb) {
+                                  widget_back_propagater auto &&cb) {
     if constexpr (state_count > 1) {
       cb.rerender();
     } else {
@@ -960,6 +985,7 @@ template <display_component TDC, typename... TArgs> class display_per_state {
 public:
   constexpr explicit display_per_state(TArgs &&...args)
       : args_(std::forward<TArgs>(args)...) {}
+
   template <typename T, T... tStates>
   constexpr display_per_state_impl<TDC, T, tStates...>
   build(widget_states<T, tStates...>) && {
@@ -973,13 +999,6 @@ public:
 };
 template <display_component T>
 display_per_state(T &&) -> display_per_state<std::remove_cvref_t<T>, T>;
-
-/*
-template <typename Txt, bounding_box TArea = default_rect>
-constexpr auto text_box_widget(Txt t, TArea a = {})
-    -> widget<decltype(text_renderer(std::move(t))), TArea> {
-  return {text_renderer(std::move(t)), std::move(a)};
-}*/
 
 namespace details {
 template <typename T> constexpr auto get_error(T &&t) {
@@ -1055,28 +1074,88 @@ public:
 template <typename T>
 cached_font(T &&) -> cached_font<std::unwrap_ref_decay_t<T>>;
 
-class buttonlike_trigger {
+namespace button_state_events {
+struct hover {};
+struct exit {};
+struct hold {};
+struct click {
+  mouse_buttons button;
+};
+template <typename T>
+concept state_event_handler =
+    bp::can_be_operand_for_all<T, decltype(call::handle), hover, exit, hold,
+                               click>;
+} // namespace button_state_events
+
+template <typename T>
+concept button_state =
+    button_state_events::state_event_handler<T> && widget_states_aspect<T>;
+
+/// @brief Event handling class for button-like widgets that manage state
+/// transitions.
+///
+/// The `buttonlike_trigger` class template handles mouse-related events, such
+/// as clicks, holds, and hovering, for button widgets and translates them into
+/// button state transition events. It provides a convenient way to implement
+/// different types of buttons (e.g., momentary or toggle) by allowing a
+/// `TState` type to be injected, which manages the button's state transitions.
+///
+/// @tparam TState Type parameter representing the state transition logic of the
+/// button. This must satisfy the `button_state` concept requirements.
+template <button_state TState>
+class buttonlike_trigger : bp::empty_structs_optimiser<TState> {
   bool mouse_inside_{};
   bool mouse_down_{};
 
-public:
-  struct hover_event {};
-  struct exit_event {};
-  struct hold_event {};
-  struct click_event {
-    mouse_buttons button;
-  };
+  // Perfect forwarding access to the state object for this button.
+  // May return a reference or a value depending on the empty_structs_optimiser
+  // implementation and wheter TState is empty or not.
+  static constexpr decltype(auto) state_impl(auto &&self) {
+    return std::forward<decltype(self)>(self).get(bp::index_constant<0>{});
+  }
 
-  void handle(
-      bounding_box auto &&area,
-      event_types<ui_events::mouse_move, ui_events::mouse_button_down,
-                  ui_events::mouse_button_up, ui_events::mouse_exit> auto &&evt,
-      auto &&trigger_callback) {
+  // Pass a state change event to the TState object.
+  constexpr void state_change(auto &&event) {
+    call::handle(state_impl(*this), event);
+  }
+
+  // Convenient type aliases
+  using hover_event = button_state_events::hover;
+  using exit_event = button_state_events::exit;
+  using hold_event = button_state_events::hold;
+  using click_event = button_state_events::click;
+
+public:
+  using bp::empty_structs_optimiser<TState>::empty_structs_optimiser;
+
+  constexpr auto state() const
+    requires requires(TState const &s) { call::state(s); }
+  {
+    return call::state(state_impl(*this));
+  }
+
+  /// @brief Handles mouse-based events for button interactions.
+  ///
+  /// This function processes a variety of user input events and
+  /// modifies the button's state accordingly. For example, when the mouse
+  /// enters the button's bounding box, the hover state is triggered; on button
+  /// down, the hold state is triggered; and on button release, the click state
+  /// is triggered if the mouse is within the button's area.
+  ///
+  /// @param area This event handlers borders.
+  /// @param evt The event to handle, which must be one of `mouse_move`,
+  /// `mouse_button_down`,
+  ///            `mouse_button_up`, or `mouse_exit` from the `ui_events`
+  ///            namespace.
+  void handle(bounding_box auto const &area,
+              event_types<ui_events::mouse_move, ui_events::mouse_button_down,
+                          ui_events::mouse_button_up,
+                          ui_events::mouse_exit> auto &&evt) {
     using enum ui_events;
     using evt_t = decltype(evt);
     if constexpr (can_be_event<mouse_exit, evt_t>()) {
       if (is_event<mouse_exit>(evt) && mouse_inside_) {
-        trigger_callback(exit_event{});
+        state_change(exit_event{});
         mouse_inside_ = false;
       }
     }
@@ -1086,9 +1165,9 @@ public:
         auto is_now_inside = hit_box(area, call::position(evt));
         if (is_now_inside != mouse_inside_) {
           if (mouse_inside_) {
-            trigger_callback(exit_event{});
+            state_change(exit_event{});
           } else {
-            trigger_callback(hover_event{});
+            state_change(hover_event{});
           }
           mouse_inside_ = is_now_inside;
         }
@@ -1098,7 +1177,7 @@ public:
     if constexpr (can_be_event<mouse_button_down, evt_t>()) {
       if (is_event<mouse_button_down>(evt)) {
         if (!mouse_down_ && hit_box(area, call::position(evt))) {
-          trigger_callback(hold_event{});
+          state_change(hold_event{});
         }
         mouse_down_ = true;
         return;
@@ -1107,7 +1186,7 @@ public:
     if constexpr (can_be_event<mouse_button_up, evt_t>()) {
       if (is_event<mouse_button_up>(evt)) {
         if (hit_box(area, call::position(evt))) {
-          trigger_callback(click_event{call::mouse_button(evt)});
+          state_change(click_event{call::mouse_button(evt)});
         }
         mouse_down_ = false;
         return;
@@ -1115,36 +1194,43 @@ public:
     }
   }
 };
+template <typename T>
+buttonlike_trigger(T &&) -> buttonlike_trigger<std::unwrap_ref_decay_t<T>>;
 
 enum class momentary_button_states { off, hover, hold };
 
-template <std::invocable TClick, std::invocable THover, std::invocable THold,
-          std::invocable TExit>
+template <typename TState, bp::invocable_or_invocable_args<TState> TClick,
+          bp::invocable_or_invocable_args<TState> THover,
+          bp::invocable_or_invocable_args<TState> THold,
+          bp::invocable_or_invocable_args<TState> TExit>
 class momentary_button_impl
-    : bp::empty_structs_optimiser<TClick, THover, THold, TExit> {
+    : bp::empty_structs_optimiser<TState, TClick, THover, THold, TExit> {
+  static constexpr std::size_t state_i = 0;
+  static constexpr std::size_t click_i = 1;
+  static constexpr std::size_t hover_i = 2;
+  static constexpr std::size_t hold_i = 3;
+  static constexpr std::size_t exit_i = 4;
 
   using state_t =
       widget_state_marker<momentary_button_states, momentary_button_states::off,
                           momentary_button_states::hover,
                           momentary_button_states::hold>;
 
-  using base_t = bp::empty_structs_optimiser<TClick, THover, THold, TExit>;
-  constexpr decltype(auto) on_click() noexcept {
-    return base_t::get(static_cast<base_t &>(*this),
-                       std::type_identity<TClick>{})();
+  using base_t =
+      bp::empty_structs_optimiser<TState, TClick, THover, THold, TExit>;
+
+  template <std::size_t tI> constexpr void _call() {
+    decltype(auto) b = bp::as_forward(this->get(bp::index_constant<tI>{}));
+    if constexpr (std::invocable<decltype(*b)>) {
+      std::invoke(*b);
+    } else {
+      std::invoke(*b, this->get(bp::index_constant<state_i>{}));
+    }
   }
-  constexpr decltype(auto) on_hover() noexcept {
-    return base_t::get(static_cast<base_t &>(*this),
-                       std::type_identity<THover>{})();
-  }
-  constexpr decltype(auto) on_hold() noexcept {
-    return base_t::get(static_cast<base_t &>(*this),
-                       std::type_identity<THold>{})();
-  }
-  constexpr decltype(auto) on_exit() noexcept {
-    return base_t::get(static_cast<base_t &>(*this),
-                       std::type_identity<TExit>{})();
-  }
+  constexpr void on_click() noexcept { _call<click_i>(); }
+  constexpr decltype(auto) on_hover() noexcept { _call<hover_i>(); }
+  constexpr decltype(auto) on_hold() noexcept { _call<hold_i>(); }
+  constexpr decltype(auto) on_exit() noexcept { _call<exit_i>(); }
   state_t current_state_{momentary_button_states::off};
 
 public:
@@ -1155,71 +1241,655 @@ public:
 
   [[nodiscard]] constexpr state_t state() const { return current_state_; }
 
-  constexpr void handle(buttonlike_trigger::click_event const &) {
+  constexpr void handle(button_state_events::click const &) {
     on_click();
     current_state_ = momentary_button_states::hover;
     on_hover();
   }
-  constexpr void handle(buttonlike_trigger::exit_event const &) {
+  constexpr void handle(button_state_events::exit const &) {
     current_state_ = momentary_button_states::off;
     on_exit();
   }
-  constexpr void handle(buttonlike_trigger::hold_event const &) {
+  constexpr void handle(button_state_events::hold const &) {
     current_state_ = momentary_button_states::hold;
     on_hold();
   }
-  constexpr void handle(buttonlike_trigger::hover_event const &) {
+  constexpr void handle(button_state_events::hover const &) {
     current_state_ = momentary_button_states::hover;
     on_hover();
   }
 };
 
-template <
-    std::invocable TClick = bp::no_op_t, std::invocable THover = bp::no_op_t,
-    std::invocable THold = bp::no_op_t, std::invocable TExit = bp::no_op_t>
+template <typename TState = empty_state, typename TClick = bp::no_op_t,
+          typename THover = bp::no_op_t, typename THold = bp::no_op_t,
+          typename TExit = bp::no_op_t>
 struct momentary_button {
+  TState state;
   TClick on_click;
   THover on_hover;
   THold on_hold;
   TExit on_exit;
 
-  constexpr momentary_button_impl<TClick, THover, THold, TExit> build() && {
-    return {std::move(on_click), std::move(on_hover), std::move(on_hold),
-            std::move(on_exit)};
+  constexpr momentary_button_impl<TState, TClick, THover, THold, TExit>
+  build() &&
+    requires bp::invocable_or_invocable_args<TClick, TState &> && //
+             bp::invocable_or_invocable_args<THover, TState &> && //
+             bp::invocable_or_invocable_args<THold, TState &> &&  //
+             bp::invocable_or_invocable_args<TExit, TState &>     //
+  {
+    auto self = bp::as_forward(std::move(*this));
+    return {(*self).state, (*self).on_click, (*self).on_hover, (*self).on_hold,
+            (*self).on_exit};
   }
   template <typename T2>
-    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
-  constexpr momentary_button<std::unwrap_ref_decay_t<T2>, THover, THold, TExit>
+  constexpr momentary_button<TState, std::unwrap_ref_decay_t<T2>, THover, THold,
+                             TExit>
   click(T2 &&c) && {
     auto self = bp::as_forward(std::move(*this));
-    return {std::forward<T2>(c), (*self).on_hover, (*self).on_hold,
-            (*self).on_exit};
+    return {(*self).state, std::forward<T2>(c), (*self).on_hover,
+            (*self).on_hold, (*self).on_exit};
   }
   template <typename T2>
-    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
-  constexpr momentary_button<TClick, std::unwrap_ref_decay_t<T2>, THold, TExit>
+  constexpr momentary_button<TState, TClick, std::unwrap_ref_decay_t<T2>, THold,
+                             TExit>
   hover(T2 &&c) && {
     auto self = bp::as_forward(std::move(*this));
-    return {(*self).on_click, std::forward<T2>(c), (*self).on_hold,
-            (*self).on_exit};
+    return {(*self).state, (*self).on_click, std::forward<T2>(c),
+            (*self).on_hold, (*self).on_exit};
   }
   template <typename T2>
-    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
-  constexpr momentary_button<TClick, THover, std::unwrap_ref_decay_t<T2>, TExit>
+  constexpr momentary_button<TState, TClick, THover,
+                             std::unwrap_ref_decay_t<T2>, TExit>
   hold(T2 &&c) && {
     auto self = bp::as_forward(std::move(*this));
-    return {(*self).on_click, (*self).on_hover, std::forward<T2>(c),
-            (*self).on_exit};
+    return {(*self).state, (*self).on_click, (*self).on_hover,
+            std::forward<T2>(c), (*self).on_exit};
   }
   template <typename T2>
-    requires(std::invocable<std::unwrap_ref_decay_t<T2>>)
-  constexpr momentary_button<TClick, THover, THold, std::unwrap_ref_decay_t<T2>>
+  constexpr momentary_button<TState, TClick, THover, THold,
+                             std::unwrap_ref_decay_t<T2>>
   exit(T2 &&c) && {
     auto self = bp::as_forward(std::move(*this));
-    return {(*self).on_click, (*self).on_hover, (*self).on_hold,
+    return {(*self).state, (*self).on_click, (*self).on_hover, (*self).on_hold,
             std::forward<T2>(c)};
   }
+  template <typename T2>
+  constexpr momentary_button<std::unwrap_ref_decay_t<T2>, TClick, THover, THold,
+                             TExit>
+  callback_state(T2 &&c) && {
+    auto self = bp::as_forward(std::move(*this));
+    return {std::forward<T2>(c), (*self).on_click, (*self).on_hover,
+            (*self).on_hold, (*self).on_exit};
+  }
 };
+
+enum class toggle_button_states {
+  relaxed_off = 0,
+  hover_off = 1,
+  hold_off = 2,
+  relaxed_on = 3,
+  hover_on = 4,
+  hold_on = 5
+};
+constexpr toggle_button_states
+combine_toggled_hover_states(bool is_on, bool hovered, bool hold) noexcept {
+  using enum toggle_button_states;
+  using underlying_int = std::underlying_type_t<toggle_button_states>;
+  auto on_part =
+      is_on ? static_cast<underlying_int>(relaxed_on) : underlying_int{};
+  auto hover_hold_part = underlying_int{};
+  if (hovered) {
+    if (hold) {
+      hover_hold_part = static_cast<underlying_int>(hold_off);
+    } else {
+      hover_hold_part = static_cast<underlying_int>(hover_off);
+    }
+  }
+  return static_cast<toggle_button_states>(on_part + hover_hold_part);
+}
+
+template <typename TState, bp::invocable_or_invocable_args<TState &> TToOn,
+          bp::invocable_or_invocable_args<TState &> TToOff>
+class toggle_button_impl : bp::empty_structs_optimiser<TState, TToOn, TToOff> {
+
+  using state_t = widget_state_marker<
+      toggle_button_states, toggle_button_states::relaxed_off,
+      toggle_button_states::hover_off, toggle_button_states::hold_off,
+      toggle_button_states::relaxed_on, toggle_button_states::hover_on,
+      toggle_button_states::hold_on>;
+
+  static constexpr std::size_t state_i = 0;
+  static constexpr std::size_t activate_i = 1;
+  static constexpr std::size_t deactivate_i = 2;
+
+  using base_t = bp::empty_structs_optimiser<TState, TToOn, TToOff>;
+  template <std::size_t tI> constexpr void call() noexcept {
+    decltype(auto) f = this->get(bp::index_constant<tI>{});
+    if constexpr (std::invocable<decltype(f)>) {
+      f();
+    } else {
+      f(this->get(bp::index_constant<state_i>{}));
+    }
+  }
+  bool on_ : 1 = {};
+  bool hover_ : 1 = {};
+  bool hold_ : 1 = {};
+
+  using underlying_int = std::underlying_type_t<toggle_button_states>;
+
+public:
+  template <typename... Ts>
+    requires(std::constructible_from<base_t, Ts && ...>)
+  constexpr explicit(sizeof...(Ts) == 1) toggle_button_impl(Ts &&...args)
+      : base_t(std::forward<Ts>(args)...) {}
+
+  [[nodiscard]] constexpr state_t state() const {
+    return combine_toggled_hover_states(on_, hover_, hold_);
+  }
+
+  constexpr void handle(button_state_events::click const &) {
+    if (on_) {
+      call<activate_i>();
+    } else {
+      call<deactivate_i>();
+    }
+    hold_ = false;
+    on_ = !on_;
+  }
+  constexpr void handle(button_state_events::exit const &) { hover_ = false; }
+  constexpr void handle(button_state_events::hold const &) { hold_ = true; }
+  constexpr void handle(button_state_events::hover const &) { hover_ = true; }
+};
+
+/// @brief A builder for a widget state to generate a toggle button. Works with
+/// the @ref buttonlike_trigger event aspect.
+///
+/// The `toggle_button` class template allows for constructing a toggle button
+/// with two different actions: one for turning "on" and one for turning "off".
+/// The actions are specified as invocable types, allowing customization of
+/// the toggle button's behavior upon each toggle.
+///
+/// @tparam TState Common state that the callbacks can use and manipulate. It is
+///                used as an optional argument to the activation and
+///                deactivation callbacks
+/// @tparam TToOn Type of the action to perform when the button is toggled to
+///               "on" state.
+///               Defaults to a no-operation.
+/// @tparam TToOff Type of the action to perform when the button is toggled to
+///                "off" state.
+///                Defaults to a no-operation.
+template <typename TState = empty_state, std::invocable TToOn = bp::no_op_t,
+          std::invocable TToOff = bp::no_op_t>
+class toggle_button_state {
+  TState cb_state_{};
+  TToOn to_on_{};
+  TToOff to_off_{};
+
+public:
+  /// @brief Default constructor.
+  constexpr toggle_button_state() = default;
+
+  /// @brief Parameterized constructor.
+  ///
+  /// Constructs a `toggle_button` with specified actions for "on" and "off"
+  /// states.
+  ///
+  /// @tparam TS Type of the callback state.
+  /// @tparam TON Type of the action for the "on" state.
+  /// @tparam TOFF Type of the action for the "off" state.
+  /// @param s Callback state.
+  /// @param on Action to perform when the button is toggled to "on" state.
+  /// @param off Action to perform when the button is toggled to "off" state.
+  template <typename TS, typename TON, typename TOFF>
+    requires(std::constructible_from<TState, TS &&> &&
+             std::constructible_from<TToOn, TON &&> &&
+             std::constructible_from<TToOff, TOFF &&>)
+  constexpr toggle_button_state(TS &&s, TON &&on, TOFF &&off)
+      : cb_state_(std::forward<TS>(s)), to_on_(std::forward<TON>(on)),
+        to_off_(std::forward<TOFF>(off)) {}
+
+  /// @brief Builds the toggle button state aspect.
+  ///
+  /// Converts this builder into an implementation of a toggle button with the
+  /// specified actions for "on" and "off" states.
+  ///
+  /// @return toggle_button_impl<TToOn, TToOff> An implementation of the toggle
+  /// button.
+  ///
+  /// @note The builder is invalidated after this operation, as it transfers
+  ///       ownership of the actions to the returned implementation.
+  constexpr toggle_button_impl<TState, TToOn, TToOff> build() && {
+    auto s = bp::as_forward(std::move(*this));
+    return {(*s).cb_state_, (*s).to_on_, (*s).to_off_};
+  }
+
+  /// @brief Add a function to be called when the button activates.
+  ///
+  /// The function should either take no arguments or have a signature in which
+  /// a TState& can be passed in as the first argument.
+  ///
+  /// @tparam TOn Type of input parameter.
+  /// @tparam T Helper type
+  /// @param in New function to be called when the final object is activated.
+  /// Use std::ref to create a reference object.
+  /// @return Modified toggle_button builder.
+  ///
+  /// @note Invalidates the original builder.
+  template <typename TOn, typename T = std::unwrap_ref_decay_t<TOn>>
+  constexpr toggle_button_state<TState, T, TToOff> on_active(TOn &&in) && {
+    auto s = bp::as_forward(std::move(*this));
+    return {(*s).cb_state_, std::forward<TOn>(in), (*s).to_off_};
+  }
+
+  /// @brief Add a function to be called when the button deactivates (reverts to
+  /// its initial state).
+  ///
+  /// The function should either take no arguments or have a signature in which
+  /// a TState& can be passed in as the first argument.
+  ///
+  /// @tparam TOff Type of input parameter.
+  /// @tparam T Helper type
+  /// @param in New function to be called when the final object is deactivated.
+  /// Use std::ref to create a reference object.
+  /// @return Modified toggle_button builder.
+  ///
+  /// @note Invalidates the original builder.
+  template <typename TOff, typename T = std::unwrap_ref_decay_t<TOff>>
+  constexpr toggle_button_state<TState, TToOn, T> on_unactive(TOff &&in) && {
+    auto s = bp::as_forward(std::move(*this));
+    return {(*s).cb_state_, (*s).to_on_, std::forward<TOff>(in)};
+  }
+
+  /// @brief Add a shared state object accessible to all state change callbacks
+  /// during execution.
+  ///
+  /// This function allows you to specify a state object that all toggle button
+  /// callbacks (both on and off) can access. This is useful when callbacks
+  /// require shared data or configuration throughout the toggle button's
+  /// lifetime. It will appear as an optional argument to the state change
+  /// callbacks as a mutable reference (unless std::ref/std::cref is used to
+  /// generate a constant reference).
+  ///
+  /// @tparam TIn Type of input parameter.
+  /// @tparam T Helper type
+  /// @param in New state object that can be used by the callbacks. Use std::ref
+  ///           to create a reference object.
+  /// @return Modified toggle_button builder.
+  ///
+  /// @note Invalidates the original builder.
+  template <typename TIn, typename T = std::unwrap_ref_decay_t<TIn>>
+  constexpr toggle_button_state<TState, TToOn, T> callback_state(TIn &&in) && {
+    auto s = bp::as_forward(std::move(*this));
+    return {std::forward<TIn>(in), (*s).to_on_, (*s).to_off_};
+  }
+};
+
+template <typename TState, typename TWH>
+  requires(requires(TState const &s, std::size_t i) {
+    { std::invoke(s, i) } -> state_marker;
+  })
+class basic_button_list_args : bp::empty_structs_optimiser<TState> {
+  using _base_t = bp::empty_structs_optimiser<TState>;
+  TWH w_;
+  TWH h_;
+
+public:
+  template <bounding_box B, typename T>
+    requires(std::constructible_from<TState, T>)
+  constexpr basic_button_list_args(B const &b, T &&s)
+      : _base_t(std::forward<T>(s)), w_(call::width(b)), h_(call::height(b)) {}
+  template <typename T>
+    requires(std::constructible_from<TState, T>)
+  constexpr basic_button_list_args(TWH w, TWH h, T &&s)
+      : _base_t(std::forward<T>(s)), w_(w), h_(h) {}
+
+  constexpr TWH width() const { return w_; }
+  constexpr TWH height() const { return h_; }
+  constexpr state_marker decltype(auto) button_state(std::size_t i) const {
+    return std::invoke(this->get_first(), i);
+  }
+};
+
+template <bounding_box B, typename T>
+basic_button_list_args(B const &, T &&)
+    -> basic_button_list_args<
+        std::unwrap_ref_decay_t<T>,
+        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+template <typename TWH, typename T>
+basic_button_list_args(TWH const &, TWH const &, T &&)
+    -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;
+
+template <typename StateVal = widget_state_marker<int>>
+using dummy_button_list_args =
+    basic_button_list_args<bp::return_constant_t<StateVal>, int>;
+
+template <typename T>
+concept button_list_args = requires(T const &t, std::size_t i) {
+  t.width();
+  t.height();
+  { t.button_state(i) } -> state_marker;
+};
+
+namespace radio_button {
+/// Enum class to define the various render-related states for a radio button.
+using element_state = toggle_button_states;
+
+static constexpr auto max_element_state = element_state::hold_on;
+
+/// Struct to signal that a radio button is activated.
+struct trigger_on {};
+
+/// Struct to signal that a radio button is deactivated.
+struct trigger_off {};
+
+/// State marker containing all states for the radio button.
+using state_marker_t = make_widget_state_marker_sequence_t<
+    element_state, element_state::relaxed_off, max_element_state>;
+
+using all_states_t = all_states_in_marker_t<state_marker_t>;
+using all_triggers_t = triggers<trigger_on, trigger_off>;
+
+template <typename T, typename BP = basic_widget_back_propagater<>>
+concept can_trigger =
+    has_handle<T, trigger_on, BP &&> && has_handle<T, trigger_off, BP &&>;
+
+template <typename T, typename TRender = dummy_renderer,
+          typename Position = default_pixel_coord,
+          typename BP = basic_widget_back_propagater<>>
+concept element =
+    has_render<
+        T, TRender,
+        basic_button_list_args<
+            bp::return_constant_t<state_marker_t, element_state{}>, int>> &&
+    requires(T &&t, Position const &p) {
+      call::find_sub(t, bp::false_predicate, bp::no_op);
+    };
+struct sub_constraint {
+  constexpr void operator()(element auto &&) const {}
+};
+} // namespace radio_button
+
+/// @brief Trigger for widgets that acts like a container of multiple buttons
+/// where at most one button should be enabled.
+///
+template <radio_button::element TElements>
+class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
+  using base_t = bp::empty_structs_optimiser<TElements>;
+  using state_marker_t = radio_button::state_marker_t;
+
+  template <typename Sub, subable_widget_back_propagator BP>
+  static constexpr void do_set_state(state_marker_t state, Sub &&sub,
+                                     BP &&back_prop) {
+    using namespace radio_button;
+    if constexpr (has_set_state<Sub, state_marker_t, BP>) {
+      call::set_state(sub, state, back_prop);
+    } else {
+      // If the group itself does not provide a handler to tell what really
+      // needs to be re-rendered, we have to assume all will be.
+      back_prop.rerender();
+    }
+  }
+
+  struct do_trigger_off {
+    basic_widget_back_propagater<default_rect> bp;
+    bool currently_hovered{};
+
+    template <typename Sub> constexpr void operator()(Sub &&s, auto &&...) {
+      if constexpr (has_handle<Sub, radio_button::trigger_off, decltype(bp)>) {
+        call::handle(std::forward<Sub>(s), radio_button::trigger_off{},
+                     std::move(bp));
+      }
+      do_set_state(currently_hovered ? radio_button::element_state::hover_off
+                                     : radio_button::element_state::relaxed_off,
+                   s, bp);
+    }
+  };
+  using element_id_t = std::size_t;
+  using reset_active_f =
+      decltype(call::sub_accessor(std::declval<TElements &>(), element_id_t{},
+                                  arguments_marker<do_trigger_off>));
+
+  std::optional<reset_active_f> reset_active_;
+  element_id_t current_element_ = highest_possible;
+  element_id_t hovered_element_ = highest_possible;
+  bool mouse_down_{};
+
+  static constexpr decltype(auto) elements(auto &&self) noexcept {
+    using t = bp::copy_cvref_t<base_t, decltype(self)>;
+    return get<0>(static_cast<t>(self));
+  }
+  constexpr decltype(auto) elements() noexcept { return elements(*this); }
+  constexpr decltype(auto) elements() const noexcept { return elements(*this); }
+
+  constexpr void reset_active(widget_back_propagater auto &&back_prop,
+                              bool is_hovered) {
+    if (reset_active_) {
+      (*reset_active_)(
+          elements(),
+          do_trigger_off{
+              static_cast<basic_widget_back_propagater<default_rect>>(
+                  back_prop),
+              is_hovered});
+    }
+  }
+  template <widget_back_propagater BP>
+  constexpr void reset_hovered(BP &&back_prop) {
+    if (hovered_element_ != static_cast<element_id_t>(highest_possible)) {
+      call::find_sub_id(
+          elements(), hovered_element_,
+          [this, &back_prop]<typename S>(S &&s, element_id_t const &i) {
+            using enum radio_button::element_state;
+            if constexpr (has_set_state<S, state_marker_t, BP>) {
+              call::set_state(s,
+                              state_marker_t(combine_toggled_hover_states(
+                                  i == current_element_, false, false)),
+                              std::forward<BP>(back_prop));
+            }
+          });
+    }
+  }
+
+  template <typename Sub, widget_back_propagater BP>
+  constexpr void activate_element(Sub &&sub, element_id_t sub_index,
+                                  BP &&back_prop) {
+    if constexpr (has_handle<Sub, radio_button::trigger_on, BP>) {
+      call::handle(sub, radio_button::trigger_on{}, back_prop);
+    }
+    do_set_state(radio_button::element_state::hover_on, sub, back_prop);
+    reset_active_.emplace(call::sub_accessor(elements(*this), sub_index,
+                                             arguments_marker<do_trigger_off>));
+    current_element_ = sub_index;
+  }
+
+  template <typename Sub, typename BP>
+  constexpr void hover_element(Sub &&sub, element_id_t sub_index,
+                               BP &&back_prop) {
+    hovered_element_ = sub_index;
+    using namespace radio_button;
+    if constexpr (has_set_state<Sub, state_marker_t, BP>) {
+      call::set_state(sub,
+                      state_marker_t(combine_toggled_hover_states(
+                          sub_index == current_element_, true, mouse_down_)),
+                      back_prop);
+    } else {
+      back_prop.rerender(sub.area());
+    }
+  }
+
+  template <typename TEvt, subable_widget_back_propagator BackProp,
+            typename Sub>
+  constexpr auto event_switch(TEvt &&evt, BackProp &back_prop, Sub &&sub,
+                              element_id_t sub_index) {
+    using enum ui_events;
+    using data_t =
+        decltype(std::forward_as_tuple(*this, back_prop, sub, sub_index));
+    return ui_event_switch(
+        std::forward<TEvt>(evt),
+        std::forward_as_tuple(*this, back_prop, sub, sub_index),
+        event_case<mouse_button_up>([](auto && /*event*/, data_t &&data) {
+          auto &[self, back_prop, sub, sub_index] = data;
+          self.reset_active(back_prop, sub_index == self.current_element_);
+          if (sub_index != self.current_element_) {
+            self.activate_element(std::forward<Sub>(sub), sub_index,
+                                  std::forward<decltype(back_prop)>(back_prop));
+          } else {
+            self.reset_active_ = std::nullopt;
+            self.current_element_ = highest_possible;
+          }
+          self.mouse_down_ = false;
+        }), //
+        event_case<mouse_move>([](auto &&, data_t &&data) {
+          auto &[self, back_prop, sub, sub_index] = data;
+          if (sub_index != self.hovered_element_) {
+            self.reset_hovered(back_prop);
+            self.hover_element(sub, sub_index, back_prop);
+          }
+        }), //
+        event_case<mouse_button_down>([](auto &&, data_t &&data) {
+          auto &[self, back_prop, sub, sub_index] = data;
+          bool state_change = !self.mouse_down_;
+          if (sub_index != self.hovered_element_) {
+            self.reset_hovered(back_prop);
+            self.hovered_element_ = sub_index;
+            state_change = true;
+          }
+          if (state_change) {
+            self.mouse_down_ = true;
+            do_set_state(combine_toggled_hover_states(false, true, true), sub,
+                         back_prop);
+          }
+        }));
+  }
+
+public:
+  using base_t::base_t;
+  template <
+      bounding_box T,
+      event_types<ui_events::mouse_move, ui_events::mouse_exit,
+                  ui_events::mouse_button_down, ui_events::mouse_button_up>
+          TEvt>
+  constexpr void handle(T const &, TEvt &&evt,
+                        subable_widget_back_propagator auto &&back_prop) {
+    if constexpr (can_be_event<ui_events::mouse_exit, TEvt>()) {
+      if (is_event<ui_events::mouse_exit>(evt)) {
+        reset_hovered(back_prop);
+        hovered_element_ = highest_possible;
+      }
+    }
+    if constexpr (event_types<TEvt, ui_events::mouse_move,
+                              ui_events::mouse_button_down,
+                              ui_events::mouse_button_up>) {
+      if (!call::find_sub_at_location(elements(), call::position(evt),
+                                      [this, &back_prop, &evt]<typename Sub>(
+                                          Sub &&s, element_id_t index) {
+                                        this->event_switch(
+                                            std::forward<TEvt>(evt), back_prop,
+                                            std::forward<Sub>(s), index);
+                                      })) {
+        reset_hovered(back_prop);
+        hovered_element_ = highest_possible;
+        event_case<ui_events::mouse_button_up>(
+            [this](auto &&...) { mouse_down_ = false; })(evt);
+        event_case<ui_events::mouse_button_down>(
+            [this](auto &&...) { mouse_down_ = true; })(evt);
+      }
+    }
+  }
+
+  constexpr void render(renderer auto &&r, render_args auto &&args) const {
+    auto bargs = basic_button_list_args(
+        call::width(args), call::height(args), [this](element_id_t const &i) {
+          return radio_button::state_marker_t(combine_toggled_hover_states(
+              i == current_element_, i == hovered_element_, mouse_down_));
+        });
+    call::render(elements(), std::forward<decltype(r)>(r), bargs);
+  }
+  /// @brief Gets mutable access to elements object.
+  ///
+  /// Makes sure that the button list states are valid after the mutation.
+  /// Provides strong exception guarantee under the following restrictions:
+  ///  - cb provides strong exception guarantee
+  ///  - all activation functions and deactivation functions are perfect
+  ///  inversions of each others (i.e. calling an activation function and
+  ///  immediately the corresponding deactivation function or vice-versa will
+  ///  have no effects on the rest of the program)
+  /// \param cb
+  /// \return
+  constexpr void mutate_elements(std::invocable<TElements &> auto &&cb) {
+    auto backprop = basic_widget_back_propagater(default_rect{});
+    if (reset_active_) {
+      reset_active(backprop, false);
+      reset_active_ = std::nullopt;
+    }
+    if (hovered_element_ != highest_possible) {
+      reset_hovered(backprop);
+    }
+    auto def = bp::deferred([this, &backprop] {
+      if (!call::find_sub_id(
+              elements(), current_element_,
+              [this, &backprop]<typename S>(S &&sub, element_id_t id) {
+                this->activate_element(std::forward<S>(sub), id, backprop);
+              })) {
+        current_element_ = highest_possible;
+      }
+      if (!call::find_sub_id(
+              elements(), hovered_element_,
+              [this, &backprop]<typename S>(S &&sub, element_id_t id) {
+                this->hover_element(std::forward<S>(sub), id, backprop);
+              })) {
+        hovered_element_ = highest_possible;
+      }
+    });
+    cb(elements());
+  }
+};
+
+class subs_group {
+public:
+  constexpr void render(auto &&...) const {}
+  constexpr bool find_sub(auto &&...) { return false; }
+  constexpr void handle(auto &&...) {}
+};
+
+template <typename TElements = subs_group>
+class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
+  using base_t = bp::empty_structs_optimiser<TElements>;
+
+  using element_constraint =
+      build::maybe_build_constraint<radio_button::sub_constraint>;
+
+  constexpr base_t &&move_base() {
+    return std::move(static_cast<base_t &>(*this));
+  }
+
+  static constexpr auto do_build_group(auto &&g) {
+    return build::build_group(
+        radio_button::sub_constraint{}, std::forward<decltype(g)>(g),
+        radio_button::all_states_t{}, radio_button::all_triggers_t{});
+  }
+
+  using built_elements_t =
+      decltype(do_build_group(std::declval<TElements &&>()));
+  static_assert(!std::is_void_v<built_elements_t>);
+
+  constexpr auto build_group() { return do_build_group(get<0>(move_base())); }
+
+public:
+  using base_t::base_t;
+
+  template <typename TE, typename TR = std::unwrap_ref_decay_t<TE>>
+  constexpr radio_button_trigger<TR> elements(TE &&e) && {
+    return radio_button_trigger<TR>(std::forward<TE>(e));
+  }
+
+  constexpr auto build() && -> radio_button_trigger_impl<built_elements_t>
+    requires(!std::is_void_v<built_elements_t>)
+  {
+    return radio_button_trigger_impl<built_elements_t>(build_group());
+  }
+};
+
+radio_button_trigger() -> radio_button_trigger<subs_group>;
 
 } // namespace cgui
 

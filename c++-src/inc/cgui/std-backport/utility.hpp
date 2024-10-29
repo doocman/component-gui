@@ -7,6 +7,7 @@
 
 #include <utility>
 
+#include <cgui/std-backport/concepts.hpp>
 #include <cgui/warnings.hpp>
 
 namespace cgui::bp {
@@ -40,54 +41,8 @@ template <class T, class U> constexpr auto &&forward_like(U &&x) noexcept {
 template <typename T, typename TToCopy>
 using copy_cvref_t = decltype(bp::forward_like<TToCopy>(std::declval<T>()));
 
-template <typename T, typename TArg>
-constexpr auto forward_cast(TArg &&arg)
-    -> decltype(bp::forward_like<TArg>(std::declval<T &>())) {
-  return static_cast<decltype(bp::forward_like<TArg>(std::declval<T &>()))>(
-      arg);
-}
-
-template <typename... Ts> struct empty_structs_optimiser;
-template <> struct empty_structs_optimiser<> {
-  static constexpr void get() {}
-};
-template <typename T, typename... Ts>
-  requires(std::is_empty_v<T>)
-struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
-  using _base_t = empty_structs_optimiser<Ts...>;
-  constexpr empty_structs_optimiser() noexcept(
-      std::is_nothrow_default_constructible_v<T> &&
-      std::is_nothrow_default_constructible_v<_base_t>) = default;
-  template <typename TArg, typename... TArgs>
-    requires(std::constructible_from<_base_t, TArgs && ...>)
-  constexpr explicit empty_structs_optimiser(TArg &&, TArgs &&...to_base)
-      : _base_t(std::forward<TArgs>(to_base)...) {}
-  static constexpr T get(auto &&, std::type_identity<T>) { return T{}; }
-  using _base_t::get;
-};
-template <typename T, typename... Ts>
-  requires(!std::is_empty_v<T>)
-struct empty_structs_optimiser<T, Ts...> : empty_structs_optimiser<Ts...> {
-  using _base_t = empty_structs_optimiser<Ts...>;
-  T val_;
-  constexpr empty_structs_optimiser() noexcept(
-      std::is_nothrow_default_constructible_v<T> &&
-      std::is_nothrow_default_constructible_v<_base_t>) = default;
-  template <typename TArg, typename... TArgs>
-    requires(std::constructible_from<T, TArg &&> &&
-             std::constructible_from<_base_t, TArgs && ...>)
-  constexpr explicit empty_structs_optimiser(TArg &&arg, TArgs &&...to_base)
-      : _base_t(std::forward<TArgs>(to_base)...),
-        val_(std::forward<TArg>(arg)) {}
-  static constexpr auto &&get(auto &&self, std::type_identity<T>) {
-    using this_t = decltype(bp::forward_like<decltype(self)>(
-        std::declval<empty_structs_optimiser &>()));
-    return static_cast<this_t>(self).val_;
-    // return bp::forward_cast<empty_structs_optimiser>(self).val_;
-    // //bp::forward_like<decltype(self)>();
-  }
-  using _base_t::get;
-};
+template <std::size_t tI>
+using index_constant = std::integral_constant<std::size_t, tI>;
 
 template <typename T> struct as_forward {
   T &&val_;
@@ -99,9 +54,38 @@ template <typename T> struct as_forward {
 
   constexpr T &&value() const noexcept { return std::forward<T>(val_); }
   constexpr T &&operator*() const noexcept { return value(); }
+  constexpr std::remove_reference_t<T> &as_ref() noexcept { return val_; }
+  constexpr std::add_const_t<std::remove_reference_t<T>> &
+  as_cref() const noexcept {
+    return val_;
+  }
 };
 
 template <typename T> as_forward(T &&) -> as_forward<T>;
+
+template <typename T, typename TArg, typename TIn>
+constexpr auto forward_cast(TIn &&arg)
+    -> decltype(bp::forward_like<TArg>(std::declval<T &>())) {
+  return static_cast<decltype(bp::forward_like<TArg>(std::declval<T &>()))>(
+      arg);
+}
+
+template <typename F, typename T1, typename T2>
+concept invocable_arg1_or_arg1_2 =
+    std::invocable<F, T1> || std::invocable<F, T1, T2>;
+
+template <typename F, typename T1, typename T2>
+  requires(invocable_arg1_or_arg1_2<F, T1, T2>)
+constexpr decltype(auto) invoke_arg1_or_arg1_2(F &&cb, T1 &&arg1, T2 &&arg2) {
+  auto cbf = bp::as_forward<F>(cb);
+  auto a1f = bp::as_forward<T1>(arg1);
+  auto a2f = bp::as_forward<T2>(arg2);
+  if constexpr (std::invocable<F &&, T1 &&, T2 &&>) {
+    return std::invoke(*cbf, *a1f, *a2f);
+  } else {
+    return std::invoke(*cbf, *a1f);
+  }
+}
 
 template <typename T> class deferred {
   T val_;
@@ -114,14 +98,29 @@ public:
 };
 
 constexpr void run_for_each(auto &&cb, auto &&...vals)
-  requires(std::invocable<decltype(cb), decltype(vals)> && ...)
+  requires(
+      invocable_arg1_or_arg1_2<decltype(cb), decltype(vals), std::size_t> &&
+      ...)
 {
-  auto cb_return = [&cb]<typename T>(T &&v) {
-    cb(std::forward<T>(v));
-    return '\0';
+  auto cb_return = [f =
+                        [&cb]<typename T>(bp::as_forward<T> t, std::size_t i) {
+                          invoke_arg1_or_arg1_2(cb, *t, i);
+                        }]<typename... Ts, std::size_t... is>(
+                       std::index_sequence<is...>, Ts &&...vs) {
+    if constexpr (sizeof...(vals) > 0) {
+      using expander = char const[sizeof...(vals)];
+      auto wrem = [&f]<typename... Us>(Us &&...args) {
+        (void)f(std::forward<Us>(args)...);
+        return char{};
+      };
+      unused(expander{wrem(bp::as_forward<Ts>(vs), is)...});
+    } else {
+      unused(f);
+    }
   };
-  using expander = char const[sizeof...(vals)];
-  unused(expander{cb_return(std::forward<decltype(vals)>(vals))...});
+  cb_return(std::make_index_sequence<sizeof...(vals)>{},
+            std::forward<decltype(vals)>(vals)...);
+  // unused(expander{cb_return(std::forward<decltype(vals)>(vals))...});
 }
 
 } // namespace cgui::bp

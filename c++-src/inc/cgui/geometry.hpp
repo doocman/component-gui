@@ -224,7 +224,7 @@ concept mut_box_pointer =
 /// all TVs.
 template <typename T, typename... TVs>
 concept mut_box_pair =
-    ((mut_box_pointer<T, TVs> || is_placeholder_v<TVs>)&&...);
+    ((mut_box_pointer<T, TVs> || is_placeholder_v<TVs>) && ...);
 
 /// @cond
 namespace impl {
@@ -479,13 +479,14 @@ template <typename TRes = void, bounding_box T1, bounding_box T2>
 constexpr auto box_intersection(T1 const &b1, T2 const &b2) {
   CGUI_ASSERT(valid_box(b1));
   CGUI_ASSERT(valid_box(b2));
-  using result_t =
-      std::conditional_t<std::is_void_v<TRes>, std::common_type<T1, T2>,
-                         std::type_identity<TRes>>::type;
-  return box_from_xyxy<result_t>(std::max(call::l_x(b1), call::l_x(b2)),
-                                 std::max(call::t_y(b1), call::t_y(b2)),
-                                 std::min(call::r_x(b1), call::r_x(b2)),
-                                 std::min(call::b_y(b1), call::b_y(b2)));
+  using result_t = typename std::conditional_t<std::is_void_v<TRes>,
+                                               std::common_type<T1, T2>,
+                                               std::type_identity<TRes>>::type;
+  auto lx = std::max(call::l_x(b1), call::l_x(b2));
+  auto ty = std::max(call::t_y(b1), call::t_y(b2));
+  auto rx = std::min(call::r_x(b1), call::r_x(b2));
+  auto by = std::min(call::b_y(b1), call::b_y(b2));
+  return box_from_xyxy<result_t>(lx, ty, std::max(rx, lx), std::max(by, ty));
 }
 
 /// Creates a new pixel_coord that has moved left by val.
