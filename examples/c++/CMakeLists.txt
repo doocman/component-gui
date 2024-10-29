@@ -24,6 +24,7 @@ function(cgui_add_example NAME)
     target_include_directories(${NAME} PRIVATE "")
 endfunction()
 
+#[[
 set(PRESET_ADDRSAN ON CACHE BOOL "" FORCE)
 if (${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
     target_compile_options(freetype PRIVATE "/fsanitize=address")
@@ -31,6 +32,7 @@ if (${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
     set(CGUI_ADDRSAN_PATH "${CGUI_ADDRSAN_PATH}/clang_rt.asan_dynamic-x86_64.dll")
     file(COPY "${CGUI_ADDRSAN_PATH}" DESTINATION ".")
 endif ()
+]]
 
 if (NOT CGUI_SDL_STATIC)
     add_custom_target(cgui_examples_copy_sdl

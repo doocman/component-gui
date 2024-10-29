@@ -82,7 +82,6 @@ struct find_sub_t {
             "No other fallback implementations available at the time");
       }
     }
-    return false;
   }
 };
 

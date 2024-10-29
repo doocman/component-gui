@@ -3,6 +3,8 @@
 #include <iostream>
 #include <stdexcept>
 
+#include <chrono>
+
 #include <cgui/cgui.hpp>
 #include <cgui/dynamic.hpp>
 #include <cgui/embedded/cgui_example_font.hpp>
@@ -69,9 +71,10 @@ int main(int argc, char **argv) {
                     .build(),
                 cgui::widget_builder()
                     .area(area_t{})
-                    .event(cgui::buttonlike_trigger(cgui::momentary_button()
-                               .click([&do_exit] { do_exit = true; })
-                               .build()))
+                    .event(cgui::buttonlike_trigger(
+                        cgui::momentary_button()
+                            .click([&do_exit] { do_exit = true; })
+                            .build()))
                     .display(cgui::text_renderer(std::ref(cached_font)))
                     .build())
             .build(full_area);
@@ -81,7 +84,8 @@ int main(int argc, char **argv) {
                                             &rerender_all](auto &elements) {
       auto prototype = elements.display_prototype();
       auto &[background, textr] = prototype;
-      using enum cgui::radio_button::element_state;
+      // using enum cgui::radio_button::element_state;
+      using enum cgui::toggle_button_states;
       get<relaxed_off>(background).colour() = {100, 40, 40, 255};
       get<relaxed_on>(background).colour() = {40, 40, 100, 255};
       get<hover_off>(background).colour() = {140, 100, 100, 255};
@@ -123,11 +127,14 @@ int main(int argc, char **argv) {
     gui.render(renderer);
     renderer.present();
     using namespace std::chrono;
-    constexpr auto run_interval = duration_cast<nanoseconds>(1s) / 60;
+    constexpr auto fps = 60;
+    constexpr auto run_interval = duration_cast<nanoseconds>(1s) / fps;
 
     auto next_run = steady_clock::now() + run_interval;
+    int print_time_info_counter = 0;
     while (!do_exit) {
       SDL_Rect to_rerender{};
+      auto start_tp = steady_clock::now();
       while (cgui::poll_event(sdl_context, [&]<typename T>(T e) {
                if constexpr (std::is_same_v<T, cgui::sdl_quit_event>) {
                  do_exit = true;
@@ -139,6 +146,7 @@ int main(int argc, char **argv) {
              }) != 0) {
       }
       // TODO: This first branch should be removed.
+      auto pre_render = steady_clock::now();
       if (rerender_all) {
         gui.render(renderer);
         renderer.present();
@@ -146,6 +154,15 @@ int main(int argc, char **argv) {
         gui.render(renderer, to_rerender);
         renderer.present();
       }
+      auto post_render = steady_clock::now();
+      if (print_time_info_counter == fps) {
+        print_time_info_counter = 0;
+        auto event_time = pre_render - start_tp;
+        auto render_time = post_render - pre_render;
+        std::cout << "Event time: " << event_time
+                  << ", render time: " << render_time << '\n';
+      }
+      ++print_time_info_counter;
       std::this_thread::sleep_until(next_run);
       next_run += run_interval;
     }

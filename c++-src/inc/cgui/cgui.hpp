@@ -284,7 +284,8 @@ public:
 
   template <typename... Ts> constexpr void render(sub_renderer<Ts...> &&r) {
     cgui::fill(r, r.area(), default_colour_t{0, 0, 0, 255});
-    tuple_for_each([&r](auto &&v) { call::render(v, r); }, widgets_);
+    tuple_for_each([&r](auto &&v) { call::render(v, r.sub(call::area(v))); },
+                   widgets_);
   }
 
   constexpr void render(canvas auto &&c, bounding_box auto const &rarea) {
@@ -516,8 +517,7 @@ public:
     auto w = call::width(area_);
     auto h = call::height(area_);
     auto arg = widget_render_args(w, h, state());
-    auto render_callback = [r = r.sub(area_),
-                            &arg]<typename TD>(TD &&display) mutable {
+    auto render_callback = [&r, &arg]<typename TD>(TD &&display) {
       call::render(display, r, arg);
     };
     call::for_each(display_, std::move(render_callback));
@@ -1638,8 +1638,9 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
         call::handle(std::forward<Sub>(s), radio_button::trigger_off{},
                      std::move(bp));
       }
-      using enum radio_button::element_state;
-      do_set_state(currently_hovered ? hover_off : relaxed_off, s, bp);
+      do_set_state(currently_hovered ? radio_button::element_state::hover_off
+                                     : radio_button::element_state::relaxed_off,
+                   s, bp);
     }
   };
   using element_id_t = std::size_t;
@@ -1886,6 +1887,8 @@ public:
     return radio_button_trigger_impl<built_elements_t>(build_group());
   }
 };
+
+radio_button_trigger() -> radio_button_trigger<subs_group>;
 
 } // namespace cgui
 
