@@ -1,9 +1,11 @@
 
-#include <format>
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 
-#include <chrono>
+// GCC-11 is currently the GCC version used on the Github actions, and it does
+// not support <format>
+#include <fmt/chrono.h>
 
 #include <cgui/cgui.hpp>
 #include <cgui/dynamic.hpp>
@@ -102,7 +104,7 @@ int main(int argc, char **argv) {
         auto f = f_prototype;
         f.get(cgui::radio_button::trigger_on{}) =
             [&end_button, &win_width, &rerender_all,
-             ftext = std::format("End program (last button clicked was {})",
+             ftext = fmt::format("End program (last button clicked was {})",
                                  text)] {
               auto &[textrenderer] = end_button.displays();
               textrenderer.set_displayed(win_width, 0, ftext);
@@ -159,8 +161,8 @@ int main(int argc, char **argv) {
         print_time_info_counter = 0;
         auto event_time = pre_render - start_tp;
         auto render_time = post_render - pre_render;
-        std::cout << "Event time: " << event_time
-                  << ", render time: " << render_time << '\n';
+        fmt::print("Event time: {}. render time: {}\n", event_time,
+                   render_time);
       }
       ++print_time_info_counter;
       std::this_thread::sleep_until(next_run);

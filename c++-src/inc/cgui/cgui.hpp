@@ -79,7 +79,7 @@ public:
   template <typename A2>
   constexpr explicit operator recursive_area_navigator<A2>() const {
     return {copy_box<A2>(relative_area_), offset_x_, offset_y_};
-  };
+  }
 };
 
 template <canvas T, bounding_box TB> class sub_renderer {
@@ -543,6 +543,7 @@ public:
       } else {
         call::handle(event_handler(*this), area(),
                      std::forward<decltype(evt)>(evt));
+        unused(display_callbacks);
       }
     };
     if constexpr (stateful_aspect<TState>) {

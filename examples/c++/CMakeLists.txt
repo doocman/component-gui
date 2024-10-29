@@ -54,4 +54,4 @@ cgui_add_sdl_example(hello-world)
 cgui_add_sdl_example(dynamic_list)
 
 target_link_libraries(hello-world PRIVATE cgui_embedded::cgui_example_font)
-target_link_libraries(dynamic_list PRIVATE cgui_embedded::cgui_example_font)
+target_link_libraries(dynamic_list PRIVATE cgui_embedded::cgui_example_font fmt::fmt)
