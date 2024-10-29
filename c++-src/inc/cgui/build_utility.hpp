@@ -9,7 +9,11 @@
 #include <cgui/std-backport/ranges.hpp>
 
 namespace cgui::build {
+/// Helper type to retrieve the 'tags' used to get all elements in a tuple-like
+/// object. std-types will have index_sequence here for example.
 template <typename> struct all_tuple_tags {};
+/// Trait-type that can create a new template object based on an instantiated
+/// template type and new template types.
 template <typename> struct template_base {};
 template <typename... Ts> struct all_tuple_tags<std::tuple<Ts...>> {
   using type = std::make_index_sequence<sizeof...(Ts)>;
@@ -48,17 +52,13 @@ template <typename T> using all_tuple_tags_t = typename all_tuple_tags<T>::type;
 template <typename T>
 using template_base_t = template_base<std::remove_cvref_t<T>>;
 
+/// Concept that hints that build_tuple is a good function to use to build the
+/// type. The bp::has_tuple_size<T> is in general redundant but has helped
+/// fighting of an 'internal compiler error' in MSVC-22.
+/// \tparam T
 template <typename T>
 concept usable_in_build_tuples =
     bp::has_tuple_size<T> || requires() { typename all_tuple_tags<T>::type; };
-
-constexpr decltype(auto) widget_build_or_forward(auto &&v, auto const &states) {
-  if constexpr (display_component<decltype(v)>) {
-    return std::forward<decltype(v)>(v);
-  } else {
-    return call::build(std::forward<decltype(v)>(v), states);
-  }
-}
 
 namespace impl {
 inline namespace {
@@ -82,6 +82,16 @@ constexpr auto optional_builder(Args &&...args) {
 } // namespace
 } // namespace impl
 
+/// Builds the tuple by going through each element and either builds them or
+/// return them as is depending on what Builder does.
+/// \tparam Tup tuple to use
+/// \tparam Builder invocable that may build or return the value as-is.
+/// \tparam tIs indices of the tuple.
+/// \param t tuple to use
+/// \param b invocable that may build or return the value as-is.
+/// \return a new tuple-like object (i.e. if Tup is a std::tuple, the returned
+/// value is a tuple, if Tup is a std::array, the returned value will be a new
+/// array etc.)
 template <typename Tup, typename Builder, std::size_t... tIs>
 constexpr auto build_tuple(Tup &&t, std::index_sequence<tIs...>,
                            Builder const &b) {
@@ -89,6 +99,15 @@ constexpr auto build_tuple(Tup &&t, std::index_sequence<tIs...>,
       b(std::get<tIs>(std::forward<Tup>(t)))...);
 }
 
+/// Combines several arguments to a std::tuple. Requires that TElementConstraint
+/// can be invoked for each TD2, which is used to inject a constraint to the
+/// function.
+/// \tparam TElementConstraint function-like object whose purpose is only to act
+/// as a constraint for the function.
+/// \tparam TD2 Arguments to combine. Use std::ref to get keep references.
+/// \tparam TTuple Resulting type.
+/// \param d2 Arguments to combine. Use std::ref to get keep references.
+/// \return TTuple-type of all d2.
 template <typename TElementConstraint, typename... TD2,
           typename TTuple = std::tuple<std::unwrap_ref_decay_t<TD2>...>>
   requires((std::invocable<TElementConstraint, std::unwrap_ref_decay_t<TD2>> &&
@@ -97,6 +116,15 @@ TTuple args_to_group(TElementConstraint, TD2 &&...d2) {
   return TTuple(std::forward<TD2>(d2)...);
 }
 
+/// Returns the object essentially unmodified with the exception of a unwrap.
+/// Use std::ref to keep a reference to the underlying group.
+/// \tparam TElementConstraint Constraint to apply to all elements inside the
+/// group.
+/// \tparam TGroup2 Group-type. Requires that call::for_each(TGroup2, FUNCTION)
+/// is valid for any function that accepts all elements contained in TGroup2.
+/// \tparam TG2UW Resulting type
+/// \param g Group to unwrap and return.
+/// \return the incoming group.
 template <typename TElementConstraint, typename TGroup2,
           typename TG2UW = std::unwrap_ref_decay_t<TGroup2>>
   requires each_constraint<TG2UW, TElementConstraint>
@@ -109,13 +137,12 @@ template <typename... Ts, dooc::template_string... tags>
 struct all_tuple_tags<dooc::named_tuple<dooc::named_arg_t<tags, Ts>...>> {
   using type = dooc::template_string_list_t<tags...>;
 };
-template <typename... Ts, dooc::template_string... tags>
-struct template_base<dooc::named_tuple<dooc::named_arg_t<tags, Ts>...>> {
-  template <typename... Args> static constexpr auto decay_make(Args &&...args) {
-    return dooc::named_tuple(std::forward<Args>(args)...);
-  }
-};
 
+/// dooc-np overload of args_to_group. Uses named_args to create a named_tuple.
+/// \tparam TElementConstraint
+/// \tparam TArgs
+/// \param args named_arg_t:s to combine into a named_tuple.
+/// return a named_tuple containing all args.
 template <typename TElementConstraint, typename... TArgs>
   requires(((dooc::arg_with_any_name<std::unwrap_ref_decay_t<TArgs>> &&
              std::invocable<
@@ -128,11 +155,25 @@ constexpr auto args_to_group(TElementConstraint, TArgs &&...args) {
   return tuple_t(std::forward<TArgs>(args)...);
 }
 
+/// Wraps t with any reference and cv-qualifier into a named_arg_t.
+/// \tparam tName tag to give the resulting argument
+/// \tparam T type of argument
+/// \param t value of argument
+/// \return named argument containing t.
 template <dooc::template_string tName, typename T>
 constexpr dooc::named_arg_t<tName, T> forward_named_arg(T &&t) {
   return dooc::named_arg_t<tName, T>{std::forward<T>(t)};
 }
 
+/// Overload for dooc-np tuple.
+/// \tparam Tup named_tuple to build.
+/// \tparam Builder Function-like object that handles the build-or-forward
+/// logic.
+/// \tparam tags all tags in Tup.
+/// \param t named_tuple to build.
+/// \param b Function-like object that handles the build-or-forward logic.
+/// \return new named tuple where all elements are either forwarded from or
+/// built from b.
 template <typename Tup, typename Builder, dooc::template_string... tags>
 constexpr auto build_tuple(Tup &&t, dooc::template_string_list_t<tags...>,
                            Builder const &b) {
@@ -141,30 +182,16 @@ constexpr auto build_tuple(Tup &&t, dooc::template_string_list_t<tags...>,
 }
 #endif
 
-template <typename Constraint, typename... Args> struct maybe_build_constraint {
-  template <typename T>
-    requires(std::invocable<Constraint, T &&> ||
-             (builder<T, Args...> &&
-              std::invocable<Constraint, build_result_t<T, Args...>>))
-  constexpr void operator()(T &&) const {}
-};
-
-template <typename Constraint>
-constexpr auto optional_build =
-    []<typename T, typename... Args>(T &&e, Args &&...args) {
-      if constexpr (!std::invocable<Constraint, T>) {
-        static_assert(
-            builder<T, Args...>,
-            "Element did not satisfy constraint and it could not be built");
-        static_assert(std::invocable<Constraint, build_result_t<T, Args...>>,
-                      "Built element did not satisfy constraint");
-        return call::build(std::forward<T>(e), std::forward<Args>(args)...);
-      } else {
-        unused(args...);
-        return std::forward<T>(e);
-      }
-    };
-
+/// Takes a group (anything that satisfies call::for_each or call::apply_to) and
+/// either builds or forwards all their elements to a new group, depending on
+/// Constraint.
+/// \tparam Constraint function-like object that is used to inject a constraint
+/// to determine whether a type should be forwarded as-is or built.
+/// \tparam T type of the group
+/// \tparam TArgs arguments needed for any potential builds.
+/// \param g group to build-or-forward from.
+/// \param args arguments needed for any potential builds.
+/// \return new group in which all elements satisfies Constraint.
 template <typename Constraint, typename T, typename... TArgs>
 constexpr auto build_group(Constraint &&, T &&g, TArgs &&...args) {
   auto gf = bp::as_forward<T>(g);
@@ -186,6 +213,7 @@ constexpr auto build_group(Constraint &&, T &&g, TArgs &&...args) {
 template <typename TConstraint, typename... TArgs>
 using args_to_group_t =
     decltype(args_to_group(TConstraint{}, std::declval<TArgs &&>()...));
+
 template <typename Constraint, typename Group, typename... Args>
 using build_group_t =
     decltype(build_group(std::declval<Constraint>(), std::declval<Group>(),

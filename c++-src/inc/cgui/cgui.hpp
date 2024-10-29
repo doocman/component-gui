@@ -1855,9 +1855,6 @@ template <typename TElements = subs_group>
 class radio_button_trigger : bp::empty_structs_optimiser<TElements> {
   using base_t = bp::empty_structs_optimiser<TElements>;
 
-  using element_constraint =
-      build::maybe_build_constraint<radio_button::sub_constraint>;
-
   constexpr base_t &&move_base() {
     return std::move(static_cast<base_t &>(*this));
   }
