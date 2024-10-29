@@ -15,6 +15,13 @@ do_array_from_args(TCreator const &creator, std::index_sequence<tIs...>) {
   return {{creator(tIs)...}};
 }
 } // namespace impl
+/// @brief constructs all elements in array using the same arguments to the
+/// constructors.
+/// \tparam T array value type. Used explicitly.
+/// \tparam tSz size of array. Used explicitly.
+/// \tparam TArgs Type of the arguments to pass to constructors.
+/// \param args Arguments to pass to constructors.
+/// \return constructed array.
 template <typename T, std::size_t tSz, typename... TArgs>
   requires(std::constructible_from<T, TArgs const &...>)
 constexpr std::array<T, tSz> array_from_args(TArgs const &...args) {
