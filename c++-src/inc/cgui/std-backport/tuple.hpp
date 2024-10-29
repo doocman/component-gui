@@ -6,6 +6,8 @@
 #include <cgui/std-backport/utility.hpp>
 
 namespace cgui::bp {
+/// Concept to find if tuple_size_v is valid for T.
+/// \tparam T
 template <typename T>
 concept has_tuple_size =
     requires() { std::tuple_size<std::remove_cvref_t<T>>::value; };
@@ -202,27 +204,43 @@ constexpr decltype(auto) apply_to(T &&t, F &&f) {
 }
 
 } // namespace impl
+
+/// @brief Struct to remove empty objects by letting them be
+/// default-constructible on-the-fly instead.
+///
+/// You may use get<N>(OBJECT) or get<T>(OBJECT) or
+/// OBJECT.get(index_constant<N>{}) to get the object.
+///
+/// @tparam Ts Objects to store
 template <typename... Ts>
 using empty_structs_optimiser = impl::empty_structs_optimiser_impl<0u, Ts...>;
 
-template <typename, typename>
-struct tuple_element_index;
+template <typename, typename> struct tuple_element_index;
 
 namespace impl {
-template <typename T, typename U, typename... Us, std::size_t i, std::size_t... is>
+template <typename T, typename U, typename... Us, std::size_t i,
+          std::size_t... is>
 consteval std::size_t find_element_index(std::index_sequence<i, is...>) {
-  if constexpr(std::is_same_v<T, U>) {
+  if constexpr (std::is_same_v<T, U>) {
     return i;
   } else {
     return find_element_index<T, Us...>(std::index_sequence<is...>{});
   }
 }
-}
+} // namespace impl
+/// Trait to find the index in which a specific type resides inside a tuple.
+/// \tparam T Type to find
+/// \tparam Ts Types in tuple
 template <typename T, typename... Ts>
-requires ((std::is_same_v<T, Ts> || ...) && requires(std::tuple<Ts...>& v) { std::get<T>(v); })
+  requires((std::is_same_v<T, Ts> || ...) &&
+           requires(std::tuple<Ts...> &v) { std::get<T>(v); })
 struct tuple_element_index<T, std::tuple<Ts...>> {
-  static constexpr auto value = impl::find_element_index<T, Ts...>(std::make_index_sequence<sizeof...(Ts)>());
+  static constexpr auto value = impl::find_element_index<T, Ts...>(
+      std::make_index_sequence<sizeof...(Ts)>());
 };
+/// Value of tuple_element_index<T, U>::value.
+/// \tparam T Type to find
+/// \tparam U tuple that contains all the types.
 template <typename T, typename U>
 constexpr auto tuple_element_index_v = tuple_element_index<T, U>::value;
 

@@ -12,6 +12,9 @@
 #endif
 
 namespace cgui {
+/// No-op function used to signal that any variables or expressions are ignored
+/// on purpose.
+/// \return
 constexpr void unused(auto &&...) {}
 #ifndef NDEBUG
 #define CGUI_DEBUG_ONLY(...) __VA_ARGS__

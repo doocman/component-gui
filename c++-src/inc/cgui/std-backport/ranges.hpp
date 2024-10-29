@@ -7,8 +7,16 @@
 #include <cgui/std-backport/tuple.hpp>
 
 namespace cgui::bp {
+/// Helper trait to convert a container C<T> to a container C<U>
 template <typename /*Base*/, typename /*NewElementType*/>
 struct transformed_range {};
+
+/// Transformation trait, with specialisation for container types containing
+/// only type arguments.
+/// \tparam TRange Original range
+/// \tparam TVal Value type of the original range
+/// \tparam Ts Rest of the type arguments of TRange.
+/// \tparam NewElementType New value type to insert into TRange.
 template <template <typename, typename...> typename TRange, typename TVal,
           typename... Ts, typename NewElementType>
   requires std::is_same_v<std::ranges::range_value_t<TRange<TVal, Ts...>>, TVal>
@@ -20,6 +28,15 @@ template <typename Base, typename NewValueT>
 using transformed_range_t =
     typename transformed_range<std::remove_cvref_t<Base>, NewValueT>::type;
 
+/// Creates a new range of the same type by transforming each element from the
+/// original range.
+/// \tparam T Input range.
+/// \tparam ET Original reference type of T
+/// \tparam F Transformation function
+/// \tparam FR Transformation result
+/// \param r Input range.
+/// \param f Transformation function
+/// \return New range with all transformed values. Not a view.
 template <std::ranges::range T, typename ET = std::ranges::range_reference_t<T>,
           std::invocable<ET> F,
           typename FR = std::unwrap_ref_decay_t<std::invoke_result_t<T, ET>>>

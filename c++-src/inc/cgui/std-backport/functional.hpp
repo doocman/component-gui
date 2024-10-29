@@ -11,29 +11,57 @@
 #include <cgui/std-backport/utility.hpp>
 
 namespace cgui::bp {
+
+/// Function-like object that does nothing.
 struct no_op_t {
   template <typename T> using function = T;
 
+  /// Static no-op function used to return a function pointer.
+  /// \tparam Ts Types of the arguments
+  /// \param ... ignored arguments
+  /// \return nothing
   template <typename... Ts> static constexpr void call(Ts...) noexcept {}
+
+  /// No-op call operator.
+  /// \return nothing.
   constexpr void operator()(auto &&...) const noexcept {}
 
+  /// Implicit to-function-pointer conversion operator
+  /// \tparam Ts Type of the arguments
+  /// \return function pointer to no op function.
   template <typename... Ts>
   constexpr explicit(false) operator function<void(Ts...)> *() const noexcept {
     return &call<Ts...>;
   }
 };
+/// Function-like object that always returns result_v
+/// \tparam T Type of result
+/// \tparam result_v result to return.
 template <typename T, T result_v = T{}> struct return_constant_t {
   template <typename U> using function = U;
 
+  /// Static function to be used in the function pointer conversion operator.
+  /// \tparam Ts Type of arguments.
+  /// \param ... Ignored arguments
+  /// \return result_v
   template <typename... Ts> static constexpr T call(Ts...) noexcept {
     return result_v;
   }
+
+  /// Calling operator
+  /// \return result_v
   constexpr T operator()(auto &&...) const noexcept { return result_v; }
+
+  /// Implicit conversion to function pointer
+  /// \tparam Ts Argument types.
+  /// \return result_v
   template <typename... Ts>
   constexpr explicit(false) operator function<T(Ts...)> *() const noexcept {
     return &call<Ts...>;
   }
 };
+
+/// Predicate that always returns result_v.
 template <bool result_v>
 using pretend_predicate_t = return_constant_t<bool, result_v>;
 
@@ -41,19 +69,33 @@ inline constexpr no_op_t no_op;
 template <typename T, T r>
 inline constexpr return_constant_t<T, r> return_constant;
 template <bool r> inline constexpr pretend_predicate_t<r> pretend_predicate;
+
+/// Predicate that always returns false.
 inline constexpr auto false_predicate = pretend_predicate<false>;
 
+/// "Curries" a function-like object by adding arguments to the end of the
+/// argument list.
+/// \tparam TF Function-like object.
+/// \tparam TVals Arguments to append.
 template <typename TF, typename... TVals> class trailing_curried {
   TF f_;
   std::tuple<TVals...> values_;
 
 public:
+  /// Constructor.
+  /// \tparam TF2 Function initiation argument.
+  /// \tparam TArgs Trailing arguments.
+  /// \param f Function initiation argument.
+  /// \param args Trailing arguments.
   template <typename TF2, typename... TArgs>
     requires(std::constructible_from<TF, TF2> &&
              (std::constructible_from<TVals, TArgs> && ...))
   constexpr explicit trailing_curried(TF2 &&f, TArgs &&...args)
       : f_(std::forward<TF2>(f)), values_(std::forward<TArgs>(args)...) {}
 
+  /// Calls the underlying function with args and then TVals.
+  /// \param args First args to function
+  /// \return result of function TF
   constexpr decltype(auto) operator()(auto &&...args) const {
     return std::apply(
         [this, &args...](auto &&...vals) -> decltype(auto) {
@@ -69,42 +111,6 @@ trailing_curried(TF &&, TArgs &&...)
     -> trailing_curried<std::unwrap_ref_decay_t<TF>,
                         std::unwrap_ref_decay_t<TArgs>...>;
 
-template <typename T, typename... Ts>
-class invoke_if_applicable : empty_structs_optimiser<T> {
-  using base_t = empty_structs_optimiser<T>;
-  static constexpr decltype(auto) get_f(auto &&self) {
-    using self_t = decltype(self);
-    if constexpr (std::is_const_v<std::remove_reference_t<self_t>>) {
-      return bp::forward_like<self_t>(static_cast<base_t const &>(self));
-    } else {
-      return bp::forward_like<self_t>(static_cast<base_t &>(self));
-    }
-  }
-  std::tuple<Ts...> args_;
-
-public:
-  constexpr explicit invoke_if_applicable(T t, Ts &&...args)
-      : base_t(std::move(t)), args_(std::forward<Ts>(args)...) {}
-
-  // disable copy/move semantics, because this class should not be "saved".
-  invoke_if_applicable(invoke_if_applicable const &) = delete;
-  invoke_if_applicable &operator=(invoke_if_applicable const &) = delete;
-
-  constexpr void operator()(auto &&cur_sub, auto &&...subjects) && {
-    if constexpr (std::invocable<T, decltype(cur_sub),
-                                 std::remove_reference_t<Ts> &...>) {
-      std::apply(
-          [this, &cur_sub](auto &&...args) {
-            std::invoke(get_f(std::move(*this)),
-                        std::forward<decltype(cur_sub)>(cur_sub), args...);
-          },
-          args_);
-    }
-    if constexpr (sizeof...(subjects) > 0) {
-      std::move (*this)(std::forward<decltype(subjects)>(subjects)...);
-    }
-  }
-};
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_FUNCTIONAL_HPP

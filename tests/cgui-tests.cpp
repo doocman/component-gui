@@ -29,15 +29,6 @@ static_assert(requires(std::tuple<int> t) {
 struct type_test_base {};
 struct type_test_derived : type_test_base {};
 
-static_assert(std::is_same_v<
-              type_test_base &,
-              decltype(bp::forward_cast<type_test_base, type_test_derived &>(
-                  std::declval<type_test_derived &>()))>);
-static_assert(std::is_same_v<
-              type_test_base &&,
-              decltype(bp::forward_cast<type_test_base, type_test_derived &&>(
-                  std::declval<type_test_derived &>()))>);
-
 using namespace ::testing;
 
 static_assert(std::is_rvalue_reference_v<
