@@ -47,42 +47,6 @@ concept has_for_each = requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
   call::for_each(*t, *cb);
 };
 
-template <typename T> class not_null {
-  T v_;
-
-public:
-  constexpr explicit(false) not_null(T p) noexcept : v_(std::move(p)) {}
-  not_null(std::nullptr_t) = delete;
-  constexpr T const &value() const noexcept { return v_; }
-  constexpr explicit(false) operator T const &() const noexcept {
-    return value();
-  }
-  constexpr T &value() noexcept { return v_; }
-  constexpr explicit(false) operator T &() noexcept { return value(); }
-  constexpr decltype(auto) operator*() noexcept
-    requires(bp::dereferencable<T &>)
-  {
-    return *v_;
-  }
-  constexpr decltype(auto) operator*() const noexcept
-    requires(bp::dereferencable<T const &>)
-  {
-    return *v_;
-  }
-  constexpr decltype(auto) operator->() noexcept
-    requires(bp::has_pointer_op<T &>)
-  {
-    return v_.operator->();
-  }
-  constexpr decltype(auto) operator->() const noexcept
-    requires(bp::has_pointer_op<T const &>)
-  {
-    return v_.operator->();
-  }
-};
-
-template <typename T> not_null(T *) -> not_null<T *>;
-
 struct empty_state {};
 
 template <typename T>

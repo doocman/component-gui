@@ -3,8 +3,11 @@
 #define COMPONENT_GUI_CGUI_GEOMETRY_HPP
 
 #include <concepts>
+#include <ranges>
 
 #include <cgui/cgui-call.hpp>
+#include <cgui/std-backport/type_traits.hpp>
+#include <cgui/warnings.hpp>
 
 namespace cgui {
 
@@ -383,7 +386,7 @@ constexpr auto move_tl_to(TB b, TC tl) {
 /// arithmetics instead.
 template <typename TX, mut_box_pointer<TX> T>
 constexpr auto split_x(T b, TX x) {
-  assert(b != nullptr);
+  CGUI_ASSERT(b != nullptr);
   auto res = box_from_xyxy<bp::dereferenced_t<T>>(x, call::t_y(*b),
                                                   call::r_x(*b), call::b_y(*b));
   call::r_x(*b, x);
@@ -395,7 +398,7 @@ constexpr auto split_x(T b, TX x) {
 /// arithmetics instead.
 template <typename TY, mut_box_pointer<TY> T>
 constexpr auto split_y(T b, TY y) {
-  assert(b != nullptr);
+  CGUI_ASSERT(b != nullptr);
   auto res = box_from_xyxy<bp::dereferenced_t<T>>(call::l_x(*b), y,
                                                   call::r_x(*b), call::b_y(*b));
   call::b_y(*b, y);
@@ -406,9 +409,9 @@ constexpr auto split_y(T b, TY y) {
 /// the new part.
 template <typename TV, mut_box_pointer<TV> T>
 constexpr auto trim_from_left(T bptr, TV v) {
-  assert(bptr != nullptr);
+  CGUI_ASSERT(bptr != nullptr);
   auto &b = *bptr;
-  assert(v <= call::width(b));
+  CGUI_ASSERT(v <= call::width(b));
   auto org_lx = call::l_x(b);
   auto split_x = static_cast<decltype(org_lx)>(org_lx + v);
   set_xx(&b, split_x, keep_current);
@@ -420,9 +423,9 @@ constexpr auto trim_from_left(T bptr, TV v) {
 /// the new part.
 template <typename TV, mut_box_pointer<TV> T>
 constexpr auto trim_from_above(T bptr, TV v) {
-  assert(bptr != nullptr);
+  CGUI_ASSERT(bptr != nullptr);
   auto &b = *bptr;
-  assert(v <= call::height(b));
+  CGUI_ASSERT(v <= call::height(b));
   auto org_y = call::t_y(b);
   auto split_y = static_cast<decltype(org_y)>(org_y + v);
   set_yy(&b, split_y, keep_current);
@@ -434,9 +437,9 @@ constexpr auto trim_from_above(T bptr, TV v) {
 /// the new part.
 template <typename TV, mut_box_pointer<TV> T>
 constexpr auto trim_from_right(T bptr, TV v) {
-  assert(bptr != nullptr);
+  CGUI_ASSERT(bptr != nullptr);
   auto &b = *bptr;
-  assert(v <= call::width(b));
+  CGUI_ASSERT(v <= call::width(b));
   call::width(b, call::width(b) - v);
   return box_from_xywh<bp::dereferenced_t<T>>(call::r_x(b), call::t_y(b), v,
                                               call::height(b));
