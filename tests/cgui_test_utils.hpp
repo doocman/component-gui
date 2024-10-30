@@ -6,7 +6,7 @@
 
 #include <gmock/gmock.h>
 
-#include <cgui/cgui-types.hpp>
+#include <cgui/cgui.hpp>
 
 namespace cgui::tests {
 inline auto
@@ -151,7 +151,6 @@ constexpr void click_widget(auto &w, default_pixel_coord const &pos = {},
   w.handle(dummy_mouse_up_event{.pos = pos, .button_id = {}}, args...);
 }
 
-
-}
+} // namespace cgui::tests
 
 #endif // COMPONENT_GUI_CGUI_TEST_UTILS_HPP
