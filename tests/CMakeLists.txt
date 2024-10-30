@@ -1,5 +1,5 @@
 
-set(CGUI_TESTS_USE_PCH ON CACHE BOOL "Set to true to enable precompiled headers for tests")
+set(CGUI_TESTS_USE_PCH OFF CACHE BOOL "Set to true to enable precompiled headers for tests")
 
 add_library(_cgui_test_utils cgui_test_utils.cpp)
 target_include_directories(_cgui_test_utils PUBLIC "")
