@@ -154,6 +154,8 @@ struct do_mouse_button {
 }; // namespace impl
 
 inline constexpr impl::do_mouse_button mouse_button;
+inline constexpr impl::_do_finger_index finger_index;
+inline constexpr impl::_do_delta_time delta_time;
 } // namespace call
 
 template <typename T, typename... TArgs>

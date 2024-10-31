@@ -2,6 +2,8 @@
 #ifndef COMPONENT_GUI_CGUI_UI_EVENTS_HPP
 #define COMPONENT_GUI_CGUI_UI_EVENTS_HPP
 
+#include <bitset>
+#include <chrono>
 #include <tuple>
 
 #include <cgui/cgui-types.hpp>
@@ -16,6 +18,10 @@ enum class input_events {
   mouse_button_up,
   mouse_exit,
   window_resized,
+  touch_finger_down,
+  touch_finger_up,
+  touch_finger_move,
+  time,
 };
 
 enum class interpreted_events {
@@ -168,6 +174,9 @@ constexpr subset_ui_events<tEvt> event_type(dummy_event<tEvt> const &) {
 }
 
 template <> struct dummy_event<input_events::system> {};
+template <> struct dummy_event<input_events::time> {
+  std::chrono::nanoseconds delta_time{};
+};
 template <> struct dummy_event<input_events::mouse_exit> {};
 template <> struct dummy_event<input_events::mouse_move> {
   default_pixel_coord pos{};
@@ -182,6 +191,20 @@ template <> struct dummy_event<input_events::mouse_button_up> {
 };
 template <> struct dummy_event<input_events::window_resized> {
   default_size_wh sz{};
+};
+template <> struct dummy_event<input_events::touch_finger_move> {
+  default_pixel_coord pos{};
+  int finger_index{};
+};
+template <> struct dummy_event<input_events::touch_finger_down> {
+  default_pixel_coord pos{};
+  mouse_buttons button_id = mouse_buttons::primary;
+  int finger_index{};
+};
+template <> struct dummy_event<input_events::touch_finger_up> {
+  default_pixel_coord pos{};
+  mouse_buttons button_id = mouse_buttons::primary;
+  int finger_index{};
 };
 
 template <typename> constexpr bool is_dummy_event_v = false;
@@ -207,12 +230,28 @@ template <is_dummy_event_c T>
 constexpr auto size_of(T const &t) {
   return t.sz;
 }
+template <is_dummy_event_c T>
+  requires(requires(T const &t) { t.finger_index; })
+constexpr auto finger_index(T const &t) {
+  return t.finger_index;
+}
+constexpr auto delta_time(is_dummy_event_c auto const &t)
+  requires requires() { t.delta_time; }
+{
+  return t.delta_time;
+}
 
 using dummy_mouse_move_event = dummy_event<input_events::mouse_move>;
 using dummy_mouse_down_event = dummy_event<input_events::mouse_button_down>;
 using dummy_mouse_up_event = dummy_event<input_events::mouse_button_up>;
 using dummy_mouse_exit_event = dummy_event<input_events::mouse_exit>;
 using dummy_window_resized_event = dummy_event<input_events::window_resized>;
+using dummy_touch_finger_down_event =
+    dummy_event<input_events::touch_finger_down>;
+using dummy_touch_finger_up_event = dummy_event<input_events::touch_finger_up>;
+using dummy_touch_finger_move_event =
+    dummy_event<input_events::touch_finger_move>;
+using dummy_time_event = dummy_event<input_events::time>;
 
 struct cgui_mouse_exit_event {
   static constexpr subset_ui_events<input_events::mouse_exit>
@@ -220,6 +259,20 @@ struct cgui_mouse_exit_event {
     return {};
   }
 };
+
+namespace impl {
+template <typename F, typename... Args>
+constexpr bool event_case_invoke(F &&f, Args &&...args) {
+  using result_t = std::invoke_result_t<F, Args...>;
+  if constexpr (std::is_void_v<result_t>) {
+    std::invoke(std::forward<F>(f), std::forward<Args>(args)...);
+    return true;
+  } else {
+    static_assert(std::is_convertible_v<result_t, bool>);
+    return std::invoke(std::forward<F>(f), std::forward<Args>(args)...);
+  }
+}
+} // namespace impl
 
 template <input_events evt_val, typename F>
 class event_case_t : bp::empty_structs_optimiser<F> {
@@ -236,16 +289,15 @@ public:
   constexpr bool operator()(Evt &&e, Ts &&...args) {
     if (is_event<evt_val>(e)) {
       if constexpr (std::invocable<F, Evt &&, Ts &&...>) {
-        std::invoke(this->get_first(), std::forward<Evt>(e),
-                    std::forward<Ts>(args)...);
+        return impl::event_case_invoke(this->get_first(), std::forward<Evt>(e),
+                                       std::forward<Ts>(args)...);
       } else if constexpr (std::invocable<F, Evt &&>) {
-        std::invoke(this->get_first(), std::forward<Evt>(e));
+        return impl::event_case_invoke(this->get_first(), std::forward<Evt>(e));
       } else {
         static_assert(std::invocable<F>, "Bad signature of function F");
-        std::invoke(this->get_first());
         unused(e, args...);
+        return impl::event_case_invoke(this->get_first());
       }
-      return true;
     }
     return false;
   }
@@ -271,8 +323,9 @@ constexpr bool is_event_case = is_event_case_raw<std::remove_cvref_t<T>>;
 template <has_event_type Evt, typename Data, input_events... evt_vs,
           typename... Fs>
   requires(bp::is_unique(evt_vs...) && !impl::is_event_case<Data> &&
-           ((std::invocable<Fs> || std::invocable<Fs, Evt &&> ||
-             std::invocable<Fs, Evt &&, Data &&>) &&
+           ((std::invocable<Fs> ||
+             std::invocable<Fs, dummy_event<evt_vs> const &> ||
+             std::invocable<Fs, dummy_event<evt_vs> const &, Data &&>) &&
             ...))
 constexpr bool ui_event_switch(Evt &&e, Data &&d,
                                event_case_t<evt_vs, Fs> &&...cases) {
@@ -281,7 +334,7 @@ constexpr bool ui_event_switch(Evt &&e, Data &&d,
   return (cases(std::forward<Evt>(e), std::forward<Data>(d)) || ...);
 }
 template <has_event_type Evt, input_events... evt_vs,
-          bp::invocable_or_invocable_args<Evt>... Fs>
+          bp::invocable_or_invocable_args<dummy_event<evt_vs> const &>... Fs>
   requires(bp::is_unique(evt_vs...))
 constexpr bool ui_event_switch(Evt &&e, event_case_t<evt_vs, Fs> &&...cases) {
   // The forwarding operator is fine to use hre since the cases leaves both e
@@ -312,8 +365,8 @@ public:
     auto ef = bp::as_forward<evt_t>(evt);
     if constexpr (sizeof...(args) == 0) {
       return call::apply_to(to_base(*sf), [ef](auto &&data, auto &&...cases) {
-        ui_event_switch(*ef, std::forward<decltype(data)>(data),
-                        std::forward<decltype(cases)>(cases)...);
+        return ui_event_switch(*ef, std::forward<decltype(data)>(data),
+                               std::forward<decltype(cases)>(cases)...);
       });
     } else {
       auto case_caller = [ef, args_tuple = std::forward_as_tuple(
@@ -390,9 +443,50 @@ public:
 #undef CGUI_EVT_METHOD_
 };
 
+struct interpreter_configuration {
+  std::chrono::nanoseconds touch_context_menu_hold_ =
+      std::chrono::milliseconds(500);
+};
+
 class input_event_interpreter {
+  interpreter_configuration conf_{};
+  std::chrono::nanoseconds current_time_{};
+  std::chrono::nanoseconds touch_start_{};
+  int touch_first_index_{};
+  std::bitset<16> touch_down_{};
+  constexpr auto event_switch() {
+    return saved_ui_event_switch(
+        std::ref(*this),
+        event_case<input_events::time>([](auto const &e, auto &self) {
+          self.current_time_ += call::delta_time(e);
+        }),
+        event_case<input_events::touch_finger_down>(
+            [](auto const &e, auto &self) {
+              CGUI_ASSERT(call::finger_index(e) < self.touch_down_.size());
+              if (self.touch_count() == 0) {
+                self.touch_first_index_ = call::finger_index(e);
+                self.touch_start_ = self.current_time_;
+              }
+              self.touch_down_.set(call::finger_index(e), true);
+            }));
+  }
+
+  constexpr auto touch_count() const noexcept { return touch_down_.count(); }
+
 public:
-  constexpr auto &&update(auto &&in) { return std::forward<decltype(in)>(in); }
+  template <typename Evt> constexpr void update(Evt const &e) {
+    event_switch()(e);
+  }
+
+  constexpr bool is_touch_context_menu(int index) const {
+    CGUI_DEBUG_ONLY(auto a1 = index == touch_first_index_;)
+    CGUI_DEBUG_ONLY(auto a2 = touch_count() == 1;)
+    CGUI_DEBUG_ONLY(auto a3 = conf_.touch_context_menu_hold_ <
+                              (current_time_ - touch_start_);)
+    CGUI_DEBUG_ONLY(unused(a1, a2, a3);)
+    return (index == touch_first_index_) && (touch_count() == 1) &&
+           (conf_.touch_context_menu_hold_ < (current_time_ - touch_start_));
+  }
 };
 
 template <typename T>
@@ -403,20 +497,31 @@ concept is_interpreted_event = requires(T const &t) {
 template <interpreted_events> struct is_interpreted_event_impl;
 template <>
 struct is_interpreted_event_impl<interpreted_events::primary_click> {
-  template <event_types<input_events::mouse_button_up> Evt>
-  static constexpr bool evaluate(Evt const &e,
-                                 input_event_interpreter const &) {
-    return is_event<input_events::mouse_button_up>(e) &&
-           call::mouse_button(e) == mouse_buttons::primary;
+  static constexpr auto event_switch(input_event_interpreter const &i) {
+    return saved_ui_event_switch(
+        std::ref(i),
+        event_case<input_events::mouse_button_up>(
+            [](auto const &e, auto const &) {
+              return call::mouse_button(e) == mouse_buttons::primary;
+            }),
+        event_case<input_events::touch_finger_up>(
+            [](auto const &e, auto const &i) {
+              return !i.is_touch_context_menu(call::finger_index(e));
+            }));
   }
 };
 template <>
 struct is_interpreted_event_impl<interpreted_events::context_menu_click> {
-  template <event_types<input_events::mouse_button_up> Evt>
-  static constexpr bool evaluate(Evt const &e,
-                                 input_event_interpreter const &) {
-    return is_event<input_events::mouse_button_up>(e) &&
-           call::mouse_button(e) == mouse_buttons::secondary;
+  static constexpr auto event_switch(input_event_interpreter const &i) {
+    using enum input_events;
+    return saved_ui_event_switch(
+        i, event_case<mouse_button_up>([](auto const &e, auto &&...) {
+          return call::mouse_button(e) == mouse_buttons::secondary;
+        }),
+        event_case<input_events::touch_finger_up>(
+            [](auto const &e, auto const &i) {
+              return i.is_touch_context_menu(call::finger_index(e));
+            }));
   }
 };
 
@@ -426,6 +531,10 @@ constexpr bool is_event(T const &evt, input_event_interpreter const &i) {
                   is_interpreted_event_impl<enum_v>::evaluate(evt, i);
                 }) {
     return is_interpreted_event_impl<enum_v>::evaluate(evt, i);
+  } else if constexpr (requires() {
+                         is_interpreted_event_impl<enum_v>::event_switch(i);
+                       }) {
+    return is_interpreted_event_impl<enum_v>::event_switch(i)(evt);
   } else {
     return false;
   }

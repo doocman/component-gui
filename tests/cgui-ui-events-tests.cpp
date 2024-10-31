@@ -72,6 +72,19 @@ TEST(InterpretedEvents, MouseClick) // NOLINT
 
 TEST(InterpretedEvents, TouchClick) // NOLINT
 {
-  FAIL() << "Not yet implemented";
+  using namespace std::chrono;
+  auto to_test = input_event_interpreter();
+  auto update_tt = [&to_test](auto &&evt) {
+    to_test.update(evt);
+    return evt;
+  };
+  EXPECT_FALSE(is_event<interpreted_events::primary_click>(update_tt(dummy_touch_finger_down_event{}), to_test));
+  EXPECT_TRUE(is_event<interpreted_events::primary_click>(update_tt(dummy_touch_finger_up_event{}), to_test));
+
+  EXPECT_FALSE(is_event<interpreted_events::primary_click>(update_tt(dummy_touch_finger_down_event{}), to_test));
+  EXPECT_FALSE(is_event<interpreted_events::primary_click>(update_tt(dummy_time_event{501ms}), to_test));
+  EXPECT_FALSE(is_event<interpreted_events::primary_click>(update_tt(dummy_touch_finger_up_event{}), to_test));
+  EXPECT_TRUE(is_event<interpreted_events::context_menu_click>(dummy_touch_finger_up_event{}, to_test));
+
 }
 } // namespace cgui::tests

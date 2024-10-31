@@ -290,6 +290,8 @@ CGUI_CALL_CONCEPT(handle);
 CGUI_CALL_CONCEPT(set_state);
 CGUI_CALL_CONCEPT(state);
 CGUI_CALL_CONCEPT(mouse_button);
+CGUI_CALL_CONCEPT(finger_index);
+CGUI_CALL_CONCEPT(delta_time);
 CGUI_CALL_CONCEPT(bitmap_top);
 CGUI_CALL_CONCEPT(event_type)
 CGUI_CALL_CONCEPT(render)
