@@ -6,7 +6,6 @@
 namespace cgui::tests {
 using namespace ::testing;
 
-
 TEST(UiEventsMatcher, Basics) // NOLINT
 {
   auto f = MockFunction<void(std::string_view)>();
@@ -78,13 +77,45 @@ TEST(InterpretedEvents, TouchClick) // NOLINT
     to_test.update(evt);
     return evt;
   };
-  EXPECT_FALSE(is_event<interpreted_events::primary_click>(update_tt(dummy_touch_finger_down_event{}), to_test));
-  EXPECT_TRUE(is_event<interpreted_events::primary_click>(update_tt(dummy_touch_finger_up_event{}), to_test));
+  EXPECT_FALSE(is_event<interpreted_events::primary_click>(
+      update_tt(dummy_touch_finger_down_event{}), to_test));
+  EXPECT_TRUE(is_event<interpreted_events::primary_click>(
+      update_tt(dummy_touch_finger_up_event{}), to_test));
 
-  EXPECT_FALSE(is_event<interpreted_events::primary_click>(update_tt(dummy_touch_finger_down_event{}), to_test));
-  EXPECT_FALSE(is_event<interpreted_events::primary_click>(update_tt(dummy_time_event{501ms}), to_test));
-  EXPECT_FALSE(is_event<interpreted_events::primary_click>(update_tt(dummy_touch_finger_up_event{}), to_test));
-  EXPECT_TRUE(is_event<interpreted_events::context_menu_click>(dummy_touch_finger_up_event{}, to_test));
+  EXPECT_FALSE(is_event<interpreted_events::primary_click>(
+      update_tt(dummy_touch_finger_down_event{}), to_test));
+  EXPECT_FALSE(is_event<interpreted_events::primary_click>(
+      update_tt(dummy_time_event{501ms}), to_test));
+  EXPECT_FALSE(is_event<interpreted_events::primary_click>(
+      update_tt(dummy_touch_finger_up_event{}), to_test));
+  EXPECT_TRUE(is_event<interpreted_events::context_menu_click>(
+      dummy_touch_finger_up_event{}, to_test));
+}
 
+TEST(InterpretedEvents, SimpleSwitchCase) // NOLINT
+{
+  using namespace std::chrono;
+  auto to_test = input_event_interpreter();
+  auto update_tt = [&to_test](auto &&evt) {
+    to_test.update(evt);
+    return evt;
+  };
+  int res{};
+  to_test.update(dummy_mouse_down_event{});
+
+  EXPECT_TRUE(ui_event_switch(update_tt(dummy_mouse_up_event{}), to_test,
+                              event_case<interpreted_events::primary_click>(
+                                  [&res](auto const &...) { res = 1; }),
+                              event_case<interpreted_events::context_menu_click>(
+                                  [&res](auto const &...) { res = 2; })
+                              ));
+  EXPECT_THAT(res, Eq(1));
+
+  EXPECT_TRUE(ui_event_switch(update_tt(dummy_mouse_up_event{}), to_test, res,
+                              event_case<interpreted_events::primary_click>(
+                                  [](auto const &, auto const&, int& res) { res = 1; }),
+                              event_case<interpreted_events::context_menu_click>(
+                                  [](auto const &, auto const&, int& res) { res = 2; })
+                                  ));
 }
 } // namespace cgui::tests

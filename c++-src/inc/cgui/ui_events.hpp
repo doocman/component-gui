@@ -7,6 +7,7 @@
 #include <tuple>
 
 #include <cgui/cgui-types.hpp>
+#include <cgui/std-backport/type_traits.hpp>
 #include <cgui/std-backport/utility.hpp>
 
 namespace cgui {
@@ -29,10 +30,15 @@ enum class interpreted_events {
   context_menu_click,
 };
 
+class input_event_interpreter;
+template <typename EventCategory, EventCategory evt_val, typename F>
+class event_case_t;
+template <typename Data, typename... Fs> class ui_event_switch_t;
+template <interpreted_events> struct is_interpreted_event_impl;
+
 template <input_events tEvt> struct input_event_identity {
   static constexpr input_events value = tEvt;
 };
-// template <interpreted_events evt> struct interpreted_event_identity {};
 
 template <input_events> struct ui_event_constraints {
   template <typename> static constexpr bool type_passes = true;
@@ -154,13 +160,18 @@ template <input_events tEvt, typename T> consteval bool can_be_event() {
     return false;
   }
 }
-template <input_events tEvt, typename T> constexpr bool is_event(T &&evt) {
+template <input_events tEvt, typename T, typename... Unused> constexpr bool is_event(T &&evt, Unused&&...) {
   if constexpr (can_be_event<tEvt, T>()) {
     return static_cast<input_events>(call::event_type(evt)) == tEvt;
   } else {
     unused(evt);
     return false;
   }
+}
+
+template <interpreted_events enum_v, typename T>
+constexpr bool is_event(T const &evt, input_event_interpreter const &i) {
+  return is_interpreted_event_impl<enum_v>::event_switch()(i, evt);
 }
 
 template <typename T, input_events... tEvents>
@@ -272,9 +283,35 @@ constexpr bool event_case_invoke(F &&f, Args &&...args) {
     return std::invoke(std::forward<F>(f), std::forward<Args>(args)...);
   }
 }
+template <typename T, typename... Ts>
+constexpr T&& first_of_pack_or_empty(T&& in, Ts&&...) {
+  return std::forward<T>(in);
+}
+constexpr std::type_identity<void> first_of_pack_or_empty() {
+  return {};
+}
 } // namespace impl
 
-template <input_events evt_val, typename F>
+template <typename, typename> struct _impl_has_case_for;
+
+template <typename Data, input_events... evts, typename... Fs, typename Evt>
+struct _impl_has_case_for<
+    ui_event_switch_t<Data, event_case_t<input_events, evts, Fs>...>, Evt> {
+  static constexpr bool value = (can_be_event<evts, Evt>() || ...);
+};
+
+template <typename SwitchCase, typename Evt>
+static constexpr bool _impl_has_case_for_v =
+    _impl_has_case_for<SwitchCase, Evt>::value;
+
+template <interpreted_events evt_v, typename Evt>
+consteval bool can_be_event() {
+  using impl_switch_t =
+      decltype(is_interpreted_event_impl<evt_v>::event_switch());
+  return _impl_has_case_for_v<impl_switch_t, Evt>;
+}
+
+template <typename EventCategory, EventCategory evt_val, typename F>
 class event_case_t : bp::empty_structs_optimiser<F> {
   template <typename Evt, typename... Ts>
   static constexpr bool valid_function =
@@ -287,7 +324,7 @@ public:
   template <typename Evt, typename... Ts>
     requires(can_be_event<evt_val, Evt>() && valid_function<Evt, Ts...>)
   constexpr bool operator()(Evt &&e, Ts &&...args) {
-    if (is_event<evt_val>(e)) {
+    if (is_event<evt_val>(e, impl::first_of_pack_or_empty(args...))) {
       if constexpr (std::invocable<F, Evt &&, Ts &&...>) {
         return impl::event_case_invoke(this->get_first(), std::forward<Evt>(e),
                                        std::forward<Ts>(args)...);
@@ -308,16 +345,39 @@ public:
   }
 };
 template <input_events evt_v, typename T>
-constexpr event_case_t<evt_v, std::remove_cvref_t<T>> event_case(T &&in) {
-  return event_case_t<evt_v, std::remove_cvref_t<T>>{std::forward<T>(in)};
+constexpr event_case_t<input_events, evt_v, std::remove_cvref_t<T>>
+event_case(T &&in) {
+  return event_case_t<input_events, evt_v, std::remove_cvref_t<T>>{
+      std::forward<T>(in)};
+}
+template <interpreted_events evt_v, typename T>
+constexpr event_case_t<interpreted_events, evt_v, std::remove_cvref_t<T>>
+event_case(T &&in) {
+  return event_case_t<interpreted_events, evt_v, std::remove_cvref_t<T>>{
+      std::forward<T>(in)};
 }
 
 namespace impl {
 template <typename> constexpr bool is_event_case_raw = false;
-template <input_events e, typename T>
-constexpr bool is_event_case_raw<event_case_t<e, T>> = true;
+template <typename EventCategory, EventCategory e, typename T>
+constexpr bool is_event_case_raw<event_case_t<EventCategory, e, T>> = true;
+template <> constexpr bool is_event_case_raw<input_event_interpreter> = true;
 template <typename T>
 constexpr bool is_event_case = is_event_case_raw<std::remove_cvref_t<T>>;
+template <typename...> constexpr bool is_only_input_events = false;
+template <input_events... evts, typename... Ts>
+constexpr bool is_only_input_events<event_case_t<input_events, evts, Ts>...> =
+    true;
+
+template <typename... Ts> struct first_type_or_void;
+template <typename T, typename... Ts> struct first_type_or_void<T, Ts...> {
+  using type = T;
+};
+template <> struct first_type_or_void<> {
+  using type = void;
+};
+template <typename... Ts>
+using first_type_or_void_t = typename first_type_or_void<Ts...>::type;
 } // namespace impl
 
 template <has_event_type Evt, typename Data, input_events... evt_vs,
@@ -327,8 +387,9 @@ template <has_event_type Evt, typename Data, input_events... evt_vs,
              std::invocable<Fs, dummy_event<evt_vs> const &> ||
              std::invocable<Fs, dummy_event<evt_vs> const &, Data &&>) &&
             ...))
-constexpr bool ui_event_switch(Evt &&e, Data &&d,
-                               event_case_t<evt_vs, Fs> &&...cases) {
+constexpr bool
+ui_event_switch(Evt &&e, Data &&d,
+                event_case_t<input_events, evt_vs, Fs> &&...cases) {
   // The forwarding operator is fine to use hre since the cases leaves both e
   // and d untouched if the case does not correspond to the correct event.
   return (cases(std::forward<Evt>(e), std::forward<Data>(d)) || ...);
@@ -336,7 +397,8 @@ constexpr bool ui_event_switch(Evt &&e, Data &&d,
 template <has_event_type Evt, input_events... evt_vs,
           bp::invocable_or_invocable_args<dummy_event<evt_vs> const &>... Fs>
   requires(bp::is_unique(evt_vs...))
-constexpr bool ui_event_switch(Evt &&e, event_case_t<evt_vs, Fs> &&...cases) {
+constexpr bool
+ui_event_switch(Evt &&e, event_case_t<input_events, evt_vs, Fs> &&...cases) {
   // The forwarding operator is fine to use hre since the cases leaves both e
   // and d untouched if the case does not correspond to the correct event.
   return (cases(std::forward<Evt>(e)) || ...);
@@ -354,11 +416,14 @@ public:
   using _base_t::_base_t;
   static constexpr bool call(bp::cvref_type<ui_event_switch_t> auto &&self,
                              auto &&evt, auto &&...args)
-    requires((std::invocable<Fs, decltype(evt)> ||
-                  std::invocable<Fs, decltype(evt), Data &&> ||
-                  std::invocable < Fs,
-              decltype(evt), Data &&, decltype(args)... >) &&
-             ...)
+    requires(((std::invocable<Fs, decltype(evt)> ||
+                   std::invocable<Fs, decltype(evt), Data &&> ||
+                   std::invocable < Fs,
+               decltype(evt), Data &&, decltype(args)... >) &&
+              ...) &&
+             (impl::is_only_input_events<Fs...> ||
+              bp::cvref_type<impl::first_type_or_void_t<decltype(args)...>,
+                             input_event_interpreter>))
   {
     using evt_t = decltype(evt);
     auto sf = bp::as_forward<decltype(self)>(self);
@@ -388,7 +453,7 @@ public:
               args_tuple);
         }
       };
-      return call::apply_to(*to_base(*sf), [&case_caller]<typename... Cases>(
+      return call::apply_to(to_base(*sf), [&case_caller]<typename... Cases>(
                                                Data &&d, Cases &&...cs) {
         return (case_caller(std::forward<Data>(d), std::forward<Cases>(cs)) ||
                 ...);
@@ -413,14 +478,14 @@ public:
                 std::forward<decltype(args)>(args)...);
   }
 };
-template <typename Data, input_events... evt_vs, typename... Fs>
+template <typename Data, typename... EventCategory, EventCategory... evt_vs,
+          typename... Fs>
 constexpr ui_event_switch_t<std::unwrap_ref_decay_t<Data>,
-                            event_case_t<evt_vs, Fs>...>
-saved_ui_event_switch(Data &&d, event_case_t<evt_vs, Fs> &&...cases) {
+                            event_case_t<input_events, evt_vs, Fs>...>
+saved_ui_event_switch(Data &&d,
+                      event_case_t<EventCategory, evt_vs, Fs> &&...cases) {
   return {std::forward<Data>(d), std::move(cases)...};
 }
-
-class input_event_interpreter;
 
 template <typename Event> class interpreted_event {
   Event const *evt_;
@@ -457,11 +522,12 @@ class input_event_interpreter {
   constexpr auto event_switch() {
     return saved_ui_event_switch(
         std::ref(*this),
-        event_case<input_events::time>([](auto const &e, auto &self) {
-          self.current_time_ += call::delta_time(e);
-        }),
+        event_case<input_events::time>(
+            [](auto const &e, input_event_interpreter &self) {
+              self.current_time_ += call::delta_time(e);
+            }),
         event_case<input_events::touch_finger_down>(
-            [](auto const &e, auto &self) {
+            [](auto const &e, input_event_interpreter &self) {
               CGUI_ASSERT(call::finger_index(e) < self.touch_down_.size());
               if (self.touch_count() == 0) {
                 self.touch_first_index_ = call::finger_index(e);
@@ -471,7 +537,9 @@ class input_event_interpreter {
             }));
   }
 
-  constexpr auto touch_count() const noexcept { return touch_down_.count(); }
+  constexpr std::size_t touch_count() const noexcept {
+    return touch_down_.count();
+  }
 
 public:
   template <typename Evt> constexpr void update(Evt const &e) {
@@ -494,12 +562,11 @@ concept is_interpreted_event = requires(T const &t) {
   { t.interpreter() } -> std::convertible_to<input_event_interpreter const &>;
 };
 
-template <interpreted_events> struct is_interpreted_event_impl;
 template <>
 struct is_interpreted_event_impl<interpreted_events::primary_click> {
-  static constexpr auto event_switch(input_event_interpreter const &i) {
+  static constexpr auto event_switch() {
     return saved_ui_event_switch(
-        std::ref(i),
+        empty_state{},
         event_case<input_events::mouse_button_up>(
             [](auto const &e, auto const &) {
               return call::mouse_button(e) == mouse_buttons::primary;
@@ -512,10 +579,11 @@ struct is_interpreted_event_impl<interpreted_events::primary_click> {
 };
 template <>
 struct is_interpreted_event_impl<interpreted_events::context_menu_click> {
-  static constexpr auto event_switch(input_event_interpreter const &i) {
+  static constexpr auto event_switch() {
     using enum input_events;
     return saved_ui_event_switch(
-        i, event_case<mouse_button_up>([](auto const &e, auto &&...) {
+        empty_state{},
+        event_case<mouse_button_up>([](auto const &e, auto &&...) {
           return call::mouse_button(e) == mouse_buttons::secondary;
         }),
         event_case<input_events::touch_finger_up>(
@@ -525,19 +593,26 @@ struct is_interpreted_event_impl<interpreted_events::context_menu_click> {
   }
 };
 
-template <interpreted_events enum_v, typename T>
-constexpr bool is_event(T const &evt, input_event_interpreter const &i) {
-  if constexpr (requires() {
-                  is_interpreted_event_impl<enum_v>::evaluate(evt, i);
-                }) {
-    return is_interpreted_event_impl<enum_v>::evaluate(evt, i);
-  } else if constexpr (requires() {
-                         is_interpreted_event_impl<enum_v>::event_switch(i);
-                       }) {
-    return is_interpreted_event_impl<enum_v>::event_switch(i)(evt);
-  } else {
-    return false;
-  }
+template <has_event_type Evt, bp::cvref_type<input_event_interpreter> Interp,
+          typename Data, typename... EventCategory, EventCategory... evt_vs,
+          typename... Fs>
+  requires(bp::is_unique(evt_vs...) && !impl::is_event_case<Data>)
+constexpr bool
+ui_event_switch(Evt &&e, Interp &i, Data &&d,
+                event_case_t<EventCategory, evt_vs, Fs> &&...cases) {
+  // The forwarding operator is fine to use hre since the cases leaves both e
+  // and d untouched if the case does not correspond to the correct event.
+  return (cases(std::forward<Evt>(e), i, std::forward<Data>(d)) || ...);
+}
+template <has_event_type Evt, bp::cvref_type<input_event_interpreter> Interp,
+          typename... EventCategory, EventCategory... evt_vs, typename... Fs>
+  requires(bp::is_unique(evt_vs...))
+constexpr bool
+ui_event_switch(Evt &&e, Interp &i,
+                event_case_t<EventCategory, evt_vs, Fs> &&...cases) {
+  // The forwarding operator is fine to use hre since the cases leaves both e
+  // and d untouched if the case does not correspond to the correct event.
+  return (cases(std::forward<Evt>(e), i) || ...);
 }
 
 } // namespace cgui
