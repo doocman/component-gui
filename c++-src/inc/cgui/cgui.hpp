@@ -298,8 +298,8 @@ public:
   // requires((has_handle<TWidgets, decltype(evt)> || ...) ||
   // can_be_event<ui_events::window_resized, decltype(evt)>())
   {
-    if constexpr (can_be_event<ui_events::window_resized, decltype(evt)>()) {
-      if (is_event<ui_events::window_resized>(evt)) {
+    if constexpr (can_be_event<input_events::window_resized, decltype(evt)>()) {
+      if (is_event<input_events::window_resized>(evt)) {
         auto sz = call::size_of(evt);
         call_on_resize(sz);
         auto ret_box = box_from_xyxy<native_box_t>(0, 0, call::width(sz),
@@ -1147,11 +1147,12 @@ public:
   /// `mouse_button_down`,
   ///            `mouse_button_up`, or `mouse_exit` from the `ui_events`
   ///            namespace.
-  void handle(bounding_box auto const &area,
-              event_types<ui_events::mouse_move, ui_events::mouse_button_down,
-                          ui_events::mouse_button_up,
-                          ui_events::mouse_exit> auto &&evt) {
-    using enum ui_events;
+  void
+  handle(bounding_box auto const &area,
+         event_types<input_events::mouse_move, input_events::mouse_button_down,
+                     input_events::mouse_button_up,
+                     input_events::mouse_exit> auto &&evt) {
+    using enum input_events;
     using evt_t = decltype(evt);
     if constexpr (can_be_event<mouse_exit, evt_t>()) {
       if (is_event<mouse_exit>(evt) && mouse_inside_) {
@@ -1720,7 +1721,7 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
             typename Sub>
   constexpr auto event_switch(TEvt &&evt, BackProp &back_prop, Sub &&sub,
                               element_id_t sub_index) {
-    using enum ui_events;
+    using enum input_events;
     using data_t =
         decltype(std::forward_as_tuple(*this, back_prop, sub, sub_index));
     return ui_event_switch(
@@ -1763,22 +1764,22 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
 
 public:
   using base_t::base_t;
-  template <
-      bounding_box T,
-      event_types<ui_events::mouse_move, ui_events::mouse_exit,
-                  ui_events::mouse_button_down, ui_events::mouse_button_up>
-          TEvt>
+  template <bounding_box T,
+            event_types<input_events::mouse_move, input_events::mouse_exit,
+                        input_events::mouse_button_down,
+                        input_events::mouse_button_up>
+                TEvt>
   constexpr void handle(T const &, TEvt &&evt,
                         subable_widget_back_propagator auto &&back_prop) {
-    if constexpr (can_be_event<ui_events::mouse_exit, TEvt>()) {
-      if (is_event<ui_events::mouse_exit>(evt)) {
+    if constexpr (can_be_event<input_events::mouse_exit, TEvt>()) {
+      if (is_event<input_events::mouse_exit>(evt)) {
         reset_hovered(back_prop);
         hovered_element_ = highest_possible;
       }
     }
-    if constexpr (event_types<TEvt, ui_events::mouse_move,
-                              ui_events::mouse_button_down,
-                              ui_events::mouse_button_up>) {
+    if constexpr (event_types<TEvt, input_events::mouse_move,
+                              input_events::mouse_button_down,
+                              input_events::mouse_button_up>) {
       if (!call::find_sub_at_location(elements(), call::position(evt),
                                       [this, &back_prop, &evt]<typename Sub>(
                                           Sub &&s, element_id_t index) {
@@ -1788,9 +1789,9 @@ public:
                                       })) {
         reset_hovered(back_prop);
         hovered_element_ = highest_possible;
-        event_case<ui_events::mouse_button_up>(
+        event_case<input_events::mouse_button_up>(
             [this](auto &&...) { mouse_down_ = false; })(evt);
-        event_case<ui_events::mouse_button_down>(
+        event_case<input_events::mouse_button_down>(
             [this](auto &&...) { mouse_down_ = true; })(evt);
       }
     }

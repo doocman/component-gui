@@ -5,10 +5,10 @@
 #include <cassert>
 #include <exception>
 #include <optional>
+#include <thread>
 #include <utility>
 #include <variant>
 #include <vector>
-#include <thread>
 
 #include <SDL.h>
 
@@ -402,7 +402,7 @@ inline int poll_event(sdl_context_instance &, sdl_event_callback auto &&cb) {
 } // namespace
 
 template <> struct extend_api<SDL_MouseMotionEvent> {
-  static constexpr subset_ui_events<ui_events::mouse_move>
+  static constexpr subset_ui_events<input_events::mouse_move>
   event_type(SDL_MouseMotionEvent const &) {
     return {};
   }
@@ -411,12 +411,12 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
   }
 };
 template <> struct extend_api<SDL_MouseButtonEvent> {
-  static constexpr subset_ui_events<ui_events::mouse_button_up,
-                                    ui_events::mouse_button_down>
+  static constexpr subset_ui_events<input_events::mouse_button_up,
+                                    input_events::mouse_button_down>
   event_type(SDL_MouseButtonEvent const &e) {
     CGUI_ASSERT(e.type == SDL_MOUSEBUTTONUP || e.type == SDL_MOUSEBUTTONDOWN);
-    return {e.type == SDL_MOUSEBUTTONUP ? ui_events::mouse_button_up
-                                        : ui_events::mouse_button_down};
+    return {e.type == SDL_MOUSEBUTTONUP ? input_events::mouse_button_up
+                                        : input_events::mouse_button_down};
   }
 
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
@@ -427,11 +427,11 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
   }
 };
 template <> struct extend_api<SDL_WindowEvent> {
-  static constexpr subset_ui_events<ui_events::window_resized,
-                                    ui_events::system>
+  static constexpr subset_ui_events<input_events::window_resized,
+                                    input_events::system>
   event_type(SDL_WindowEvent const &e) {
-    return e.event == SDL_WINDOWEVENT_RESIZED ? ui_events::window_resized
-                                              : ui_events::system;
+    return e.event == SDL_WINDOWEVENT_RESIZED ? input_events::window_resized
+                                              : input_events::system;
   }
   static constexpr default_size_wh size_of(SDL_WindowEvent const &e) {
     return {e.data1, e.data2};
