@@ -26,7 +26,8 @@ enum class input_events {
 };
 
 enum class interpreted_events {
-  primary_click,
+  preliminary_primary_click,
+  confirmed_primary_click,
   context_menu_click,
 };
 
@@ -167,11 +168,6 @@ template <input_events tEvt, typename T, typename... Unused> constexpr bool is_e
     unused(evt);
     return false;
   }
-}
-
-template <interpreted_events enum_v, typename T>
-constexpr bool is_event(T const &evt, input_event_interpreter const &i) {
-  return is_interpreted_event_impl<enum_v>::event_switch()(i, evt);
 }
 
 template <typename T, input_events... tEvents>
@@ -414,41 +410,45 @@ class ui_event_switch_t : bp::empty_structs_optimiser<Data, Fs...> {
 
 public:
   using _base_t::_base_t;
-  static constexpr bool call(bp::cvref_type<ui_event_switch_t> auto &&self,
-                             auto &&evt, auto &&...args)
-    requires(((std::invocable<Fs, decltype(evt)> ||
-                   std::invocable<Fs, decltype(evt), Data &&> ||
+  template <bp::cvref_type<ui_event_switch_t> Self, has_event_type Event, typename... Args>
+  static constexpr bool call(Self &&self,
+                             Event &&evt, Args &&...args)
+    requires(
+        ((std::invocable<Fs, Event> ||
+                   std::invocable<Fs, Event, Args...> ||
                    std::invocable < Fs,
-               decltype(evt), Data &&, decltype(args)... >) &&
+               Event, Args..., Data &&>) &&
               ...) &&
              (impl::is_only_input_events<Fs...> ||
-              bp::cvref_type<impl::first_type_or_void_t<decltype(args)...>,
+              bp::cvref_type<impl::first_type_or_void_t<Args...>,
                              input_event_interpreter>))
   {
-    using evt_t = decltype(evt);
-    auto sf = bp::as_forward<decltype(self)>(self);
-    auto ef = bp::as_forward<evt_t>(evt);
+    auto sf = bp::as_forward<Self>(self);
+    auto ef = bp::as_forward<Event>(evt);
     if constexpr (sizeof...(args) == 0) {
       return call::apply_to(to_base(*sf), [ef](auto &&data, auto &&...cases) {
         return ui_event_switch(*ef, std::forward<decltype(data)>(data),
                                std::forward<decltype(cases)>(cases)...);
       });
     } else {
-      auto case_caller = [ef, args_tuple = std::forward_as_tuple(
-                                  args...)]<typename Case>(Data &&d, Case &&c) {
+      auto case_caller = [ef, args_tuple = std::tuple<Args...>(
+                                  std::forward<Args>(args)...)]<typename Case>(Data &&d, Case &&c) {
         auto cf = bp::as_forward<Case>(c);
         auto df = bp::as_forward<Data>(d);
-        if constexpr (std::invocable<Case, evt_t>) {
+        if constexpr (std::invocable<Case, Event>) {
           return std::invoke(*cf, *ef);
-        } else if constexpr (std::invocable<Case, evt_t, Data &&>) {
-          return std::invoke(*cf, *ef, *df);
         } else {
-          // The following line may introduce trouble on some versions of
-          // MSVC... static_assert(std::invocable<Case, evt_t, Data&&,
-          // decltype(args)...>);
+
           return std::apply(
-              [&]<typename... Ts2>(Ts2 &&...args) {
-                return std::invoke(*cf, *ef, *df, std::forward<Ts2>(args)...);
+              [&] (Args &&...args) {
+                if constexpr (std::invocable<Case, Event, decltype(args)...>) {
+                  return std::invoke(*cf, *ef, std::forward<Args>(args)...);
+                } else {
+                  // The following line may introduce trouble on some versions of
+                  // MSVC... static_assert(std::invocable<Case, evt_t, Data&&,
+                  // decltype(args)...>);
+                  return std::invoke(*cf, *ef, std::forward<Args>(args)..., *df);
+                }
               },
               args_tuple);
         }
@@ -461,19 +461,19 @@ public:
     }
   }
 
-  constexpr bool operator()(auto &&evt, auto &&...args) & {
+  constexpr bool operator()(has_event_type auto &&evt, auto &&...args) & {
     return call(*this, std::forward<decltype(evt)>(evt),
                 std::forward<decltype(args)>(args)...);
   }
-  constexpr bool operator()(auto &&evt, auto &&...args) const & {
+  constexpr bool operator()(has_event_type auto &&evt, auto &&...args) const & {
     return call(*this, std::forward<decltype(evt)>(evt),
                 std::forward<decltype(args)>(args)...);
   }
-  constexpr bool operator()(auto &&evt, auto &&...args) && {
+  constexpr bool operator()(has_event_type auto &&evt, auto &&...args) && {
     return call(std::move(*this), std::forward<decltype(evt)>(evt),
                 std::forward<decltype(args)>(args)...);
   }
-  constexpr bool operator()(auto &&evt, auto &&...args) const && {
+  constexpr bool operator()(has_event_type auto &&evt, auto &&...args) const && {
     return call(std::move(*this), std::forward<decltype(evt)>(evt),
                 std::forward<decltype(args)>(args)...);
   }
@@ -484,114 +484,28 @@ constexpr ui_event_switch_t<std::unwrap_ref_decay_t<Data>,
                             event_case_t<input_events, evt_vs, Fs>...>
 saved_ui_event_switch(Data &&d,
                       event_case_t<EventCategory, evt_vs, Fs> &&...cases) {
-  return {std::forward<Data>(d), std::move(cases)...};
+  return ui_event_switch_t<std::unwrap_ref_decay_t<Data>,
+                           event_case_t<input_events, evt_vs, Fs>...>{std::forward<Data>(d), std::move(cases)...};
 }
-
-template <typename Event> class interpreted_event {
-  Event const *evt_;
-  input_event_interpreter const *interpreter_;
-
-public:
-  constexpr interpreted_event(Event &e, input_event_interpreter &i) noexcept
-      : evt_(&e), interpreter_(&i) {}
-  constexpr decltype(auto) event() const { return this->get_first(); }
-  constexpr input_event_interpreter const &interpreter() const noexcept {
-    return *interpreter_;
-  }
-#define CGUI_EVT_METHOD_(NAME)                                                 \
-  template <typename... Ts>                                                    \
-    requires(std::invocable<decltype(call::NAME), Event const &, Ts...>)       \
-  constexpr decltype(auto) NAME(Ts &&...args) {                                \
-    return call::NAME(event(), std::forward<decltype(args)>(args)...);         \
-  }
-
-#undef CGUI_EVT_METHOD_
-};
 
 struct interpreter_configuration {
   std::chrono::nanoseconds touch_context_menu_hold_ =
       std::chrono::milliseconds(500);
 };
 
-class input_event_interpreter {
-  interpreter_configuration conf_{};
-  std::chrono::nanoseconds current_time_{};
-  std::chrono::nanoseconds touch_start_{};
-  int touch_first_index_{};
-  std::bitset<16> touch_down_{};
-  constexpr auto event_switch() {
-    return saved_ui_event_switch(
-        std::ref(*this),
-        event_case<input_events::time>(
-            [](auto const &e, input_event_interpreter &self) {
-              self.current_time_ += call::delta_time(e);
-            }),
-        event_case<input_events::touch_finger_down>(
-            [](auto const &e, input_event_interpreter &self) {
-              CGUI_ASSERT(call::finger_index(e) < self.touch_down_.size());
-              if (self.touch_count() == 0) {
-                self.touch_first_index_ = call::finger_index(e);
-                self.touch_start_ = self.current_time_;
-              }
-              self.touch_down_.set(call::finger_index(e), true);
-            }));
-  }
-
-  constexpr std::size_t touch_count() const noexcept {
-    return touch_down_.count();
-  }
-
-public:
-  template <typename Evt> constexpr void update(Evt const &e) {
-    event_switch()(e);
-  }
-
-  constexpr bool is_touch_context_menu(int index) const {
-    CGUI_DEBUG_ONLY(auto a1 = index == touch_first_index_;)
-    CGUI_DEBUG_ONLY(auto a2 = touch_count() == 1;)
-    CGUI_DEBUG_ONLY(auto a3 = conf_.touch_context_menu_hold_ <
-                              (current_time_ - touch_start_);)
-    CGUI_DEBUG_ONLY(unused(a1, a2, a3);)
-    return (index == touch_first_index_) && (touch_count() == 1) &&
-           (conf_.touch_context_menu_hold_ < (current_time_ - touch_start_));
-  }
-};
-
-template <typename T>
-concept is_interpreted_event = requires(T const &t) {
-  { t.interpreter() } -> std::convertible_to<input_event_interpreter const &>;
-};
+template <interpreted_events val>
+struct interpreted_event;
 
 template <>
-struct is_interpreted_event_impl<interpreted_events::primary_click> {
-  static constexpr auto event_switch() {
-    return saved_ui_event_switch(
-        empty_state{},
-        event_case<input_events::mouse_button_up>(
-            [](auto const &e, auto const &) {
-              return call::mouse_button(e) == mouse_buttons::primary;
-            }),
-        event_case<input_events::touch_finger_up>(
-            [](auto const &e, auto const &i) {
-              return !i.is_touch_context_menu(call::finger_index(e));
-            }));
-  }
+struct interpreted_event<interpreted_events::preliminary_primary_click> {
+
 };
 template <>
-struct is_interpreted_event_impl<interpreted_events::context_menu_click> {
-  static constexpr auto event_switch() {
-    using enum input_events;
-    return saved_ui_event_switch(
-        empty_state{},
-        event_case<mouse_button_up>([](auto const &e, auto &&...) {
-          return call::mouse_button(e) == mouse_buttons::secondary;
-        }),
-        event_case<input_events::touch_finger_up>(
-            [](auto const &e, auto const &i) {
-              return i.is_touch_context_menu(call::finger_index(e));
-            }));
-  }
-};
+struct interpreted_event<interpreted_events::confirmed_primary_click> {};
+template <>
+struct interpreted_event<interpreted_events::context_menu_click> {};
+
+class mouse_keys_translator {};
 
 template <has_event_type Evt, bp::cvref_type<input_event_interpreter> Interp,
           typename Data, typename... EventCategory, EventCategory... evt_vs,
