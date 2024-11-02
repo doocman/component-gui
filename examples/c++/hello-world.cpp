@@ -3,7 +3,7 @@
 #include <iostream>
 #include <thread>
 
-#include <SDL_main.h>
+// #include <SDL_main.h>
 
 #include <cgui/cgui.hpp>
 #include <cgui/embedded/cgui_example_font.hpp>
@@ -67,13 +67,12 @@ int main(int, char **) {
                   0, 0, call::width(sz), call::height(sz));
               hello_world_header.area(trim_from_above(
                   &full_area,
-                  std::min<int>(cgui::call::height(full_area), 128)));
+                  std::min<int>(cgui::call::height(full_area), 64)));
               std::get<0>(hello_world_header.displays())
                   .set_displayed(hello_world_header.area(), "Hello World!")
                   .text_colour({255, 255, 255, 255});
               auto button_bar_area = cgui::trim_from_below(
-                  &full_area,
-                  std::min<int>(cgui::call::height(full_area), 128));
+                  &full_area, std::min<int>(cgui::call::height(full_area), 128));
               {
                 auto &background = std::get<0>(quit_button.displays());
                 using enum cgui::momentary_button_states;
@@ -108,7 +107,7 @@ int main(int, char **) {
               lorum_ipsum.area(full_area);
               std::get<0>(lorum_ipsum.displays())
                   .set_displayed(
-                      hello_world_header.area(),
+                      lorum_ipsum.area(),
                       "Lorem ipsum dolor sit amet, consectetur adipiscing "
                       "elit, sed do eiusmod tempor incididunt ut labore et "
                       "dolore magna aliqua. Ut enim ad minim veniam, quis "
@@ -142,6 +141,14 @@ int main(int, char **) {
              }) != 0) {
       }
       if (!cgui::empty_box(to_rerender)) {
+        if (cgui::box_includes_box(to_rerender, renderer.area())) {
+          // This weird little thing is currently needed. It may be an error in
+          // SDL3. A closer inspection is warranted.
+          // TODO: Create minimal example that generates the error that this
+          // branch shows and create error report to SDL.
+          renderer.flush();
+          renderer.present();
+        }
         gui.render(renderer, to_rerender);
         renderer.present();
       }

@@ -10,7 +10,6 @@
 
 #include <cgui/build_utility.hpp>
 #include <cgui/cgui-types.hpp>
-#include <cgui/ft_fonts.hpp>
 #include <cgui/std-backport/array.hpp>
 #include <cgui/std-backport/ranges.hpp>
 #include <cgui/stl_extend.hpp>
