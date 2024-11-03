@@ -122,7 +122,10 @@ public:
   explicit sdl_video(no_auto_cleanup_t) : init_(no_auto_cleanup) {}
 };
 
+class sdl_canvas;
+
 class sdl_canvas {
+  friend class sdl_canvas_renderer;
   static constexpr auto cleanup = [](SDL_Texture *t) {
     if (t != nullptr) {
       SDL_DestroyTexture(t);
@@ -131,8 +134,12 @@ class sdl_canvas {
   SDL_Renderer *r_;
   SDL_Window const *w_;
   cleanup_object_t<decltype(cleanup), SDL_Texture *> t_{};
+  cleanup_object_t<decltype(cleanup), SDL_Texture *> t2_{};
+  default_colour_t clear_colour_{0, 0, 0, 255};
+  bool render_prepared_{};
 
   constexpr SDL_Texture *texture() const { return t_.first_value(); }
+  constexpr SDL_Texture *tmp_texture() const { return t2_.first_value(); }
 
 public:
   // TODO: The canvas must have it's own intermediate texture if we are to only
@@ -141,81 +148,16 @@ public:
   constexpr sdl_canvas(SDL_Renderer *r, SDL_Window const *w) : r_(r), w_(w) {}
 
   void present() { SDL_RenderPresent(r_); }
-  void flush() { SDL_RenderClear(r_); }
-
-  constexpr expected<void, std::string>
-  draw_pixels(bounding_box auto &&dest_sz, canvas_pixel_callback auto &&cb) {
-    constexpr auto texture_format = SDL_PixelFormat::SDL_PIXELFORMAT_ABGR8888;
-    if (t_) {
-      float w, h;
-      SDL_GetTextureSize(texture(), &w, &h);
-      if (std::lround(w) < call::width(dest_sz) ||
-          std::lround(h) < call::height(dest_sz)) {
-        t_.reset();
-      }
-    }
-    if (!t_) {
-      t_.reset(SDL_CreateTexture(r_, texture_format,
-                                 SDL_TEXTUREACCESS_STREAMING,
-                                 call::width(dest_sz), call::height(dest_sz)));
-      if (!t_) {
-        return unexpected(SDL_GetError());
-      }
-      if (auto ec = SDL_SetTextureBlendMode(texture(), SDL_BLENDMODE_BLEND);
-          !ec) {
-        t_.reset();
-        return unexpected(SDL_GetError());
-      }
-    }
-    void *raw_pix_void;
-    auto zero_point_texture =
-        SDL_FRect(0.f, 0.f, static_cast<float>(call::width(dest_sz)),
-                  static_cast<float>(call::height(dest_sz)));
-    int pitch_bytes;
-    auto zpt_int = to_sdl_rect(zero_point_texture);
-    if (auto ec =
-            SDL_LockTexture(texture(), &zpt_int, &raw_pix_void, &pitch_bytes);
-        !ec) {
-      return unexpected(SDL_GetError());
-    }
-    if (raw_pix_void == nullptr) {
-      return unexpected(SDL_GetError());
-    }
-    auto raw_pixels = static_cast<default_colour_t *>(raw_pix_void);
-    static_assert(sizeof(default_colour_t) == 4);
-    auto pitch = pitch_bytes / 4;
-
-    cb([raw_pixels, pitch, &dest_sz,
-        backstep = call::l_x(dest_sz) + call::t_y(dest_sz) * pitch_bytes / 4](
-           pixel_coord auto &&coord, colour auto &&c) {
-      auto x = call::x_of(coord);
-      auto y = call::y_of(coord);
-      unused(dest_sz);
-      auto index = x + y * pitch - backstep;
-      assert(index >= 0);
-      assert(index <= call::height(dest_sz) * pitch);
-      raw_pixels[index] = to_default_colour(c);
-    });
-    SDL_UnlockTexture(texture());
-    decltype(auto) sdl_dest_rect = to_sdl_frect(dest_sz);
-    if (auto ec = SDL_RenderTexture(r_, texture(), &zero_point_texture,
-                                    &sdl_dest_rect);
-        !ec) {
-      return unexpected(SDL_GetError());
-    }
-
-    return {};
+  void clear() {
+    SDL_SetRenderDrawColor(r_, clear_colour_.red, clear_colour_.green,
+                           clear_colour_.blue, clear_colour_.alpha);
+    SDL_RenderClear(r_);
   }
 
-  void fill(bounding_box auto const &b, colour auto const &c) {
-    decltype(auto) sdlb = copy_box<SDL_FRect>(b);
-    SDL_SetRenderDrawColor(r_, call::red(c), call::green(c), call::blue(c),
-                           call::alpha(c));
-    SDL_RenderFillRect(r_, &sdlb);
-  }
+  template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+  inline auto render_to(UI &&ui, Args &&...args);
 
   [[nodiscard]] SDL_Rect area() const {
-    // return a_;
     auto w = SDL_GetRenderWindow(r_);
     if (w == nullptr) [[unlikely]] {
       throw std::runtime_error(SDL_GetError());
@@ -227,6 +169,134 @@ public:
     return res;
   }
 };
+
+class sdl_canvas_renderer {
+  sdl_canvas *p_;
+
+  constexpr auto const &renderer() const { return p_->r_; }
+  constexpr auto &texture_wrap() const { return p_->t_; }
+  constexpr auto const &texture() const { return texture_wrap().first_value(); }
+  constexpr auto &tmp_texture_wrap() { return p_->t2_; }
+  constexpr auto &tmp_texture() { return tmp_texture_wrap().first_value(); }
+
+  static bool update_texture_sz(auto &to_update, int w_in, int h_in,
+                                SDL_Renderer *r, SDL_TextureAccess access,
+                                auto &&pred) {
+
+    if (to_update) {
+      float w, h;
+      SDL_GetTextureSize(to_update.first_value(), &w, &h);
+      if (!pred(std::lround(w), w_in) || !pred(std::lround(h), h_in)) {
+        to_update.reset();
+      }
+    }
+    if (!to_update) {
+      to_update.reset(SDL_CreateTexture(r, texture_format, access, w_in, h_in));
+      if (!to_update) {
+        throw std::runtime_error(SDL_GetError());
+      }
+      if (auto ec = SDL_SetTextureBlendMode(to_update.first_value(),
+                                            SDL_BLENDMODE_BLEND);
+          !ec) {
+        to_update.reset();
+        throw std::runtime_error(SDL_GetError());
+      }
+      return true;
+    }
+    return false;
+  }
+
+  static constexpr expected<void, std::string>
+  do_draw_pixels(SDL_Rect const &sdl_dest, auto const &true_dest,
+                 SDL_Texture *texture, auto &&cb) {
+    void *raw_pix_void;
+    int pitch_bytes;
+    if (auto ec =
+            SDL_LockTexture(texture, &sdl_dest, &raw_pix_void, &pitch_bytes);
+        !ec) {
+      return unexpected(SDL_GetError());
+    }
+    if (raw_pix_void == nullptr) {
+      return unexpected(SDL_GetError());
+    }
+    auto raw_pixels = static_cast<default_colour_t *>(raw_pix_void);
+    static_assert(sizeof(default_colour_t) == 4);
+    auto pitch = pitch_bytes / 4;
+
+    cb([raw_pixels, pitch, &true_dest,
+        backstep = call::l_x(true_dest) + call::t_y(true_dest) * pitch_bytes /
+                                              4](pixel_coord auto &&coord,
+                                                 colour auto &&c) {
+      auto x = call::x_of(coord);
+      auto y = call::y_of(coord);
+      auto index = x + y * pitch - backstep;
+      CGUI_ASSERT(index >= 0);
+      CGUI_ASSERT(index <= call::height(true_dest) * pitch);
+      unused(true_dest);
+      raw_pixels[index] = to_default_colour(c);
+    });
+    SDL_UnlockTexture(texture);
+    return {};
+  }
+  static constexpr auto texture_format =
+      SDL_PixelFormat::SDL_PIXELFORMAT_ABGR8888;
+
+public:
+  constexpr auto area() const { return p_->area(); }
+
+  constexpr explicit sdl_canvas_renderer(sdl_canvas &parent) : p_(&parent) {
+    auto window_area = area();
+    bool new_texture = update_texture_sz(
+        texture_wrap(), call::width(window_area), call::height(window_area),
+        renderer(), SDL_TEXTUREACCESS_TARGET, std::equal_to{});
+    if (!SDL_SetRenderTarget(renderer(), texture())) {
+      throw std::runtime_error(SDL_GetError());
+    }
+    if (new_texture) {
+      fill(window_area, p_->clear_colour_);
+    }
+  }
+  sdl_canvas_renderer(sdl_canvas_renderer const &) = delete;
+  sdl_canvas_renderer &operator=(sdl_canvas_renderer const &) = delete;
+  ~sdl_canvas_renderer() {
+    SDL_SetRenderTarget(renderer(), nullptr);
+    SDL_RenderTexture(renderer(), texture(), nullptr, nullptr);
+  }
+  void fill(bounding_box auto const &b, colour auto const &c) {
+    CGUI_ASSERT(box_includes_box(area(), b));
+    decltype(auto) sdlb = copy_box<SDL_FRect>(b);
+    SDL_SetRenderDrawColor(renderer(), call::red(c), call::green(c),
+                           call::blue(c), call::alpha(c));
+    if (!SDL_RenderFillRect(renderer(), &sdlb)) {
+      throw std::runtime_error(SDL_GetError());
+    }
+  }
+  constexpr expected<void, std::string>
+  draw_pixels(bounding_box auto &&dest_sz, canvas_pixel_callback auto &&cb) {
+    CGUI_ASSERT(box_includes_box(area(), dest_sz));
+    decltype(auto) sdl_dest = copy_box<SDL_Rect>(dest_sz);
+    // Render to temporary texture implementation
+    update_texture_sz(tmp_texture_wrap(), call::width(dest_sz),
+                      call::height(dest_sz), renderer(),
+                      SDL_TEXTUREACCESS_STREAMING, std::greater_equal{});
+    auto zero_point_pos = move_tl_to(sdl_dest, default_pixel_coord{});
+    if (auto ec = do_draw_pixels(zero_point_pos, sdl_dest, tmp_texture(), cb);
+        !ec) {
+      return ec;
+    }
+    auto zp_f = to_sdl_frect(zero_point_pos);
+    auto dest_f = to_sdl_frect(dest_sz);
+    if (!SDL_RenderTexture(renderer(), tmp_texture(), &zp_f, &dest_f)) {
+      return unexpected(SDL_GetError());
+    }
+    return {};
+  }
+};
+
+template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+inline auto sdl_canvas::render_to(UI &&ui, Args &&...args) {
+  return ui.render(sdl_canvas_renderer(*this), std::forward<Args>(args)...);
+}
 
 struct sdl_display_dpi {
   float hori, vert, diag;
@@ -275,7 +345,7 @@ public:
     return r;
   }
 
-  [[nodiscard]] expected<sdl_canvas, std::string> canvas() {
+  [[nodiscard]] expected<sdl_canvas, std::string> renderer() {
     if (auto rend = SDL_GetRenderer(handle()); rend != nullptr) {
       return sdl_canvas{rend, handle()};
     }

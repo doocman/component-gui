@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
     auto cached_font = cgui::cached_font(std::move(text_font));
 
     bool do_exit{};
-    auto renderer = main_window.canvas().value();
+    auto renderer = main_window.renderer().value();
 
     using area_t = decltype(full_area);
 

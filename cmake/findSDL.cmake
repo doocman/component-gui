@@ -16,7 +16,7 @@ foreach (E IN LISTS CGUI_SDL_FETCH)
             fetchcontent_declare(
                     sdl3
                     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-                    GIT_TAG 615d2dcd5b6352aea50372745a05779e24ff8d31 # main (SDL3-prerelease)
+                    GIT_TAG 802686699449289109f58b9ec4e6200f061e9dd2 # main (SDL3-prerelease)
             )
             if (CGUI_SDL_STATIC)
                 set(SDL_STATIC ON)

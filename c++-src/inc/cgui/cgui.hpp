@@ -282,7 +282,7 @@ public:
   }
 
   template <typename... Ts> constexpr void render(sub_renderer<Ts...> &&r) {
-    cgui::fill(r, r.area(), default_colour_t{0, 0, 0, 255});
+    // cgui::fill(r, r.area(), default_colour_t{0, 0, 0, 255});
     tuple_for_each([&r](auto &&v) { call::render(v, r.sub(call::area(v))); },
                    widgets_);
   }
