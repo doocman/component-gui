@@ -126,7 +126,9 @@ int main(int argc, char **argv) {
       etxt.set_displayed(win_width, {}, "End program");
     }
 
-    gui.render(renderer);
+    // gui.render(renderer);
+    renderer.clear();
+    renderer.render_to(gui);
     renderer.present();
     using namespace std::chrono;
     constexpr auto fps = 60;
@@ -150,10 +152,12 @@ int main(int argc, char **argv) {
       // TODO: This first branch should be removed.
       auto pre_render = steady_clock::now();
       if (rerender_all) {
-        gui.render(renderer);
+        renderer.clear();
+        renderer.render_to(gui);
         renderer.present();
       } else if (!cgui::empty_box(to_rerender)) {
-        gui.render(renderer, to_rerender);
+        renderer.clear();
+        renderer.render_to(gui, to_rerender);
         renderer.present();
       }
       auto post_render = steady_clock::now();

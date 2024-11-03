@@ -703,11 +703,9 @@ widget_builder() {
 }
 
 template <font_face TFont> class text_renderer {
-  TFont f_;
   using glyph_t = std::remove_cvref_t<
       decltype(call::glyph(std::declval<TFont &>(), 'a').value())>;
 
-  default_colour_t colour_{255, 255, 255, 255};
 
   struct glyph_entry {
     glyph_t g;
@@ -717,11 +715,11 @@ template <font_face TFont> class text_renderer {
   };
 
   using token_t = std::variant<newline_entry, glyph_entry>;
+  TFont f_;
   std::vector<token_t> tokens_;
-
-  int line_count_{};
-
   std::string text_;
+  int line_count_{};
+  default_colour_t colour_{255, 255, 255, 255};
 
 public:
   template <typename... TU>
@@ -736,9 +734,30 @@ public:
                                          std::string_view t) {
     return set_displayed(call::width(area), call::height(area), t);
   }
+
+  constexpr void assert_displayed() {
+    long long cur_len = -1;
+    long long measured_len{};
+    for (auto& tv : tokens_) {
+      std::visit([&] <typename T>(T& t) {
+        if constexpr(std::is_same_v<T, glyph_entry>) {
+          measured_len += call::advance_x(t.g);
+          CGUI_ASSERT(cur_len >= measured_len);
+        } else {
+          if (cur_len != -1) {
+            CGUI_ASSERT(cur_len == measured_len);
+          }
+          cur_len = t.length;
+          measured_len = 0;
+        }
+      }, tv);
+    }
+  }
+
   constexpr text_renderer &set_displayed(int w, int, std::string_view t) {
     using iterator_t = decltype(tokens_.begin());
     tokens_.clear();
+    text_.assign(t);
     line_count_ = 0;
     if (size(t) == 0) {
       return *this;
@@ -777,6 +796,9 @@ public:
     int last_ws_length{};
     int last_ws_size{};
     for (auto const &c : t) {
+      if (c == 'd') {
+        unused(c);
+      }
       if (c == '\n') {
         add_line();
       } else if (auto gexp = call::glyph(f_, c)) {
@@ -792,10 +814,9 @@ public:
             add_token = false;
           } else if (last_ws == 0) {
             if (auto dgexp = call::glyph(f_, '-'); dgexp) {
-              auto dash_box = call::pixel_area(*dgexp);
-              auto dw = call::width(dash_box);
+              auto dw = call::advance_x(*dgexp);
               if (current_line().length + dw <= w) {
-                current_line().length += call::width(dash_box);
+                current_line().length += dw;
                 tokens_.emplace_back(glyph_entry{std::move(*dgexp)});
                 add_line();
               } else {
@@ -865,7 +886,9 @@ public:
           tokens_.emplace_back(glyph_entry{std::move(*gexp)});
         }
       }
+      unused(c);
     }
+    assert_displayed();
     return *this;
   }
   constexpr void render(auto &&rorg, render_args auto &&args) const

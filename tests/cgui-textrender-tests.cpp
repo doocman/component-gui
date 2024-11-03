@@ -334,5 +334,21 @@ TEST(TextRender, CachedGlyphs4) // NOLINT
   EXPECT_THAT(ic.blue, Each(Eq(0)));
   EXPECT_THAT(ic.green, Each(Eq(0)));
 }
+TEST(TextRender, TooSmallBox) // NOLINT
+{
+
+  using t2r_t = text_renderer<dummy_font_face>;
+  auto t2r = t2r_t(dummy_font_face(true));
+
+  auto r = test_renderer({0, 0, 7, 5});
+  auto sr = sub_renderer(r);
+  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
+                      "111111111");
+  call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
+  call::render(
+      t2r, sr,
+      widget_render_args(call::width(r.area()), call::height(r.area())));
+  // No expects, the assert will hit.
+}
 
 } // namespace cgui::tests
