@@ -207,7 +207,7 @@ class sdl_canvas_renderer {
     return false;
   }
 
-  static constexpr expected<void, std::string>
+  static expected<void, std::string>
   do_draw_pixels(SDL_Rect const &sdl_dest, auto const &true_dest,
                  SDL_Texture *texture, auto &&cb) {
     void *raw_pix_void;
@@ -243,9 +243,9 @@ class sdl_canvas_renderer {
       SDL_PixelFormat::SDL_PIXELFORMAT_ABGR8888;
 
 public:
-  constexpr auto area() const { return p_->area(); }
+  auto area() const { return p_->area(); }
 
-  constexpr explicit sdl_canvas_renderer(sdl_canvas &parent) : p_(&parent) {
+  explicit sdl_canvas_renderer(sdl_canvas &parent) : p_(&parent) {
     auto window_area = area();
     bool new_texture = update_texture_sz(
         texture_wrap(), call::width(window_area), call::height(window_area),
@@ -272,7 +272,7 @@ public:
       throw std::runtime_error(SDL_GetError());
     }
   }
-  constexpr expected<void, std::string>
+  expected<void, std::string>
   draw_pixels(bounding_box auto &&dest_sz, canvas_pixel_callback auto &&cb) {
     CGUI_ASSERT(box_includes_box(area(), dest_sz));
     decltype(auto) sdl_dest = copy_box<SDL_Rect>(dest_sz);
