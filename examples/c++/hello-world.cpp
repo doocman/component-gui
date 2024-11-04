@@ -3,7 +3,7 @@
 #include <iostream>
 #include <thread>
 
-#include <SDL_main.h>
+// #include <SDL_main.h>
 
 #include <cgui/cgui.hpp>
 #include <cgui/embedded/cgui_example_font.hpp>
@@ -32,7 +32,7 @@ int main(int, char **) {
     auto cached_font = cgui::cached_font(std::move(text_font));
 
     bool do_exit{};
-    auto renderer = main_window.canvas().value();
+    auto renderer = main_window.renderer().value();
 
     using area_t = decltype(full_area);
     auto gui =
@@ -67,7 +67,7 @@ int main(int, char **) {
                   0, 0, call::width(sz), call::height(sz));
               hello_world_header.area(trim_from_above(
                   &full_area,
-                  std::min<int>(cgui::call::height(full_area), 128)));
+                  std::min<int>(cgui::call::height(full_area), 64)));
               std::get<0>(hello_world_header.displays())
                   .set_displayed(hello_world_header.area(), "Hello World!")
                   .text_colour({255, 255, 255, 255});
@@ -84,6 +84,7 @@ int main(int, char **) {
               quit_button.area(cgui::trim_from_left(
                   &button_bar_area, cgui::call::width(button_bar_area) / 2));
               random_toggle.area(button_bar_area);
+              std::get<0>(random_toggle.displays()).colour() = {127, 0, 0, 255};
               {
                 auto &texts = std::get<1>(random_toggle.displays());
                 using enum cgui::toggle_button_states;
@@ -108,7 +109,7 @@ int main(int, char **) {
               lorum_ipsum.area(full_area);
               std::get<0>(lorum_ipsum.displays())
                   .set_displayed(
-                      hello_world_header.area(),
+                      lorum_ipsum.area(),
                       "Lorem ipsum dolor sit amet, consectetur adipiscing "
                       "elit, sed do eiusmod tempor incididunt ut labore et "
                       "dolore magna aliqua. Ut enim ad minim veniam, quis "
@@ -123,7 +124,8 @@ int main(int, char **) {
             })
             .build(full_area);
 
-    gui.render(renderer);
+    renderer.clear();
+    renderer.render_to(gui);
     renderer.present();
     using namespace std::chrono;
     constexpr auto run_interval = duration_cast<nanoseconds>(1s) / 60;
@@ -142,7 +144,17 @@ int main(int, char **) {
              }) != 0) {
       }
       if (!cgui::empty_box(to_rerender)) {
-        gui.render(renderer, to_rerender);
+        // This is not done automatically by the gui context as it could be used
+        // to overlay a gui on top of other graphics (like a menu in a game).
+        renderer.clear();
+        if (cgui::box_includes_box(to_rerender, renderer.area())) {
+          // This weird little thing is currently needed. It may be an error in
+          // SDL3. A closer inspection is warranted. Follow issue at:
+          // https://github.com/libsdl-org/SDL/issues/11401
+          renderer.present();
+          renderer.clear();
+        }
+        renderer.render_to(gui, to_rerender);
         renderer.present();
       }
       std::this_thread::sleep_until(next_run);

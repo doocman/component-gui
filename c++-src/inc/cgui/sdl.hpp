@@ -3,78 +3,78 @@
 
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <exception>
 #include <optional>
+#include <thread>
 #include <utility>
 #include <variant>
 #include <vector>
-#include <thread>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cgui/cgui-types.hpp>
+#include <cgui/geometry.hpp>
 #include <cgui/stl_extend.hpp>
 
 namespace cgui {
-template <> struct extend_api<SDL_Rect> {
-  static constexpr auto &&l_x(bp::cvref_type<SDL_Rect> auto &&r) {
+template <typename T, typename ValT> struct sdl_rect_extend_api {
+  static constexpr auto &&l_x(bp::cvref_type<T> auto &&r) {
     return std::forward<decltype(r)>(r).x;
   }
-  static constexpr auto &&t_y(bp::cvref_type<SDL_Rect> auto &&r) {
+  static constexpr auto &&t_y(bp::cvref_type<T> auto &&r) {
     return std::forward<decltype(r)>(r).y;
   }
-  static constexpr auto &&width(bp::cvref_type<SDL_Rect> auto &&r) {
+  static constexpr auto &&width(bp::cvref_type<T> auto &&r) {
     return std::forward<decltype(r)>(r).w;
   }
-  static constexpr auto &&height(bp::cvref_type<SDL_Rect> auto &&r) {
+  static constexpr auto &&height(bp::cvref_type<T> auto &&r) {
     return std::forward<decltype(r)>(r).h;
   }
-  static constexpr SDL_Rect from_xywh(int x, int y, int w, int h) {
-    return {x, y, w, h};
+  static constexpr T from_xywh(auto x, auto y, auto w, auto h) {
+    return {static_cast<ValT>(x), static_cast<ValT>(y), static_cast<ValT>(w),
+            static_cast<ValT>(h)};
   }
 };
+template <> struct extend_api<SDL_Rect> : sdl_rect_extend_api<SDL_Rect, int> {};
+template <>
+struct extend_api<SDL_FRect> : sdl_rect_extend_api<SDL_FRect, float> {};
 
 inline namespace {
 using sdl_window_flag_t = std::uint32_t;
 namespace details {
-
-template <typename T> struct sdl_rect_wrapper {
-  T r_;
-  template <typename T2> static constexpr decltype(auto) handle(T2 &&r) {
-    if constexpr (std::is_pointer_v<T>) {
-      return *r.r_;
-    } else {
-      return std::forward<T2>(r).r_;
-    }
-  }
-
-  template <typename T2> static constexpr decltype(auto) l_x(T2 &&r) {
-    return handle(std::forward<T2>(r)).x;
-  }
-  template <typename T2> static constexpr decltype(auto) t_y(T2 &&r) {
-    return handle(std::forward<T2>(r)).y;
-  }
-  template <typename T2> static constexpr decltype(auto) width(T2 &&r) {
-    return handle(std::forward<T2>(r)).w;
-  }
-  template <typename T2> static constexpr decltype(auto) height(T2 &&r) {
-    return handle(std::forward<T2>(r)).h;
-  }
-};
 
 template <typename T> constexpr decltype(auto) handle(T &&val) {
   return std::remove_cvref_t<T>::handle(std::forward<T>(val));
 }
 template <typename> constexpr bool to_sdl_rect_simple = false;
 template <> constexpr bool to_sdl_rect_simple<SDL_Rect> = true;
+template <typename> constexpr bool to_sdl_frect_simple = false;
+template <> constexpr bool to_sdl_frect_simple<SDL_FRect> = true;
 } // namespace details
 
 template <bounding_box T>
   requires(!details::to_sdl_rect_simple<std::remove_cvref_t<T>>)
 constexpr SDL_Rect to_sdl_rect(T &&v) {
-  return {call::l_x(v), call::t_y(v), call::width(v), call::height(v)};
+  if constexpr (std::is_floating_point_v<
+                    std::remove_cvref_t<decltype(call::l_x(v))>>) {
+    return {std::lround(call::l_x(v)), std::lround(call::t_y(v)),
+            std::lround(call::width(v)), std::lround(call::height(v))};
+  } else {
+    return {call::l_x(v), call::t_y(v), call::width(v), call::height(v)};
+  }
 }
 constexpr auto &&to_sdl_rect(bp::cvref_type<SDL_Rect> auto &&v) {
+  return std::forward<decltype(v)>(v);
+}
+template <bounding_box T>
+  requires(!details::to_sdl_frect_simple<std::remove_cvref_t<T>>)
+constexpr SDL_FRect to_sdl_frect(T &&v) {
+  return {static_cast<float>(call::l_x(v)), static_cast<float>(call::t_y(v)),
+          static_cast<float>(call::width(v)),
+          static_cast<float>(call::height(v))};
+}
+constexpr auto &&to_sdl_frect(bp::cvref_type<SDL_FRect> auto &&v) {
   return std::forward<decltype(v)>(v);
 }
 
@@ -105,9 +105,9 @@ public:
 
 class sdl_context {
 public:
-  expected<sdl_context_instance, int> build() && {
-    if (auto e = SDL_Init(0); e < 0) {
-      return unexpected(e);
+  std::optional<sdl_context_instance> build() && {
+    if (auto e = SDL_Init(0); !e) {
+      return std::nullopt;
     }
     return sdl_context_instance{};
   }
@@ -115,7 +115,7 @@ public:
 
 class sdl_video {
   friend class sdl_window_builder;
-  static constexpr auto video_quit = [] { SDL_VideoQuit(); };
+  static constexpr auto video_quit = [] { SDL_QuitSubSystem(SDL_INIT_VIDEO); };
   cleanup_object_t<decltype(video_quit)> init_;
 
 public:
@@ -123,56 +123,98 @@ public:
   explicit sdl_video(no_auto_cleanup_t) : init_(no_auto_cleanup) {}
 };
 
+class sdl_canvas_renderer;
+
 class sdl_canvas {
+  friend class sdl_canvas_renderer;
   static constexpr auto cleanup = [](SDL_Texture *t) {
     if (t != nullptr) {
       SDL_DestroyTexture(t);
     }
   };
   SDL_Renderer *r_;
-  SDL_Rect a_;
+  SDL_Window const *w_;
   cleanup_object_t<decltype(cleanup), SDL_Texture *> t_{};
+  cleanup_object_t<decltype(cleanup), SDL_Texture *> t2_{};
+  default_colour_t clear_colour_{0, 0, 0, 255};
+  bool render_prepared_{};
 
   constexpr SDL_Texture *texture() const { return t_.first_value(); }
+  constexpr SDL_Texture *tmp_texture() const { return t2_.first_value(); }
 
 public:
-  constexpr sdl_canvas(SDL_Renderer *r, SDL_Rect const &a) : r_(r), a_(a) {}
+  // TODO: The canvas must have it's own intermediate texture if we are to only
+  // re-render parts of the GUI. Create it and update it... We may need to think
+  // about the API here.
+  constexpr sdl_canvas(SDL_Renderer *r, SDL_Window const *w) : r_(r), w_(w) {}
 
   void present() { SDL_RenderPresent(r_); }
+  void clear() {
+    SDL_SetRenderDrawColor(r_, clear_colour_.red, clear_colour_.green,
+                           clear_colour_.blue, clear_colour_.alpha);
+    SDL_RenderClear(r_);
+  }
 
-  constexpr expected<void, std::string>
-  draw_pixels(bounding_box auto &&dest_sz, canvas_pixel_callback auto &&cb) {
-    constexpr auto texture_format =
-        SDL_PixelFormatEnum::SDL_PIXELFORMAT_ABGR8888;
-    if (t_) {
-      int w, h;
-      Uint32 format;
-      SDL_QueryTexture(texture(), &format, nullptr, &w, &h);
-      if (w < call::width(dest_sz) || h < call::height(dest_sz)) {
-        t_.reset();
-      }
-      assert(format == texture_format);
+  template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+  inline auto render_to(UI &&ui, Args &&...args);
+
+  [[nodiscard]] SDL_Rect area() const {
+    auto w = SDL_GetRenderWindow(r_);
+    if (w == nullptr) [[unlikely]] {
+      throw std::runtime_error(SDL_GetError());
     }
-    if (!t_) {
-      t_.reset(SDL_CreateTexture(r_, texture_format,
-                                 SDL_TEXTUREACCESS_STREAMING,
-                                 call::width(dest_sz), call::height(dest_sz)));
-      if (!t_) {
-        return unexpected(SDL_GetError());
-      }
-      if (auto ec = SDL_SetTextureBlendMode(texture(), SDL_BLENDMODE_BLEND);
-          ec != 0) {
-        t_.reset();
-        return unexpected(SDL_GetError());
+    SDL_Rect res;
+    res.x = {};
+    res.y = {};
+    SDL_GetWindowSize(w, &res.w, &res.h);
+    return res;
+  }
+};
+
+class sdl_canvas_renderer {
+  sdl_canvas *p_;
+
+  constexpr auto const &renderer() const { return p_->r_; }
+  constexpr auto &texture_wrap() const { return p_->t_; }
+  constexpr auto const &texture() const { return texture_wrap().first_value(); }
+  constexpr auto &tmp_texture_wrap() { return p_->t2_; }
+  constexpr auto &tmp_texture() { return tmp_texture_wrap().first_value(); }
+
+  static bool update_texture_sz(auto &to_update, int w_in, int h_in,
+                                SDL_Renderer *r, SDL_TextureAccess access,
+                                auto &&pred) {
+
+    if (to_update) {
+      float w, h;
+      SDL_GetTextureSize(to_update.first_value(), &w, &h);
+      if (!pred(std::lround(w), w_in) || !pred(std::lround(h), h_in)) {
+        to_update.reset();
       }
     }
+    if (!to_update) {
+      to_update.reset(SDL_CreateTexture(r, texture_format, access, w_in, h_in));
+      if (!to_update) {
+        throw std::runtime_error(SDL_GetError());
+      }
+      if (auto ec = SDL_SetTextureBlendMode(to_update.first_value(),
+                                            SDL_BLENDMODE_BLEND);
+          !ec) {
+        to_update.reset();
+        throw std::runtime_error(SDL_GetError());
+      }
+      return true;
+    }
+    return false;
+  }
+
+  static expected<void, std::string>
+  do_draw_pixels(SDL_Rect const &sdl_dest, auto const &true_dest,
+                 SDL_Texture *texture, auto &&cb) {
     void *raw_pix_void;
-    auto zero_point_texture =
-        SDL_Rect(0, 0, call::width(dest_sz), call::height(dest_sz));
     int pitch_bytes;
-    if (auto ec = SDL_LockTexture(texture(), &zero_point_texture, &raw_pix_void,
-                                  &pitch_bytes);
-        ec != 0) {
+    if (auto ec =
+            SDL_LockTexture(texture, &sdl_dest, &raw_pix_void, &pitch_bytes);
+        !ec) {
       return unexpected(SDL_GetError());
     }
     if (raw_pix_void == nullptr) {
@@ -182,38 +224,80 @@ public:
     static_assert(sizeof(default_colour_t) == 4);
     auto pitch = pitch_bytes / 4;
 
-    cb([raw_pixels, pitch, &dest_sz,
-        backstep = call::l_x(dest_sz) + call::t_y(dest_sz) * pitch_bytes / 4](
-           pixel_coord auto &&coord, colour auto &&c) {
+    cb([raw_pixels, pitch, &true_dest,
+        backstep = call::l_x(true_dest) + call::t_y(true_dest) * pitch_bytes /
+                                              4](pixel_coord auto &&coord,
+                                                 colour auto &&c) {
       auto x = call::x_of(coord);
       auto y = call::y_of(coord);
-      unused(dest_sz);
       auto index = x + y * pitch - backstep;
-      assert(index >= 0);
-      assert(index <= call::height(dest_sz) * pitch);
+      CGUI_ASSERT(index >= 0);
+      CGUI_ASSERT(index <= call::height(true_dest) * pitch);
+      unused(true_dest);
       raw_pixels[index] = to_default_colour(c);
     });
-    SDL_UnlockTexture(texture());
-    decltype(auto) sdl_dest_rect = to_sdl_rect(dest_sz);
-    if (auto ec =
-            SDL_RenderCopy(r_, texture(), &zero_point_texture, &sdl_dest_rect);
-        ec != 0) {
-      return unexpected(SDL_GetError());
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-
+    SDL_UnlockTexture(texture);
     return {};
   }
+  static constexpr auto texture_format =
+      SDL_PixelFormat::SDL_PIXELFORMAT_ABGR8888;
 
-  void fill(bounding_box auto const &b, colour auto const &c) {
-    decltype(auto) sdlb = copy_box<SDL_Rect>(b);
-    SDL_SetRenderDrawColor(r_, call::red(c), call::green(c), call::blue(c),
-                           call::alpha(c));
-    SDL_RenderFillRect(r_, &sdlb);
+public:
+  auto area() const { return p_->area(); }
+
+  explicit sdl_canvas_renderer(sdl_canvas &parent) : p_(&parent) {
+    auto window_area = area();
+    bool new_texture = update_texture_sz(
+        texture_wrap(), call::width(window_area), call::height(window_area),
+        renderer(), SDL_TEXTUREACCESS_TARGET, std::equal_to{});
+    if (!SDL_SetRenderTarget(renderer(), texture())) {
+      throw std::runtime_error(SDL_GetError());
+    }
+    if (new_texture) {
+      fill(window_area, p_->clear_colour_);
+    }
   }
-
-  [[nodiscard]] SDL_Rect area() const { return a_; }
+  sdl_canvas_renderer(sdl_canvas_renderer const &) = delete;
+  sdl_canvas_renderer &operator=(sdl_canvas_renderer const &) = delete;
+  ~sdl_canvas_renderer() {
+    SDL_SetRenderTarget(renderer(), nullptr);
+    SDL_RenderTexture(renderer(), texture(), nullptr, nullptr);
+  }
+  void fill(bounding_box auto const &b, colour auto const &c) {
+    CGUI_ASSERT(box_includes_box(area(), b));
+    decltype(auto) sdlb = copy_box<SDL_FRect>(b);
+    SDL_SetRenderDrawColor(renderer(), call::red(c), call::green(c),
+                           call::blue(c), call::alpha(c));
+    if (!SDL_RenderFillRect(renderer(), &sdlb)) {
+      throw std::runtime_error(SDL_GetError());
+    }
+  }
+  expected<void, std::string>
+  draw_pixels(bounding_box auto &&dest_sz, canvas_pixel_callback auto &&cb) {
+    CGUI_ASSERT(box_includes_box(area(), dest_sz));
+    decltype(auto) sdl_dest = copy_box<SDL_Rect>(dest_sz);
+    // Render to temporary texture implementation
+    update_texture_sz(tmp_texture_wrap(), call::width(dest_sz),
+                      call::height(dest_sz), renderer(),
+                      SDL_TEXTUREACCESS_STREAMING, std::greater_equal{});
+    auto zero_point_pos = move_tl_to(sdl_dest, default_pixel_coord{});
+    if (auto ec = do_draw_pixels(zero_point_pos, sdl_dest, tmp_texture(), cb);
+        !ec) {
+      return ec;
+    }
+    auto zp_f = to_sdl_frect(zero_point_pos);
+    auto dest_f = to_sdl_frect(dest_sz);
+    if (!SDL_RenderTexture(renderer(), tmp_texture(), &zp_f, &dest_f)) {
+      return unexpected(SDL_GetError());
+    }
+    return {};
+  }
 };
+
+template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+inline auto sdl_canvas::render_to(UI &&ui, Args &&...args) {
+  return ui.render(sdl_canvas_renderer(*this), std::forward<Args>(args)...);
+}
 
 struct sdl_display_dpi {
   float hori, vert, diag;
@@ -262,23 +346,21 @@ public:
     return r;
   }
 
-  [[nodiscard]] expected<sdl_canvas, std::string> canvas() {
+  [[nodiscard]] expected<sdl_canvas, std::string> renderer() {
     if (auto rend = SDL_GetRenderer(handle()); rend != nullptr) {
-      int w, h;
-      SDL_GetWindowSize(handle(), &w, &h);
-      return sdl_canvas{rend, SDL_Rect{0, 0, w, h}};
+      return sdl_canvas{rend, handle()};
     }
     return unexpected(SDL_GetError());
   }
 
   [[nodiscard]] expected<sdl_display_dpi, std::string> dpi() const {
-    auto display_index = SDL_GetWindowDisplayIndex(handle());
+    // auto display_index = SDL_GetDisplayForWindow(handle());
     sdl_display_dpi res; // NOLINT(*-pro-type-member-init)
-    if (auto ec =
-            SDL_GetDisplayDPI(display_index, &res.diag, &res.hori, &res.vert);
-        ec != 0) {
-      return unexpected(SDL_GetError());
-    }
+    auto scale = SDL_GetWindowDisplayScale(handle());
+    // TODO: figure out how we should set this... Android and IOS uses 160.
+    res.hori = scale * 96;
+    res.diag = scale * 96;
+    res.vert = scale * 96;
     return res;
   }
 };
@@ -316,16 +398,13 @@ public:
 
   expected<sdl_window, std::string> build() && {
     auto happy_res = sdl_window::string_owner(std::move(title_));
-    if (auto w = SDL_CreateWindow(happy_res.ctor_string().c_str(),
-                                  SDL_WINDOWPOS_CENTERED,
-                                  SDL_WINDOWPOS_CENTERED, w_, h_, flags_);
+    if (auto w =
+            SDL_CreateWindow(happy_res.ctor_string().c_str(), w_, h_, flags_);
         w != nullptr) {
       if (auto r = SDL_GetRenderer(w); r != nullptr) {
         return sdl_window(w);
       }
-      if (auto r = SDL_CreateRenderer(
-              w, -1, SDL_RENDERER_TARGETTEXTURE | SDL_RENDERER_ACCELERATED);
-          r != nullptr) {
+      if (auto r = SDL_CreateRenderer(w, nullptr); r != nullptr) {
         return sdl_window(w);
       }
     }
@@ -355,12 +434,12 @@ template <typename T>
 concept sdl_event_callback =
     invocable_for_all<T, sdl_event_t<void>, sdl_quit_event>;
 
-inline expected<sdl_context_instance, int> build(sdl_context &&ctx) {
+inline std::optional<sdl_context_instance> build(sdl_context &&ctx) {
   return std::move(ctx).build();
 }
-inline expected<sdl_video, int> video(sdl_context_instance const &) {
-  if (auto ec = SDL_VideoInit(nullptr); ec < 0) {
-    return unexpected(ec);
+inline std::optional<sdl_video> video(sdl_context_instance const &) {
+  if (auto ec = SDL_InitSubSystem(SDL_INIT_VIDEO); !ec) {
+    return std::nullopt;
   }
   return sdl_video(auto_cleanup);
 }
@@ -376,15 +455,15 @@ inline auto switch_sdl_event(sdl_event_callback auto &&cb, SDL_Event const &e)
     -> sdl_event_callback_result<decltype(cb)> {
   constexpr auto gen_evt = []<typename T>(T const &e) { return e; };
   switch (static_cast<SDL_EventType>(e.type)) {
-  case SDL_QUIT:
+  case SDL_EVENT_QUIT:
     return cb(gen_evt(e.quit));
-  case SDL_MOUSEMOTION:
+  case SDL_EVENT_MOUSE_MOTION:
     return cb(gen_evt(e.motion));
-  case SDL_MOUSEBUTTONUP:
+  case SDL_EVENT_MOUSE_BUTTON_UP:
     [[fallthrough]];
-  case SDL_MOUSEBUTTONDOWN:
+  case SDL_EVENT_MOUSE_BUTTON_DOWN:
     return cb(gen_evt(e.button));
-  case SDL_WINDOWEVENT:
+  case SDL_EVENT_WINDOW_RESIZED:
     return cb(gen_evt(e.window));
   default:
     return cb(e);
@@ -393,7 +472,7 @@ inline auto switch_sdl_event(sdl_event_callback auto &&cb, SDL_Event const &e)
 
 inline int poll_event(sdl_context_instance &, sdl_event_callback auto &&cb) {
   SDL_Event e;
-  if (SDL_PollEvent(&e) != 0) {
+  if (SDL_PollEvent(&e)) {
     switch_sdl_event(std::forward<decltype(cb)>(cb), e);
     return 1;
   }
@@ -406,7 +485,8 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
   event_type(SDL_MouseMotionEvent const &) {
     return {};
   }
-  static constexpr default_pixel_coord position(SDL_MouseMotionEvent const &e) {
+  static constexpr basic_pixel_coord<float>
+  position(SDL_MouseMotionEvent const &e) {
     return {e.x, e.y};
   }
 };
@@ -414,15 +494,17 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
   static constexpr subset_ui_events<ui_events::mouse_button_up,
                                     ui_events::mouse_button_down>
   event_type(SDL_MouseButtonEvent const &e) {
-    CGUI_ASSERT(e.type == SDL_MOUSEBUTTONUP || e.type == SDL_MOUSEBUTTONDOWN);
-    return {e.type == SDL_MOUSEBUTTONUP ? ui_events::mouse_button_up
-                                        : ui_events::mouse_button_down};
+    CGUI_ASSERT(e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
+                e.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+    return {e.type == SDL_EVENT_MOUSE_BUTTON_UP ? ui_events::mouse_button_up
+                                                : ui_events::mouse_button_down};
   }
 
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
     return static_cast<mouse_buttons>(e.button);
   }
-  static constexpr default_pixel_coord position(SDL_MouseButtonEvent const &e) {
+  static constexpr basic_pixel_coord<float>
+  position(SDL_MouseButtonEvent const &e) {
     return {e.x, e.y};
   }
 };
@@ -430,7 +512,7 @@ template <> struct extend_api<SDL_WindowEvent> {
   static constexpr subset_ui_events<ui_events::window_resized,
                                     ui_events::system>
   event_type(SDL_WindowEvent const &e) {
-    return e.event == SDL_WINDOWEVENT_RESIZED ? ui_events::window_resized
+    return e.type == SDL_EVENT_WINDOW_RESIZED ? ui_events::window_resized
                                               : ui_events::system;
   }
   static constexpr default_size_wh size_of(SDL_WindowEvent const &e) {

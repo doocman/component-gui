@@ -98,23 +98,23 @@ template <typename T> struct basic_pixel_coord {
 using default_pixel_coord = basic_pixel_coord<int>;
 
 /// @brief Retrieves the x-coordinate from a basic pixel coordinate.
-template <typename T> constexpr int x_of(basic_pixel_coord<T> const &c) {
+template <typename T> constexpr T x_of(basic_pixel_coord<T> const &c) {
   return c.x;
 }
 
 /// @brief Retrieves the y-coordinate from a basic pixel coordinate.
-template <typename T> constexpr int y_of(basic_pixel_coord<T> const &c) {
+template <typename T> constexpr T y_of(basic_pixel_coord<T> const &c) {
   return c.y;
 }
 
 /// @brief Returns a reference to the x-coordinate of a basic pixel coordinate.
-template <typename T> constexpr int &x_of(basic_pixel_coord<T> &c) {
+template <typename T> constexpr T &x_of(basic_pixel_coord<T> &c) {
   return c.x;
 }
 
 /// @brief Returns a reference to the y-coordinate of a default pixel
 /// coordinate.
-template <typename T> constexpr int &y_of(basic_pixel_coord<T> &c) {
+template <typename T> constexpr T &y_of(basic_pixel_coord<T> &c) {
   return c.y;
 }
 
