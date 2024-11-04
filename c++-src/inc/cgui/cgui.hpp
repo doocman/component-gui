@@ -706,7 +706,6 @@ template <font_face TFont> class text_renderer {
   using glyph_t = std::remove_cvref_t<
       decltype(call::glyph(std::declval<TFont &>(), 'a').value())>;
 
-
   struct glyph_entry {
     glyph_t g;
   };
@@ -738,20 +737,25 @@ public:
   constexpr void assert_displayed() {
     long long cur_len = -1;
     long long measured_len{};
-    for (auto& tv : tokens_) {
-      std::visit([&] <typename T>(T& t) {
-        if constexpr(std::is_same_v<T, glyph_entry>) {
-          measured_len += call::advance_x(t.g);
-          CGUI_ASSERT(cur_len >= measured_len);
-        } else {
-          if (cur_len != -1) {
-            CGUI_ASSERT(cur_len == measured_len);
-          }
-          cur_len = t.length;
-          measured_len = 0;
-        }
-      }, tv);
+    long long measured_lines{};
+    for (auto &tv : tokens_) {
+      std::visit(
+          [&]<typename T>(T &t) {
+            if constexpr (std::is_same_v<T, glyph_entry>) {
+              measured_len += call::advance_x(t.g);
+              CGUI_ASSERT(cur_len >= measured_len);
+            } else {
+              if (cur_len != -1) {
+                CGUI_ASSERT(cur_len == measured_len);
+              }
+              cur_len = t.length;
+              measured_len = 0;
+              ++measured_lines;
+            }
+          },
+          tv);
     }
+    CGUI_ASSERT(measured_lines == line_count_);
   }
 
   constexpr text_renderer &set_displayed(int w, int, std::string_view t) {
@@ -775,6 +779,7 @@ public:
     auto set_line = [this, &cur_line_index](auto pos) -> newline_entry & {
       assert(pos < size(tokens_));
       cur_line_index = pos;
+      ++line_count_;
       return tokens_[pos].template emplace<newline_entry>();
     };
     auto add_line = [this, &cur_line_index]() -> newline_entry & {
@@ -897,7 +902,8 @@ public:
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
     auto do_new_area = [w = call::width(args),
-                        base_y2 = call::height(args) + 2 * call::ascender(f_),
+                        base_y2 =
+                            call::height(args) + 2 * fh - call::ascender(f_),
                         fh, count = line_count_](newline_entry nl) mutable {
       auto t_y = (base_y2 - fh * count) / 2;
       count -= 2;
