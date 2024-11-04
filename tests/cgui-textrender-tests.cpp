@@ -52,7 +52,7 @@ struct dummy_font_face {
     return 0;
   }
 
-  constexpr int ascender() const { return _gheight(1) + 1; }
+  constexpr int ascender() const { return _gheight(1); }
   constexpr int descender() const { return _gheight(1); }
 
   expected<dummy_glyph, bool> glyph(char c) {
@@ -72,7 +72,7 @@ struct dummy_font_face {
       return unexpected(false);
     }
   }
-  constexpr int full_height() const { return ascender() + descender(); }
+  constexpr int full_height() const { return ascender() + descender() + 1; }
 };
 
 constexpr int bitmap_top(dummy_font_face const &font, dummy_glyph const &g) {

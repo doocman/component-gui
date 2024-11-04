@@ -275,7 +275,7 @@ public:
   [[nodiscard]] constexpr FT_Face handle() const { return v_.first_value(); }
 
   [[nodiscard]] constexpr int full_height() const noexcept {
-    return (handle()->ascender + handle()->descender) >> 6;
+    return handle()->size->metrics.height >> 6;
   }
 
   auto ascender() const { return handle()->ascender >> 6; }
