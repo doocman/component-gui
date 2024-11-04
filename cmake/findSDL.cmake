@@ -42,10 +42,6 @@ foreach (E IN LISTS CGUI_SDL_FETCH)
                         CMAKE_CXX_FLAGS_INIT "${CMAKE_CXX_FLAGS_INIT} -DSDL_DISABLE_VERSIONED_SYMBOLS"
                 )
             endif ()
-            if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-                # Remove unsupported options for Clang
-                set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,/FORCE")
-            endif()
 
         elseif (E STREQUAL "system")
             find_package(SDL3 REQUIRED)
