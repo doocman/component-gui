@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <exception>
 #include <optional>
 #include <thread>
@@ -122,7 +123,7 @@ public:
   explicit sdl_video(no_auto_cleanup_t) : init_(no_auto_cleanup) {}
 };
 
-class sdl_canvas;
+class sdl_canvas_renderer;
 
 class sdl_canvas {
   friend class sdl_canvas_renderer;
