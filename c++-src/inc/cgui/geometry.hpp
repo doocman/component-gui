@@ -4,8 +4,10 @@
 
 #include <concepts>
 #include <ranges>
+#include <type_traits>
 
 #include <cgui/cgui-call.hpp>
+#include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/type_traits.hpp>
 #include <cgui/warnings.hpp>
 
@@ -108,21 +110,29 @@ template <typename T> constexpr T y_of(basic_pixel_coord<T> const &c) {
 }
 
 /// @brief Returns a reference to the x-coordinate of a basic pixel coordinate.
-template <typename T> constexpr T &x_of(basic_pixel_coord<T> &c) {
-  return c.x;
-}
+template <typename T> constexpr T &x_of(basic_pixel_coord<T> &c) { return c.x; }
 
 /// @brief Returns a reference to the y-coordinate of a default pixel
 /// coordinate.
-template <typename T> constexpr T &y_of(basic_pixel_coord<T> &c) {
-  return c.y;
-}
+template <typename T> constexpr T &y_of(basic_pixel_coord<T> &c) { return c.y; }
 
 /// @brief Concept to check if a type is mutable by TFrom and is a valid pixel
 /// coordinate value.
 template <typename T, typename TFrom>
 concept mutable_pixel_coord_value =
     bp::is_mutable_by<T, TFrom> && pixel_coord_value_cv_t<T>;
+
+/// Maps a coordinate to a new coordinate through function f.
+/// \tparam T Resulting type.
+/// \tparam U
+/// \tparam F
+/// \param u
+/// \param f
+/// \return mapped coordinate of type T.
+template <pixel_coord T, pixel_coord U, typename F>
+constexpr T map_coord(U const &u, F &&f) {
+  return {f(call::x_of(u)), f(call::y_of(u))};
+}
 
 /// @brief Structure representing a default rectangular bounding box.
 struct default_rect {
@@ -583,10 +593,30 @@ template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
   }
 }
 
+/// Creates a box of type T by applying map_f on b.
+/// \tparam T Return type
+/// \tparam T2 Incoming box type
+/// \param b box to morph
+/// \param map_f function f(x)->x that maps all coordinates and sizes. The
+/// map-function should be linear, as it does not know if it is called with the
+/// top-left + bottom-right coordinates or with the top-left + width & height
+/// coordinates.
+/// \return new morphed box.
+template <bounding_box T, bounding_box T2>
+constexpr T map_box(T2 const &b, auto &&map_f) {
+  if constexpr (impl::has_from_xywh<T, decltype(call::l_x(b))>) {
+    return box_from_xywh<T>(map_f(call::l_x(b)), map_f(call::t_y(b)),
+                            map_f(call::width(b)), map_f(call::height(b)));
+  } else {
+    return box_from_xyxy<T>(map_f(call::l_x(b)), map_f(call::t_y(b)),
+                            map_f(call::r_x(b)), map_f(call::b_y(b)));
+  }
+}
+
 /// Version of box_union that supports empty boxes.
 template <typename TRes = void, typename TB1, typename TB2>
-constexpr auto box_add(TB1 const &b1, TB2 const &b2)
-    -> decltype(box_union<TRes>(b1, b2)) {
+constexpr auto box_add(TB1 const &b1,
+                       TB2 const &b2) -> decltype(box_union<TRes>(b1, b2)) {
   using result_t = decltype(box_union<TRes>(b1, b2));
   if (empty_box(b1)) {
     return copy_box<result_t>(b2);
@@ -596,6 +626,176 @@ constexpr auto box_add(TB1 const &b1, TB2 const &b2)
   }
   return box_union<TRes>(b1, b2);
 }
+
+template <typename T>
+concept has_pixel_scale = requires(T const &t) {
+  { call::pixel_scale(t) } -> std::convertible_to<double>;
+};
+
+struct pixel_size_tag {};
+struct point_size_tag {};
+constexpr auto convert(pixel_size_tag, point_size_tag, auto &&in,
+                       has_pixel_scale auto &&scaler) {
+  return in / call::pixel_scale(scaler);
+}
+constexpr auto convert(point_size_tag, pixel_size_tag, auto &&in,
+                       has_pixel_scale auto &&scaler) {
+  return in * call::pixel_scale(scaler);
+}
+template <bp::empty_type Tag, typename In, has_pixel_scale Scaler>
+constexpr auto convert(Tag, Tag, In &&in, Scaler const &) {
+  return in;
+}
+struct dummy_scaler {
+  static constexpr int pixel_scale() { return 1; }
+};
+
+template <typename T, typename To, typename ValT = int,
+          typename Scaler = dummy_scaler>
+concept can_convert_tag =
+    bp::empty_type<T> && bp::empty_type<To> &&
+    requires(T t, To to, ValT &&v, Scaler const &s) { convert(t, to, v, s); };
+template <typename T, typename To, typename ValT = int,
+          typename Scaler = dummy_scaler>
+concept bidirection_convert_tag = can_convert_tag<T, To, ValT, Scaler> &&
+                                  can_convert_tag<To, T, ValT, Scaler>;
+
+template <typename T, typename ValT = int, typename Scaler = dummy_scaler>
+concept pixelpoint_tag =
+    bidirection_convert_tag<T, pixel_size_tag, ValT, Scaler> &&
+    bidirection_convert_tag<T, point_size_tag, ValT, Scaler>;
+
+template <pixelpoint_tag From, pixelpoint_tag To, has_pixel_scale S>
+struct pixelpoint_converter {
+  S &&s_;
+  constexpr auto operator()(auto &&in) const {
+    return convert(From{}, To{}, in, s_);
+  }
+};
+
+template <typename T>
+concept has_tag_t = requires() { typename std::remove_cvref_t<T>::tag_t; };
+
+template <typename T> using tag_t_of = typename std::remove_cvref_t<T>::tag_t;
+
+template <typename T>
+concept size_tagged = has_tag_t<T> && pixelpoint_tag<tag_t_of<T>>;
+
+template <typename T>
+concept scalar = std::is_integral_v<T> || std::is_floating_point_v<T>;
+
+template <typename T>
+concept is_geometric = bounding_box<T> || pixel_coord<T>;
+template <typename T, typename U>
+concept same_geometry_as =
+    is_geometric<T> && is_geometric<U> && bounding_box<T> == bounding_box<U> &&
+    pixel_coord<T> == pixel_coord<U>;
+
+template <pixelpoint_tag SizeTag, typename T> class pixelpoint_unit {
+  T value_;
+
+  template <pixelpoint_tag ST2, typename U, has_pixel_scale S>
+  static constexpr T conv(pixelpoint_unit<ST2, U> const &v, S const &scaler) {
+    if constexpr (std::is_same_v<ST2, SizeTag> &&
+                  std::constructible_from<T, U>) {
+      return T(v.value());
+    } else {
+      auto conv = pixelpoint_converter<ST2, SizeTag, S const &>(scaler);
+      if constexpr (bounding_box<T>) {
+        return map_box<T>(v.value(), conv);
+      } else if constexpr (pixel_coord<T>) {
+        return map_coord<T>(v.value(), conv);
+      } else {
+        static_assert(std::is_integral_v<T> || std::is_floating_point_v<T>);
+        return conv(v.value());
+      }
+    }
+  }
+
+public:
+  constexpr T &value() noexcept { return value_; }
+  constexpr T const &value() const noexcept { return value_; }
+
+#define CGUI_PIXELPOINT_WRAP_RETURN_(X) pixelpoint_unit<SizeTag, X>
+#define CGUI_PIXELPOINT_IMPL_CONSTRAINT_(X) call::impl::has_##X<U, Ts...>
+#define CGUI_PIXELPOINT_CALL_CONSTRAINT_(X)                                    \
+  requires(bp::as_forward<U> u, bp::as_forward<Ts>... args) {                  \
+    call::X(*u, *args...);                                                     \
+  }
+
+#define CGUI_FWD_CALL_(X, RETURN_TYPE, CONSTRAINT)                             \
+  template <bp::cvref_type<T> U, typename... Ts>                               \
+    requires(CONSTRAINT(X))                                                    \
+  static constexpr auto X(U &&u, Ts &&...args)                                 \
+      -> RETURN_TYPE(                                                          \
+          decltype(call::X(std::forward<U>(u), std::forward<Ts>(args)...))) {  \
+    return call::X(std::forward<U>(u), std::forward<Ts>(args)...);             \
+  }
+
+  constexpr pixelpoint_unit(pixelpoint_unit const &) noexcept(
+      std::is_nothrow_copy_constructible_v<T>) = default;
+  constexpr pixelpoint_unit &operator=(pixelpoint_unit const &) noexcept(
+      std::is_nothrow_copy_assignable_v<T>) = default;
+  constexpr pixelpoint_unit(pixelpoint_unit &&) noexcept(
+      std::is_nothrow_move_constructible_v<T>) = default;
+  constexpr pixelpoint_unit &operator=(pixelpoint_unit &&) noexcept(
+      std::is_nothrow_move_assignable_v<T>) = default;
+
+  template <typename ST2, typename T2, has_pixel_scale S>
+    requires(same_geometry_as<T, T2> || (scalar<T> && scalar<T2>))
+  constexpr pixelpoint_unit(pixelpoint_unit<ST2, T2> const &v, S const &s)
+      : value_(conv(v, s)) {}
+
+  template <typename T2>
+    requires(std::constructible_from<T, T2>)
+  constexpr explicit(!std::convertible_to<T2, T>)
+      pixelpoint_unit(pixelpoint_unit<SizeTag, T2> v)
+      : value_(v.value()) {}
+
+  template <typename T2>
+    requires(std::constructible_from<T, T2>)
+  constexpr explicit pixelpoint_unit(T2 &&v) : value_(std::forward<T2>(v)) {}
+  template <typename T2>
+    requires(std::constructible_from<T, T2>)
+  constexpr pixelpoint_unit(SizeTag, T2 &&v) : value_(std::forward<T2>(v)) {}
+
+  static constexpr decltype(auto) x_of(bp::cvref_type<T> auto &&v,
+                                       auto &&...args)
+    requires(requires() { call::x_of(v, args...); })
+  {}
+
+  CGUI_FWD_CALL_(x_of, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+  CGUI_FWD_CALL_(y_of, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+  CGUI_FWD_CALL_(l_x, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+  CGUI_FWD_CALL_(r_x, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+  CGUI_FWD_CALL_(t_y, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+  CGUI_FWD_CALL_(b_y, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+  CGUI_FWD_CALL_(top_left, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+  CGUI_FWD_CALL_(bottom_right, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+  CGUI_FWD_CALL_(height, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+  CGUI_FWD_CALL_(width, CGUI_PIXELPOINT_WRAP_RETURN_,
+                 CGUI_PIXELPOINT_IMPL_CONSTRAINT_)
+
+  using tag_t = SizeTag;
+
+#undef CGUI_PIXELPOINT_WRAP_RETURN_
+#undef CGUI_FWD_CALL_
+#undef CGUI_PIXELPOINT_IMPL_CONSTRAINT_
+#undef CGUI_PIXELPOINT_CALL_CONSTRAINT_
+};
+
+template <typename SizeTag, typename T>
+pixelpoint_unit(SizeTag,
+                T &&) -> pixelpoint_unit<SizeTag, std::remove_cvref_t<T>>;
 
 } // namespace cgui
 

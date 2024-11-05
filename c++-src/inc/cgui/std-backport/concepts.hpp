@@ -74,6 +74,9 @@ concept invocable_or_invocable_args =
 template <typename T, typename Operator, typename... EachOperand>
 concept can_be_operand_for_all =
     (std::invocable<Operator, T, EachOperand> && ...);
+
+template <typename T>
+concept empty_type = std::is_empty_v<T>;
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_CONCEPTS_HPP

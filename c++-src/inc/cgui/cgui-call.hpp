@@ -272,25 +272,26 @@ namespace call {
 
 /// @cond
 namespace impl {
-CGUI_CALL_CONCEPT(apply_to);
-CGUI_CALL_CONCEPT(for_each);
-CGUI_CALL_CONCEPT(build);
-CGUI_CALL_CONCEPT(size_of);
+CGUI_CALL_CONCEPT(apply_to)
+CGUI_CALL_CONCEPT(for_each)
+CGUI_CALL_CONCEPT(build)
+CGUI_CALL_CONCEPT(size_of)
+CGUI_CALL_CONCEPT(pixel_scale)
 CGUI_CALL_CONCEPT(draw_pixels)
-CGUI_CALL_CONCEPT(draw_alpha);
-CGUI_CALL_CONCEPT(fill);
-CGUI_CALL_CONCEPT(advance_x);
-CGUI_CALL_CONCEPT(advance_y);
-CGUI_CALL_CONCEPT(pixel_area);
-CGUI_CALL_CONCEPT(full_height);
-CGUI_CALL_CONCEPT(ascender);
-CGUI_CALL_CONCEPT(base_to_top);
-CGUI_CALL_CONCEPT(position);
-CGUI_CALL_CONCEPT(handle);
-CGUI_CALL_CONCEPT(set_state);
-CGUI_CALL_CONCEPT(state);
-CGUI_CALL_CONCEPT(mouse_button);
-CGUI_CALL_CONCEPT(bitmap_top);
+CGUI_CALL_CONCEPT(draw_alpha)
+CGUI_CALL_CONCEPT(fill)
+CGUI_CALL_CONCEPT(advance_x)
+CGUI_CALL_CONCEPT(advance_y)
+CGUI_CALL_CONCEPT(pixel_area)
+CGUI_CALL_CONCEPT(full_height)
+CGUI_CALL_CONCEPT(ascender)
+CGUI_CALL_CONCEPT(base_to_top)
+CGUI_CALL_CONCEPT(position)
+CGUI_CALL_CONCEPT(handle)
+CGUI_CALL_CONCEPT(set_state)
+CGUI_CALL_CONCEPT(state)
+CGUI_CALL_CONCEPT(mouse_button)
+CGUI_CALL_CONCEPT(bitmap_top)
 CGUI_CALL_CONCEPT(event_type)
 CGUI_CALL_CONCEPT(render)
 CGUI_CALL_CONCEPT(set_displayed)
@@ -637,6 +638,14 @@ inline constexpr impl::_do_set_alpha alpha;
 inline constexpr impl::_do_set_x_of x_of;
 inline constexpr impl::_do_set_y_of y_of;
 inline constexpr impl::_do_size_of size_of;
+
+/// Function like object that calls pixel_scale for a type. The function takes
+/// an object that implements pixel_scale.
+///
+/// \return a value that either can be
+/// multiplied with a point value to get a pixel value or used as a divisor on a
+/// pixel value to get a point value.
+inline constexpr impl::_do_pixel_scale pixel_scale;
 inline constexpr impl::_do_draw_pixels draw_pixels;
 inline constexpr impl::_do_draw_alpha draw_alpha;
 inline constexpr impl::_do_advance_x advance_x;
