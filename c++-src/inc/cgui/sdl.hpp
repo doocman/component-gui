@@ -273,12 +273,12 @@ public:
     }
   }
   expected<void, std::string>
-  draw_pixels(bounding_box auto &&dest_sz, canvas_pixel_callback auto &&cb) {
-    CGUI_ASSERT(box_includes_box(area(), dest_sz));
-    decltype(auto) sdl_dest = copy_box<SDL_Rect>(dest_sz);
+  draw_pixels(pixel_unit_t<SDL_Rect> const& dest_sz, canvas_pixel_callback auto &&cb) {
+    CGUI_ASSERT(box_includes_box(area(), dest_sz.value()));
+    auto const& sdl_dest = dest_sz.value();
     // Render to temporary texture implementation
-    update_texture_sz(tmp_texture_wrap(), call::width(dest_sz),
-                      call::height(dest_sz), renderer(),
+    update_texture_sz(tmp_texture_wrap(), call::width(sdl_dest),
+                      call::height(sdl_dest), renderer(),
                       SDL_TEXTUREACCESS_STREAMING, std::greater_equal{});
     auto zero_point_pos = move_tl_to(sdl_dest, default_pixel_coord{});
     if (auto ec = do_draw_pixels(zero_point_pos, sdl_dest, tmp_texture(), cb);
@@ -286,7 +286,7 @@ public:
       return ec;
     }
     auto zp_f = to_sdl_frect(zero_point_pos);
-    auto dest_f = to_sdl_frect(dest_sz);
+    auto dest_f = to_sdl_frect(sdl_dest);
     if (!SDL_RenderTexture(renderer(), tmp_texture(), &zp_f, &dest_f)) {
       return unexpected(SDL_GetError());
     }

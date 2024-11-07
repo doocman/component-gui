@@ -45,15 +45,15 @@ struct dummy_font_face {
   constexpr explicit dummy_font_face(bool use_height)
       : use_height_(use_height) {}
 
-  constexpr int _gheight(int h) const {
+  constexpr auto _gheight(int h) const {
     if (use_height_) {
-      return h;
+      return pixel_unit_t<int>(h);
     }
-    return 0;
+    return pixel_unit_t<int>();
   }
 
-  constexpr int ascender() const { return _gheight(1); }
-  constexpr int descender() const { return _gheight(1); }
+  constexpr auto ascender() const { return _gheight(1); }
+  constexpr auto descender() const { return _gheight(1); }
 
   expected<dummy_glyph, bool> glyph(char c) {
     switch (c) {
@@ -72,11 +72,11 @@ struct dummy_font_face {
       return unexpected(false);
     }
   }
-  constexpr int full_height() const { return ascender() + descender() + 1; }
+  constexpr auto full_height() const { return ascender() + descender() + pixel_unit_t<int>(1); }
 };
 
-constexpr int bitmap_top(dummy_font_face const &font, dummy_glyph const &g) {
-  return font.ascender() - g.ascend - 1;
+constexpr pixel_unit_t<int> bitmap_top(dummy_font_face const &font, dummy_glyph const &g) {
+  return font.ascender() - g.ascend - pixel_unit_t<int>(1);
 }
 
 TEST(TextRender, PerfectWidthString) // NOLINT

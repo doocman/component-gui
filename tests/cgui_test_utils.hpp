@@ -21,8 +21,10 @@ expect_colour_eq(cgui::colour auto const &val,
       << "Called at line " << s.line();
 }
 
+template <bounding_box ToTest, bounding_box ToExpect>
+requires(!size_tagged<ToTest> && !size_tagged<ToExpect>)
 inline void expect_box_equal(
-    bounding_box auto const &to_test, bounding_box auto const &to_expect,
+    ToTest const &to_test, ToExpect const &to_expect,
     std::source_location const &sl = std::source_location::current()) {
   using namespace ::testing;
   EXPECT_THAT(call::l_x(to_test), Eq(call::l_x(to_expect)))
@@ -33,6 +35,12 @@ inline void expect_box_equal(
       << "At " << sl.file_name() << ':' << sl.line();
   EXPECT_THAT(call::b_y(to_test), Eq(call::b_y(to_expect)))
       << "At " << sl.file_name() << ':' << sl.line();
+}
+
+inline void expect_box_equal(
+    pixel_or_point_rect_basic auto const &to_test, pixel_or_point_rect_basic auto const &to_expect,
+    std::source_location const &sl = std::source_location::current()) {
+  return expect_box_equal(to_test.value(), to_expect.value(), sl);
 }
 
 struct test_renderer {
@@ -52,7 +60,7 @@ struct test_renderer {
     }
   };
 
-  default_rect a_;
+  point_unit_t<default_rect> a_;
   std::vector<default_colour_t> drawn_pixels;
   std::vector<default_rect> failed_calls;
   std::vector<default_pixel_coord> failed_pixel_draws;
@@ -61,19 +69,22 @@ struct test_renderer {
       : a_(a), drawn_pixels(call::width(a) * call::height(a)) {}
 
   auto &at(int x, int y) {
-    auto index = x + y * call::width(area());
+    auto index = x + y * call::width(area().value());
     return drawn_pixels.at(index);
   }
+  auto &at(pixel_unit_t<int> x, pixel_unit_t<int> y) {
+    return at(x.value(), y.value());
+  }
 
-  void draw_pixels(bounding_box auto &&b, auto &&cb) {
-    if (!box_includes_box(area(), b)) {
-      failed_calls.push_back(box_from_xyxy<default_rect>(
-          call::l_x(b), call::t_y(b), call::r_x(b), call::b_y(b)));
+  void draw_pixels(default_pixel_rect b, auto &&cb) {
+    if (!box_includes_box(pixel_area(), b)) {
+      failed_calls.push_back(box_from_xyxy<default_pixel_rect>(
+          call::l_x(b), call::t_y(b), call::r_x(b), call::b_y(b)).value());
       return;
     }
     cb([this, &b](auto &&pos, auto &&col) {
       if (!hit_box(b, pos)) {
-        failed_pixel_draws.emplace_back(call::x_of(pos), call::y_of(pos));
+        failed_pixel_draws.emplace_back(call::x_of(pos).value(), call::y_of(pos).value());
         return;
       }
       at(call::x_of(pos), call::y_of(pos)) = {
@@ -81,11 +92,14 @@ struct test_renderer {
     });
   }
 
-  default_rect area() const { return a_; }
+  point_unit_t<default_rect> area() const { return a_; }
+  default_pixel_rect pixel_area() const { return {a_, pixel_scale() }; }
 
   individual_colours_t individual_colours() const {
     return individual_colours_t(drawn_pixels);
   }
+
+  static constexpr int pixel_scale() { return 1; }
 };
 
 struct mock_colourable {

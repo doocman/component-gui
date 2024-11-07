@@ -157,18 +157,18 @@ public:
     }
     auto bmg = bitmap_glyph();
     auto &bitmap = bmg->bitmap;
+    CGUI_ASSERT(bitmap.pitch >= 0);
+    CGUI_ASSERT(static_cast<unsigned int>(bitmap.pitch) <=
+                bitmap.width);
     call::draw_alpha(rend,
-                     default_rect{{},
+                     pixel_unit(default_rect{{},
                                   {static_cast<int>(bitmap.width),
-                                   static_cast<int>(bitmap.rows)}},
-                     [&](bounding_box auto const &b, auto &&px_rend) {
-                       CGUI_ASSERT(bitmap.pitch >= 0);
-                       CGUI_ASSERT(static_cast<unsigned int>(bitmap.pitch) <=
-                                   bitmap.width);
-                       for (auto y : cgui::y_view(b)) {
-                         for (auto x : cgui::x_view(b)) {
-                           px_rend(default_pixel_coord{static_cast<int>(x),
-                                                       static_cast<int>(y)},
+                                   static_cast<int>(bitmap.rows)}}),
+                     [&] (pixel_unit_t<default_rect> const &b, auto &&px_rend) {
+                       for (auto y : cgui::y_view(b.value())) {
+                         for (auto x : cgui::x_view(b.value())) {
+                           px_rend(pixel_unit(
+                                       default_pixel_coord{static_cast<int>(x), static_cast<int>(y)}),
                                    bitmap.buffer[y * bitmap.pitch + x]);
                          }
                        }
@@ -274,11 +274,11 @@ public:
 
   [[nodiscard]] constexpr FT_Face handle() const { return v_.first_value(); }
 
-  [[nodiscard]] constexpr int full_height() const noexcept {
-    return handle()->size->metrics.height >> 6;
+  [[nodiscard]] constexpr pixel_unit_t<int> full_height() const noexcept {
+    return pixel_unit_t<int>(handle()->size->metrics.height >> 6);
   }
 
-  auto ascender() const { return handle()->ascender >> 6; }
+  auto ascender() const { return pixel_unit_t<int>(handle()->ascender >> 6); }
 };
 
 inline expected<ft_font_glyph, FT_Error> glyph(ft_font_face const &face,

@@ -36,8 +36,8 @@ public:
 
 template <bounding_box TB = default_rect> class recursive_area_navigator {
   TB relative_area_;
-  using x_t = std::remove_cvref_t<decltype(call::l_x(relative_area_))>;
-  using y_t = std::remove_cvref_t<decltype(call::t_y(relative_area_))>;
+  using x_t = decltype(remove_unit_ref(call::l_x(relative_area_)));
+  using y_t = decltype(remove_unit_ref(call::t_y(relative_area_)));
   x_t offset_x_{};
   y_t offset_y_{};
 
@@ -49,7 +49,7 @@ template <bounding_box TB = default_rect> class recursive_area_navigator {
 public:
   constexpr explicit recursive_area_navigator(TB const &b)
       : relative_area_(b) {}
-  template <bounding_box TB2 = TB>
+  template <same_unit_geometry_as<TB> TB2 = TB>
   constexpr recursive_area_navigator sub(TB2 const &b) const {
     auto intersection = box_intersection<TB>(b, relative_area_);
     if (valid_box(intersection)) {
@@ -62,7 +62,7 @@ public:
     }
   }
   constexpr TB relative_area() const { return relative_area_; }
-  template <typename TB2 = TB>
+  template <same_unit_geometry_as<TB> TB2 = TB>
   constexpr TB2 move_to_absolute(TB2 const &b) const {
     return box_from_xywh<TB2>(call::l_x(b) + offset_x_,
                               call::t_y(b) + offset_y_, call::width(b),
@@ -75,13 +75,13 @@ public:
   constexpr nudger<x_t, y_t> relative_to_absolute_nudger() const noexcept {
     return {offset_x_, offset_y_};
   }
-  template <typename A2>
+  template <same_unit_geometry_as<TB> A2>
   constexpr explicit operator recursive_area_navigator<A2>() const {
     return {copy_box<A2>(relative_area_), offset_x_, offset_y_};
   }
 };
 
-template <canvas T, bounding_box TB> class sub_renderer {
+template <canvas T, pixel_rect TB> class sub_renderer {
   T *c_;
   recursive_area_navigator<TB> area_;
   default_colour_t set_colour_{};
@@ -95,7 +95,14 @@ template <canvas T, bounding_box TB> class sub_renderer {
     return a;
   }
 
-  template <typename TB2>
+  constexpr auto pixel_scale() const { return call::pixel_scale(*c_); }
+
+  template <pixel_or_point_rect_basic TB2>
+  constexpr auto to_pixels(TB2 const &b) const {
+    return convert_pixelpoint<pixel_size_tag>(b, pixel_scale());
+  }
+
+  template <pixel_rect TB2>
   constexpr TB2 to_relative_dest(TB2 const &input_dest) const {
     return box_intersection<TB2>(input_dest, area_.relative_area());
   }
@@ -112,16 +119,21 @@ template <canvas T, bounding_box TB> class sub_renderer {
 public:
   constexpr sub_renderer(T &c, TB a)
       : sub_renderer(c, recursive_area_navigator<TB>(a), {}) {}
-  constexpr explicit sub_renderer(T &c) : sub_renderer(c, call::area(c)) {}
+  constexpr explicit sub_renderer(T &c)
+      : sub_renderer(c, convert_pixelpoint<pixel_size_tag>(
+                            call::area(c), call::pixel_scale(c))) {}
 
-  template <bounding_box TB2, pixel_draw_callback TCB>
+  template <pixel_or_point_rect_basic TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
-    CGUI_ASSERT(valid_box(dest));
-    auto relative_dest = to_relative_dest(dest);
-    CGUI_ASSERT(valid_box(relative_dest));
+    CGUI_ASSERT(valid_box(dest.value()));
+    auto relative_dest = to_relative_dest(to_pixels(dest));
+    CGUI_ASSERT(valid_box(relative_dest.value()));
+    constexpr auto get_autoconv_dest = [](auto &&dest, auto &&px_scaler) {
+      return autoconverting_pixelpoint_unit(dest, call::pixel_scale(px_scaler));
+    };
     if (empty_box(relative_dest)) {
-      using return_type =
-          decltype(call::draw_pixels(*c_, dest, [](auto &&...) {}));
+      using return_type = decltype((*c_).draw_pixels(
+          get_autoconv_dest(relative_dest, *c_), [](auto &&...) {}));
       if constexpr (std::is_void_v<return_type>) {
         return;
       } else {
@@ -131,48 +143,56 @@ public:
     auto absolute_dest = to_absolute(relative_dest);
     CGUI_ASSERT(valid_box(absolute_dest));
     return call::draw_pixels(
-        *c_, absolute_dest,
+        *c_, get_autoconv_dest(absolute_dest, *c_),
         [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
          nudge = area_.relative_to_absolute_nudger()](auto &&drawer) {
           std::invoke(
               *cb, relative_dest,
               [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
-               &nudge](pixel_coord auto &&px, colour auto &&col) {
+               &nudge](pixel_coordinate auto &&px, colour auto &&col) {
                 auto absolute_pos = nudge(px);
                 std::invoke(*d, absolute_pos, col);
               });
         });
   }
 
-  void draw_alpha(bounding_box auto &&b, auto &&cb) {
+  template <pixel_or_point_rect_basic B, typename F>
+  void draw_alpha(B const &b, F &&cb) {
     if (empty_box(b)) {
       return;
     }
-    draw_pixels(std::forward<decltype(b)>(b),
-                [this, &cb](auto &&bbox, auto &&drawer) {
-                  CGUI_ASSERT(valid_box(bbox));
-                  cb(bbox, [this, &drawer](auto &&point, auto &&alpha) {
-                    drawer(point, multiply_alpha(set_colour_, alpha));
-                  });
-                });
+    using bpix = convert_pixelpoint_t<pixel_size_tag, B>;
+    draw_pixels(std::forward<decltype(b)>(b), [this, &cb](bpix const &bbox,
+                                                          auto &&drawer) {
+      CGUI_ASSERT(valid_box(bbox));
+      cb(bbox, [this, &drawer](pixel_coordinate auto &&point, auto &&alpha) {
+        drawer(point, multiply_alpha(set_colour_, alpha));
+      });
+    });
   }
 
-  constexpr void fill(bounding_box auto const &dest, colour auto const &c)
-    requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
+  constexpr void fill(pixel_or_point_rect_basic auto const &dest, colour auto const &c)
+    //requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
   {
     auto absolute_dest = to_absolute(to_relative_dest(dest));
-    if (!empty_box(absolute_dest)) {
+    if (empty_box(absolute_dest)) { return; }
+    if constexpr(has_native_fill<decltype(*c_), decltype(absolute_dest), decltype(c)>) {
       call::fill(*c_, absolute_dest, c);
+    } else {
+      call::fill(*c_, to_pixels(absolute_dest), c);
     }
   }
 
-  constexpr sub_renderer sub(bounding_box auto &&b,
-                             default_colour_t col) const {
+  constexpr sub_renderer sub(pixel_rect auto &&b, default_colour_t col) const {
     return {*c_, area_.sub(b), col};
   }
 
-  constexpr sub_renderer sub(bounding_box auto &&b) const {
+  constexpr sub_renderer sub(pixel_rect auto &&b) const {
     return sub(b, set_colour_);
+  }
+
+  constexpr sub_renderer sub(point_rect auto const &b, auto &&...args) const {
+    return sub(to_pixels(b), std::forward<decltype(args)>(args)...);
   }
 
   constexpr sub_renderer with(default_colour_t c) {
@@ -187,14 +207,15 @@ public:
 template <typename T, typename TB> sub_renderer(T &, TB) -> sub_renderer<T, TB>;
 template <typename T>
 sub_renderer(T &t)
-    -> sub_renderer<T, std::remove_cvref_t<decltype(call::area(t))>>;
+    -> sub_renderer<
+        T, convert_pixelpoint_t<pixel_size_tag, decltype(call::area(t))>>;
 
-template <bounding_box TArea = default_rect>
+template <point_rect TArea = point_unit_t<default_rect>>
 class basic_widget_back_propagater {
   recursive_area_navigator<TArea> full_area_;
   TArea to_rerender_{};
 
-  template <bounding_box A2> friend class basic_widget_back_propagater;
+  template <point_rect A2> friend class basic_widget_back_propagater;
 
   explicit(false) constexpr basic_widget_back_propagater(
       recursive_area_navigator<TArea> nav, TArea const &to_re = {})
@@ -205,7 +226,7 @@ public:
       : full_area_(full_area) {}
 
   constexpr void rerender() { to_rerender_ = full_area_.relative_area(); }
-  constexpr void rerender(bounding_box auto part_area) {
+  constexpr void rerender(point_rect auto part_area) {
     if (!empty_box(to_rerender_)) {
       part_area = box_union(part_area, to_rerender_);
     }
@@ -248,7 +269,7 @@ struct builder_widget_element_constraint {
   constexpr void operator()(widget_display<TR> auto &&) const {}
 };
 
-template <bounding_box TArea, typename TOnResize = bp::no_op_t,
+template <point_rect TArea, typename TOnResize = bp::no_op_t,
           widget_display_range TWidgets = std::tuple<>>
 class gui_context : bp::empty_structs_optimiser<TOnResize> {
   using _base_t = bp::empty_structs_optimiser<TOnResize>;
@@ -278,7 +299,7 @@ public:
                         bounding_box auto const &start_area)
       : _base_t(std::forward<TOnRsz>(on_rsz)), widgets_(std::forward<TWs>(ws)) {
     call_on_resize(
-        default_size_wh{call::width(start_area), call::height(start_area)});
+        basic_size_wh{call::width(start_area), call::height(start_area)});
   }
 
   template <typename... Ts> constexpr void render(sub_renderer<Ts...> &&r) {
@@ -287,14 +308,17 @@ public:
                    widgets_);
   }
 
-  constexpr void render(canvas auto &&c, bounding_box auto const &rarea) {
+  constexpr void render(canvas auto &&c,
+                        pixel_or_point_rect_basic auto const &rarea) {
     render(sub_renderer(c, rarea));
   }
 
   constexpr void render(canvas auto &&c) { render(sub_renderer(c)); }
 
+  // TODO: Reintroduce a constraint here, it is badly needed.
   constexpr native_box_t handle(auto const &evt)
-  // requires((has_handle<TWidgets, decltype(evt)> || ...) ||
+  // requires((has_handle<TWidgets, decltype(evt),
+  // basic_widget_back_propagater<native_box_t>> || ...) ||
   // can_be_event<ui_events::window_resized, decltype(evt)>())
   {
     if constexpr (can_be_event<ui_events::window_resized, decltype(evt)>()) {
@@ -309,7 +333,8 @@ public:
     auto b = basic_widget_back_propagater(
         box_from_xyxy<native_box_t>(0, 0, highest_possible, highest_possible));
     call::for_each(widgets_, [&evt, &b]<typename TW>(TW &w) {
-      if constexpr (has_handle<TW &, decltype(evt)>) {
+      if constexpr (has_handle<TW &, decltype(evt),
+                               basic_widget_back_propagater<native_box_t>>) {
         auto s = b.sub(w.area());
         call::handle(w, evt, s);
         b.merge_sub(s);
@@ -347,7 +372,7 @@ public:
   on_resize(TORSZ2 &&onrsz) && {
     return {std::move(widgets_), std::forward<TORSZ2>(onrsz)};
   }
-  template <bounding_box TArea = default_rect,
+  template <point_rect TArea = point_unit_t<default_rect>,
             typename TW = decltype(build::build_group(
                 impl::widget_display_constraint{}, std::move(widgets_)))>
   constexpr gui_context<TArea, TOnResize, TW>
@@ -356,6 +381,17 @@ public:
             build::build_group(impl::widget_display_constraint{},
                                std::move(widgets_)),
             start_area};
+  }
+  template <bounding_box TArea = default_rect,
+            typename TW = decltype(build::build_group(
+                impl::widget_display_constraint{}, std::move(widgets_)))>
+    requires(!size_tagged<TArea>)
+  constexpr gui_context<point_unit_t<TArea>, TOnResize, TW>
+  build(TArea const &start_area) && {
+    return {std::move(on_resize_),
+            build::build_group(impl::widget_display_constraint{},
+                               std::move(widgets_)),
+            point_unit_t<TArea>(start_area)};
   }
 };
 
@@ -387,7 +423,7 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
     return call::state(base(*this));
   }
 
-  template <typename TWH> using arg_t = widget_render_args<TWH, state_marker_t>;
+  template <point_scalar TWH> using arg_t = widget_render_args<TWH, state_marker_t>;
 
   template <renderer TR, display_component<TR> TD, typename TWH>
   constexpr void operator()(TD &display, TR &&r, TWH w, TWH h) const {
@@ -436,7 +472,7 @@ public:
   }
 };
 
-template <bounding_box TArea, typename TDisplay, typename TState,
+template <pixel_or_point_rect_basic TArea, typename TDisplay, typename TState,
           typename TEventHandler, typename TSubs, typename TOnResize>
 class widget
     : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
@@ -590,11 +626,12 @@ template <renderer TR> struct display_element_constraint {
   constexpr void operator()(display_component<TR> auto &&) const {}
 };
 
-template <typename TArea, typename TDisplay, widget_states_aspect TState,
-          typename TEventHandler, typename TSubs, typename TOnResize>
+template <pixel_or_point_rect_basic TArea, typename TDisplay,
+          widget_states_aspect TState, typename TEventHandler, typename TSubs,
+          typename TOnResize>
 class widget_builder_impl {
   using state_wrapper = widget_state_wrapper<TState>;
-  using state_arg_t = typename state_wrapper::template arg_t<int>;
+  using state_arg_t = typename state_wrapper::template arg_t<point_unit_t<int>>;
   using display_constraint_t =
       builder_display_element_constraint<dummy_renderer, state_arg_t>;
 
@@ -666,12 +703,19 @@ public:
                 std::forward<TE2>(e), std::move(subs_), std::move(on_resize_));
   }
 
-  template <bounding_box TA,
+  template <pixel_or_point_rect_basic TA,
             typename TRes = widget_builder_impl<
                 TA, TDisplay, TState, TEventHandler, TSubs, TOnResize>>
   TRes area(TA const &a) && {
     return TRes(a, std::move(displays_), std::move(state_), std::move(event_),
                 std::move(subs_), std::move(on_resize_));
+  }
+
+  template <typename TA>
+    requires(std::constructible_from<TArea, TA const &> && !size_tagged<TA>)
+  widget_builder_impl area(TA const &a) && {
+    area_ = TArea(a);
+    return std::move(*this);
   }
 
   template <widget_display_args... Ts,
@@ -695,9 +739,9 @@ public:
   }
 };
 
-constexpr widget_builder_impl<default_rect, std::tuple<>, widget_mono_state,
-                              widget_no_event_handler, std::tuple<>,
-                              bp::no_op_t>
+constexpr widget_builder_impl<point_unit_t<default_rect>, std::tuple<>,
+                              widget_mono_state, widget_no_event_handler,
+                              std::tuple<>, bp::no_op_t>
 widget_builder() {
   return {};
 }
@@ -901,13 +945,13 @@ public:
   {
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
-    auto do_new_area = [w = call::width(args),
+    auto do_new_area = [w = convert_pixelpoint<pixel_size_tag>(call::width(args), rorg.pixel_scale()),
                         base_y2 =
-                            call::height(args) + 2 * fh - call::ascender(f_),
+                            convert_pixelpoint<pixel_size_tag>(call::height(args), rorg.pixel_scale()) + 2 * fh - call::ascender(f_),
                         fh, count = line_count_](newline_entry nl) mutable {
       auto t_y = (base_y2 - fh * count) / 2;
       count -= 2;
-      auto x = (w - nl.length) / 2;
+      auto x = (w.value() - nl.length) / 2;
       return box_from_xywh<default_rect>(x, t_y, nl.length, fh);
     };
     decltype(do_new_area(newline_entry{})) area;
@@ -957,7 +1001,10 @@ public:
     return colour_;
   }
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
-    fill(r, default_rect{{0, 0}, {call::width(args), call::height(args)}},
+    //call::fill(r,
+r.fill(
+         box_from_xyxy<default_point_rect>(0, 0, call::width(args),
+                                           call::height(args)),
          colour_);
   }
 };
@@ -1617,13 +1664,16 @@ using state_marker_t = make_widget_state_marker_sequence_t<
 using all_states_t = all_states_in_marker_t<state_marker_t>;
 using all_triggers_t = triggers<trigger_on, trigger_off>;
 
-template <typename T, typename BP = basic_widget_back_propagater<>>
+template <typename T,
+          typename BP =
+              basic_widget_back_propagater<point_unit_t<default_rect>>>
 concept can_trigger =
     has_handle<T, trigger_on, BP &&> && has_handle<T, trigger_off, BP &&>;
 
 template <typename T, typename TRender = dummy_renderer,
           typename Position = default_pixel_coord,
-          typename BP = basic_widget_back_propagater<>>
+          typename BP =
+              basic_widget_back_propagater<point_unit_t<default_rect>>>
 concept element =
     has_render<
         T, TRender,
@@ -1659,7 +1709,7 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   }
 
   struct do_trigger_off {
-    basic_widget_back_propagater<default_rect> bp;
+    basic_widget_back_propagater<point_unit_t<default_rect>> bp;
     bool currently_hovered{};
 
     template <typename Sub> constexpr void operator()(Sub &&s, auto &&...) {
@@ -1695,7 +1745,8 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
       (*reset_active_)(
           elements(),
           do_trigger_off{
-              static_cast<basic_widget_back_propagater<default_rect>>(
+              static_cast<
+                  basic_widget_back_propagater<point_unit_t<default_rect>>>(
                   back_prop),
               is_hovered});
     }
@@ -1844,7 +1895,7 @@ public:
   /// \param cb
   /// \return
   constexpr void mutate_elements(std::invocable<TElements &> auto &&cb) {
-    auto backprop = basic_widget_back_propagater(default_rect{});
+    auto backprop = basic_widget_back_propagater(point_unit_t<default_rect>{});
     if (reset_active_) {
       reset_active(backprop, false);
       reset_active_ = std::nullopt;

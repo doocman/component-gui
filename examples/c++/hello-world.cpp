@@ -39,10 +39,9 @@ int main(int, char **) {
         cgui::gui_context_builder()
             .widgets(
 
-                cgui::widget_builder().area(area_t{}).display(
+                cgui::widget_builder().display(
                     cgui::text_renderer(std::ref(cached_font))),
                 cgui::widget_builder()
-                    .area(area_t{})
                     .display(cgui::display_per_state(cgui::fill_rect()),
                              cgui::text_renderer(std::ref(cached_font)))
                     .event(cgui::buttonlike_trigger(
@@ -50,7 +49,6 @@ int main(int, char **) {
                             .click([&do_exit] { do_exit = true; })
                             .build())),
                 cgui::widget_builder()
-                    .area(area_t{})
                     .display(cgui::fill_rect(),
                              cgui::display_per_state(
                                  cgui::text_renderer(std::ref(cached_font))))

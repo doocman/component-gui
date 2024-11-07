@@ -4,6 +4,9 @@
 
 #include <concepts>
 #include <limits>
+#include <type_traits>
+
+#include <cgui/std-backport/concepts.hpp>
 
 namespace cgui::bp {
 /// @brief Concept to check if a type has numeric limits defined for min and
@@ -36,11 +39,23 @@ struct highest_possible_t {
   }
 };
 
+/// @brief Struct to obtain a default-initialised value of a numeric type.
+struct default_init_valued_t {
+  /// @brief Conversion operator to get a default init valued T.
+  /// @tparam T Type which must satisfy _has_numeric_limits_minmax.
+  /// @return Zero-valued T.
+  template <typename T>
+  requires(std::is_default_constructible_v<T>)
+  constexpr operator T() const noexcept {
+    return T{};
+  }
+};
+
 /// Concept to identify the limits placeholders.
 /// \tparam T
 template <typename T>
 concept is_low_high_placeholder =
-    cvref_type<T, lowest_possible_t> || cvref_type<T, highest_possible_t>;
+    cvref_type<T, lowest_possible_t> || cvref_type<T, highest_possible_t> || cvref_type<T, default_init_valued_t>;
 
 /// Checks that T is a placeholder and U has the numeric_limits that the
 /// placeholder can convert to.
@@ -48,7 +63,7 @@ concept is_low_high_placeholder =
 /// \tparam U
 template <typename T, typename U>
 concept low_high_operand =
-    is_low_high_placeholder<T> && _has_numeric_limits_minmax<U>;
+    is_low_high_placeholder<T> && std::convertible_to<T, U>;//_has_numeric_limits_minmax<U>;
 
 /// Equality operator for placeholder (right)
 /// \tparam LT
@@ -99,6 +114,22 @@ inline constexpr lowest_possible_t lowest_possible;
 
 /// @brief Global constant instance for the maximum possible value.
 inline constexpr highest_possible_t highest_possible;
+
+/// @brief Global constant instance for the maximum possible value.
+inline constexpr default_init_valued_t default_init_valued;
 } // namespace cgui::bp
+
+namespace std {
+template <::cgui::bp::is_low_high_placeholder T, typename U>
+requires(std::convertible_to<T, U>)
+struct common_type<T, U> {
+  using type = U;
+};
+template <typename U, ::cgui::bp::is_low_high_placeholder T>
+requires(std::convertible_to<T, U>)
+struct common_type<T, U> {
+  using type = U;
+};
+}
 
 #endif // COMPONENT_GUI_LIMITS_HPP

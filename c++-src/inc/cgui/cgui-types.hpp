@@ -180,9 +180,9 @@ concept set_state_with_rerender =
       { call::set_state(*t, *args...) } -> bounding_box;
     };
 
-template <typename T, typename TBox = default_rect>
+template <typename T, typename TBox = default_point_rect >
 concept widget_back_propagater =
-    bounding_box<TBox> && requires(T &t, TBox const &cbox) {
+    point_rect<TBox> && requires(T &t, TBox const &cbox) {
       t.rerender();
       t.rerender(cbox);
     };
@@ -199,49 +199,45 @@ template <typename T, bounding_box TBox = default_rect>
 using sub_of_type_t =
     decltype(std::declval<T &&>().sub(std::declval<TBox const &>()));
 
-template <typename T, typename TCoord = default_pixel_coord,
+template <typename T, typename TCoord = pixel_unit_t<default_pixel_coord>,
           typename TColour = default_colour_t>
-concept single_pixel_draw = pixel_coord<TCoord> && colour<TColour> &&
+concept single_pixel_draw = pixel_coordinate<TCoord> && colour<TColour> &&
                             std::invocable<T, TCoord, TColour>;
-template <typename T, typename TCoord = default_pixel_coord>
+template <typename T, typename TCoord = pixel_unit_t<default_pixel_coord>>
 concept single_alpha_draw =
-    pixel_coord<TCoord> && std::invocable<T, TCoord, std::uint_least8_t>;
+    pixel_coordinate<TCoord> && std::invocable<T, TCoord, std::uint_least8_t>;
 struct dummy_pixel_drawer {
-  constexpr void operator()(pixel_coord auto &&, colour auto &&) {}
+  constexpr void operator()(pixel_or_point_coordinate auto &&, colour auto &&) {}
 };
-static_assert(single_pixel_draw<dummy_pixel_drawer>);
 struct dummy_alpha_drawer {
   constexpr void
-  operator()(pixel_coord auto &&,
+  operator()(pixel_or_point_coordinate auto &&,
              std::convertible_to<std::uint_least8_t> auto &&) const {}
 };
-static_assert(single_alpha_draw<dummy_alpha_drawer>);
 
 template <typename T, typename TCB = dummy_pixel_drawer>
 concept canvas_pixel_callback =
     single_pixel_draw<TCB> && std::invocable<T, TCB>;
 
-template <typename T, typename TRect = default_rect,
+template <typename T, typename TRect = default_pixel_rect,
           typename TCB = dummy_pixel_drawer>
-concept pixel_draw_callback = bounding_box<TRect> && single_pixel_draw<TCB> &&
+concept pixel_draw_callback = pixel_rect<TRect> && single_pixel_draw<TCB> &&
                               std::invocable<T, TRect, TCB>;
-template <typename T, typename TRect = default_rect,
+template <typename T, typename TRect = default_pixel_rect,
           typename TCB = dummy_alpha_drawer>
-concept alpha_draw_callback = bounding_box<TRect> && single_alpha_draw<TCB> &&
+concept alpha_draw_callback = pixel_rect<TRect> && single_alpha_draw<TCB> &&
                               std::invocable<T, TRect, TCB>;
 
 struct dummy_pixel_draw_callback {
-  constexpr void operator()(bounding_box auto &&,
+  constexpr void operator()(pixel_rect auto &&,
                             single_pixel_draw auto &&) const {}
 };
-static_assert(pixel_draw_callback<dummy_pixel_draw_callback>);
 struct dummy_alpha_draw_callback {
-  constexpr void operator()(bounding_box auto &&,
+  constexpr void operator()(pixel_rect auto &&,
                             single_alpha_draw auto &&) const {}
 };
-static_assert(alpha_draw_callback<dummy_alpha_draw_callback>);
 
-template <typename T, typename TArea = default_rect,
+template <typename T, typename TArea = point_unit_t<default_rect>,
           typename TDrawPixels = dummy_pixel_draw_callback,
           typename TDrawAlpha = dummy_alpha_draw_callback,
           typename TColour = default_colour_t>
@@ -280,7 +276,7 @@ template <colour TC> struct fill_on_draw_pixel {
 };
 
 constexpr auto fill =
-    []<typename T, bounding_box TB, colour TC>(T &&v, TB const &b, TC const &c)
+    []<typename T, pixel_or_point_rect_basic TB, colour TC>(T &&v, TB const &b, TC const &c)
   requires(has_native_fill<T, TB, TC> ||
            has_draw_pixels<T, TB, fill_on_draw_pixel<TC>>)
 {
@@ -409,7 +405,7 @@ template <typename... Ts> struct triggers {
   static constexpr auto size = sizeof...(Ts);
 };
 
-template <typename TWH = int, typename TState = no_state_t>
+template <point_scalar TWH = point_unit_t<int>, typename TState = no_state_t>
 class widget_render_args : TState {
   TWH w_;
   TWH h_;
@@ -421,7 +417,7 @@ public:
       : TState(std::forward<Ts>(state_args)...), w_(w), h_(h) {}
   template <typename... Ts>
     requires(std::constructible_from<TState, Ts && ...>)
-  constexpr widget_render_args(bounding_box auto const &b, Ts &&...state_args)
+  constexpr widget_render_args(point_rect auto const &b, Ts &&...state_args)
       : widget_render_args(call::width(b), call::height(b),
                            std::forward<Ts>(state_args)...) {}
 
@@ -461,15 +457,19 @@ struct dummy_canvas {
 };
 
 struct dummy_renderer {
-  constexpr void draw_pixels(bounding_box auto const &,
-                             pixel_draw_callback auto &&) {}
-  constexpr void draw_alpha(bounding_box auto const &,
-                            alpha_draw_callback auto &&) {}
+  constexpr void draw_pixels(pixel_or_point_rect auto const &,
+                             pixel_draw_callback
+                             auto &&) {}
+  constexpr void draw_alpha(pixel_or_point_rect auto const &,
+                            alpha_draw_callback
+                            auto &&) {}
   constexpr dummy_renderer with(colour auto &&) const { return {}; }
-  constexpr dummy_renderer sub(bounding_box auto &&, colour auto &&) const {
+  constexpr dummy_renderer sub(pixel_or_point_rect auto &&, colour auto &&) const {
     return {};
   }
-  constexpr dummy_renderer sub(bounding_box auto &&) const { return {}; }
+  constexpr dummy_renderer sub(pixel_or_point_rect auto &&) const { return {}; }
+  static constexpr int pixel_scale() { return 1; }
+  constexpr void fill(pixel_or_point_rect_basic auto const&, colour auto const&) {}
 };
 
 template <typename T, typename TRender = dummy_renderer>
@@ -531,8 +531,8 @@ template <typename T, typename TChar = char>
 concept font_face = requires(bp::as_forward<T> t, TChar c) {
   call::glyph(*t, c);
   { *call::glyph(*t, c) } -> font_glyph;
-  { call::full_height(*t) } -> std::convertible_to<long>;
-  { call::ascender(*t) } -> std::convertible_to<long>;
+  { call::full_height(*t) } -> pixel_scalar;
+  { call::ascender(*t) } -> pixel_scalar;
 };
 
 struct no_auto_cleanup_t {};

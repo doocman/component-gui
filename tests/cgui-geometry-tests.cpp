@@ -4,7 +4,17 @@
 #include <gmock/gmock.h>
 
 namespace cgui::tests {
+static_assert(point_scalar<point_unit_t<int>>);
+static_assert(pixel_scalar<pixel_unit_t<int>>);
+static_assert(pixel_or_point_rect<autoconverting_pixelpoint_unit<pixel_size_tag, default_rect>>);
 static_assert(bounding_box<default_rect>);
+static_assert(impl::has_bbox_init<default_rect, int>);
+static_assert(std::is_same_v<
+              pixelpoint_unit<pixel_size_tag, default_rect>,
+              decltype(extend_api_t<pixelpoint_unit<pixel_size_tag, default_rect>>::from_xyxy(
+                  0, 0, 0, 0))>);
+static_assert(mutable_bounding_box<pixelpoint_unit<pixel_size_tag, default_rect>, pixelpoint_unit<pixel_size_tag, int>>);
+
 
 using namespace ::testing;
 
