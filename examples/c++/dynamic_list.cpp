@@ -60,7 +60,6 @@ int main(int argc, char **argv) {
             })
             .widgets(
                 cgui::widget_builder()
-                    .area(area_t{})
                     .event(
                         cgui::radio_button_trigger()
                             .elements(
@@ -72,7 +71,6 @@ int main(int argc, char **argv) {
                             .build())
                     .build(),
                 cgui::widget_builder()
-                    .area(area_t{})
                     .event(cgui::buttonlike_trigger(
                         cgui::momentary_button()
                             .click([&do_exit] { do_exit = true; })

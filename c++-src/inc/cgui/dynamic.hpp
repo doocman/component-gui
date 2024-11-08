@@ -122,17 +122,25 @@ public:
   }
   constexpr auto &list() { return elements_; }
 };
+template <typename T, typename State = widget_state_marker<int>>
+concept widget_list_constraint_c = has_render<T, dummy_renderer, widget_render_args<point_unit_t<int>, State>>;
+
+template <typename T, typename State = widget_state_marker<int>>
+concept widget_list_builder_constraint_c = widget_list_constraint_c<T, State> || builder<T, all_states_in_marker_t<State>> && requires(bp::as_forward<T> t, all_states_in_marker_t<State> m) {
+  {call::build(*t, m) } -> widget_list_constraint_c<State>;
+};
+
 template <typename State = widget_state_marker<int>>
 struct widget_list_constraint {
-  template <typename T>
-    requires(has_render<T, dummy_renderer, widget_render_args<int, State>> /*&& !std::is_reference_v<std::unwrap_ref_decay_t<T>> &&
-             std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>*/)
+  template <widget_list_constraint_c<State> T>
+    /*requires(!std::is_reference_v<std::unwrap_ref_decay_t<T>> &&
+             std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>)*/
   constexpr void operator()(T &&) const {}
 };
 
 template <typename T, typename Constraint, typename... Args>
 concept pass_or_build_pass =
-    std::invocable<Constraint, T> ||
+    bp::direct_invocable<Constraint, T> ||
     (builder<T, Args...> &&
      requires(bp::as_forward<T> t, bp::as_forward<Args>... args, Constraint c) {
        c(call::build(*t, *args...));
@@ -163,15 +171,24 @@ class uni_sized_widget_list_builder_impl
 public:
   using _base_t::_base_t;
 
-  template <typename... T2s,
-            typename ResG = build::args_to_group_t<
-                widget_list_builder_constraint<>, T2s...>,
-            typename ResT = uni_sized_widget_list_builder_impl<ResG, Functions>>
-  constexpr ResT displays(T2s &&...ds) && {
+  template <typename State = widget_state_marker<int>, widget_list_builder_constraint_c<State>... T2s,
+            //typename ResG = build::args_to_group_t<
+            //    widget_list_builder_constraint<State>, T2s...>,
+            //typename ResT = uni_sized_widget_list_builder_impl<ResG, Functions> //
+
+            typename = void
+            >
+  constexpr
+      //ResT //
+      auto //
+  displays(T2s &&...ds) && {
     static_assert(
         (std::invocable<widget_list_builder_constraint<>, T2s> && ...));
-    return ResT(build::args_to_group(widget_list_builder_constraint{},
-                                     std::forward<T2s>(ds)...));
+    using res_g = build::args_to_group_t<widget_list_builder_constraint<State>, T2s...>;
+    using res_t = uni_sized_widget_list_builder_impl<res_g, Functions>;
+    return res_t(build::args_to_group(widget_list_builder_constraint{},std::forward<T2s>(ds)...));
+    //return ResT(build::args_to_group(widget_list_builder_constraint{},
+    //                                 std::forward<T2s>(ds)...));
   }
 
   template <typename State, State... states, typename... Triggers,

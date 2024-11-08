@@ -87,7 +87,7 @@ template <typename T, typename TVal>
 concept pixel_coord_mut = pixel_coord_ref<T, TVal> || pixel_coord_set<T, TVal>;
 
 /// @brief Basic structure for representing pixel coordinates.
-template <typename T> struct basic_pixel_coord {
+template <typename T> struct basic_coordinate {
   T x; ///< X coordinate
   T y; ///< Y coordinate
 
@@ -99,24 +99,27 @@ template <typename T> struct basic_pixel_coord {
   }
 };
 
-using default_pixel_coord = basic_pixel_coord<int>;
+using default_coordinate = basic_coordinate<int>;
+
+template <typename TX, typename TY>
+basic_coordinate(TX, TY) -> basic_coordinate<std::common_type_t<TX, TY>>;
 
 /// @brief Retrieves the x-coordinate from a basic pixel coordinate.
-template <typename T> constexpr T x_of(basic_pixel_coord<T> const &c) {
+template <typename T> constexpr T x_of(basic_coordinate<T> const &c) {
   return c.x;
 }
 
 /// @brief Retrieves the y-coordinate from a basic pixel coordinate.
-template <typename T> constexpr T y_of(basic_pixel_coord<T> const &c) {
+template <typename T> constexpr T y_of(basic_coordinate<T> const &c) {
   return c.y;
 }
 
 /// @brief Returns a reference to the x-coordinate of a basic pixel coordinate.
-template <typename T> constexpr T &x_of(basic_pixel_coord<T> &c) { return c.x; }
+template <typename T> constexpr T &x_of(basic_coordinate<T> &c) { return c.x; }
 
 /// @brief Returns a reference to the y-coordinate of a default pixel
 /// coordinate.
-template <typename T> constexpr T &y_of(basic_pixel_coord<T> &c) { return c.y; }
+template <typename T> constexpr T &y_of(basic_coordinate<T> &c) { return c.y; }
 
 /// @brief Concept to check if a type is mutable by TFrom and is a valid pixel
 /// coordinate value.
@@ -138,8 +141,8 @@ constexpr T map_coord(U const &u, F &&f) {
 
 /// @brief Structure representing a default rectangular bounding box.
 template <typename T> struct basic_rect {
-  default_pixel_coord tl; ///< Top-left coordinate
-  default_pixel_coord br; ///< Bottom-right coordinate
+  default_coordinate tl; ///< Top-left coordinate
+  default_coordinate br; ///< Bottom-right coordinate
 
   /// @brief Creates a default_rect from given coordinates.
   /// @param x1 Left x-coordinate.
@@ -158,25 +161,25 @@ using default_rect = basic_rect<int>;
 
 /// @brief Returns the top-left coordinate of a rectangle.
 template <typename T>
-constexpr default_pixel_coord top_left(basic_rect<T> const &r) noexcept {
+constexpr default_coordinate top_left(basic_rect<T> const &r) noexcept {
   return r.tl;
 }
 
 /// @brief Returns a reference to the top-left coordinate of a rectangle.
 template <typename T>
-constexpr default_pixel_coord &top_left(basic_rect<T> &r) noexcept {
+constexpr default_coordinate &top_left(basic_rect<T> &r) noexcept {
   return r.tl;
 }
 
 /// @brief Returns the bottom-right coordinate of a rectangle.
 template <typename T>
-constexpr default_pixel_coord bottom_right(basic_rect<T> const &r) noexcept {
+constexpr default_coordinate bottom_right(basic_rect<T> const &r) noexcept {
   return r.br;
 }
 
 /// @brief Returns a reference to the bottom-right coordinate of a rectangle.
 template <typename T>
-constexpr default_pixel_coord &bottom_right(basic_rect<T> &r) noexcept {
+constexpr default_coordinate &bottom_right(basic_rect<T> &r) noexcept {
   return r.br;
 }
 
@@ -263,7 +266,7 @@ concept has_from_tlbr = requires(bp::as_forward<TC> v) {
 template <typename T, typename TC>
 concept has_bbox_init =
     has_from_xyxy<T, TC> || has_from_xywh<T, TC> ||
-    has_from_tlbr<T, basic_pixel_coord<std::remove_cvref_t<TC>>> ||
+    has_from_tlbr<T, basic_coordinate<std::remove_cvref_t<TC>>> ||
     has_from_tlbr_ils<T, TC>;
 
 struct do_from_xyxy {
@@ -281,8 +284,8 @@ struct do_from_xyxy {
                               {std::move(xr), std::move(yb)});
     } else {
       return raw_t::from_tlbr(
-          basic_pixel_coord<TXY>(std::move(xl), std::move(yt)),
-          basic_pixel_coord<TXY>(std::move(xr), std::move(yb)));
+          basic_coordinate<TXY>(std::move(xl), std::move(yt)),
+          basic_coordinate<TXY>(std::move(xr), std::move(yb)));
     }
   }
 };
@@ -337,25 +340,31 @@ constexpr auto box_from_xyxy(A1 xl, A2 yt, A3 xr, A4 yb,
                              std::type_identity<T> = {}) {
   if constexpr (impl::has_bbox_init<T, TXY>) {
     return impl::do_from_xyxy{}(std::type_identity<T>{}, static_cast<TXY>(xl),
-                                static_cast<TXY>(yt), static_cast<TXY>(xr), static_cast<TXY>(yb));
+                                static_cast<TXY>(yt), static_cast<TXY>(xr),
+                                static_cast<TXY>(yb));
   } else {
-    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{}, static_cast<TXY>(xl), static_cast<TXY>(yt),
+    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{},
+                                static_cast<TXY>(xl), static_cast<TXY>(yt),
                                 static_cast<TXY>(xr), static_cast<TXY>(yb));
   }
 }
 
 /// Creates a box (presumably of type T) from a top-left coordinate + width and
 /// height.
-template <typename T, typename TXY>
+template <typename T, typename A1, typename A2, typename A3, typename A4,
+          typename TXY = std::common_type_t<A1, A2, A3, A4>>
   requires(impl::has_bbox_init<T, TXY> ||
            impl::has_bbox_init<extend_api_t<T>, TXY>)
-constexpr auto box_from_xywh(TXY x, TXY y, TXY w, TXY h,
+constexpr auto box_from_xywh(A1 x, A2 y, A3 w, A4 h,
                              std::type_identity<T> = {}) {
   if constexpr (impl::has_bbox_init<T, TXY>) {
-    return impl::do_from_xywh{}(std::type_identity<T>{}, x, y, w, h);
+    return impl::do_from_xywh{}(std::type_identity<T>{}, static_cast<TXY>(x),
+                                static_cast<TXY>(y), static_cast<TXY>(w),
+                                static_cast<TXY>(h));
   } else {
-    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w,
-                                h);
+    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{},
+                                static_cast<TXY>(x), static_cast<TXY>(y),
+                                static_cast<TXY>(w), static_cast<TXY>(h));
   }
 }
 
@@ -462,9 +471,59 @@ concept same_geometry_as =
 template <typename T, typename U>
 concept same_unit_geometry_as = same_geometry_as<T, U> && same_unit_as<T, U>;
 
+template <typename T>
+concept is_pixel_sized =
+    size_tagged<T> && std::is_same_v<tag_t_of<T>, pixel_size_tag>;
+template <typename T>
+concept is_point_sized =
+    size_tagged<T> && std::is_same_v<tag_t_of<T>, point_size_tag>;
+
+template <typename T>
+concept pixel_coordinate = pixel_coord<T> && is_pixel_sized<T>;
+template <typename T>
+concept point_coordinate = pixel_coord<T> && is_point_sized<T>;
+template <typename T>
+concept pixel_or_point_coordinate_basic =
+    pixel_coordinate<T> || point_coordinate<T>;
+template <typename T>
+concept pixel_or_point_coordinate =
+    pixel_or_point_coordinate_basic<T> || requires(T &&t) {
+      { t.convert() } -> pixel_or_point_coordinate_basic;
+    };
+
+template <typename T>
+concept pixel_scalar =
+    is_pixel_sized<T> && scalar<typename std::remove_cvref_t<T>::value_type>;
+template <typename T>
+concept point_scalar =
+    is_point_sized<T> && scalar<typename std::remove_cvref_t<T>::value_type>;
+
+template <typename T>
+concept pixel_rect = bounding_box<T> && is_pixel_sized<T>;
+template <typename T>
+concept point_rect = bounding_box<T> && is_point_sized<T>;
+template <typename T>
+concept pixel_or_point_rect_basic = pixel_rect<T> || point_rect<T>;
+template <typename T>
+concept pixel_or_point_rect = pixel_or_point_rect_basic<T> || requires(T &&t) {
+  { t.convert() } -> pixel_or_point_rect_basic;
+};
+
 template <pixelpoint_tag SizeTag, typename T> class pixelpoint_unit {
   using this_t = pixelpoint_unit;
   T value_{};
+
+  template <typename U, typename C = std::identity>
+  static constexpr T conv_value(U &&v, C &&converter = {}) {
+    if constexpr (bounding_box<T>) {
+      return map_box<T>(v, converter);
+    } else if constexpr (pixel_coord<T>) {
+      return map_coord<T>(v, converter);
+    } else {
+      static_assert(std::is_integral_v<T> || std::is_floating_point_v<T>);
+      return converter(v);
+    }
+  }
 
   template <pixelpoint_tag ST2, typename U, pixelpoint_scale S>
   static constexpr T conv_t(pixelpoint_unit<ST2, U> const &v, S const &scaler) {
@@ -473,14 +532,7 @@ template <pixelpoint_tag SizeTag, typename T> class pixelpoint_unit {
       return T(v.value());
     } else {
       auto conv = pixelpoint_converter<ST2, SizeTag, S const &>(scaler);
-      if constexpr (bounding_box<T>) {
-        return map_box<T>(v.value(), conv);
-      } else if constexpr (pixel_coord<T>) {
-        return map_coord<T>(v.value(), conv);
-      } else {
-        static_assert(std::is_integral_v<T> || std::is_floating_point_v<T>);
-        return conv(v.value());
-      }
+      return conv_value(v.value(), conv);
     }
   }
 
@@ -510,15 +562,20 @@ public:
   constexpr pixelpoint_unit(pixelpoint_unit<ST2, T2> const &v, S const &s)
       : value_(conv_t(v, s)) {}
 
-  template <typename T2>
-    requires(std::constructible_from<T, T2>)
-  constexpr explicit(!std::convertible_to<T2, T>)
-      pixelpoint_unit(pixelpoint_unit<SizeTag, T2> v)
-      : value_(v.value()) {}
+  template <typename T2, typename... Ts>
+    requires(std::constructible_from<T, T2, Ts...>)
+  constexpr explicit(!std::convertible_to<T2, T> && sizeof...(Ts) == 0)
+      pixelpoint_unit(pixelpoint_unit<SizeTag, T2> const &v,
+                      pixelpoint_unit<SizeTag, Ts> const &...vs)
+      : value_(v.value(), vs.value()...) {}
 
-  template <typename T2 = T>
-    requires(std::constructible_from<T, T2>)
-  constexpr explicit pixelpoint_unit(T2 &&v) : value_(std::forward<T2>(v)) {}
+  template <typename T2 = T, typename... Ts>
+    requires(std::constructible_from<T, T2, Ts...>)
+  constexpr explicit(sizeof...(Ts) == 0) pixelpoint_unit(T2 &&v, Ts&&... args) : value_(std::forward<T2>(v), std::forward<Ts>(args)...) {}
+  template <typename T2>
+    requires(!std::constructible_from<T, T2> && same_unit_geometry_as<T2, T>)
+  constexpr explicit pixelpoint_unit(T2 &&v) : value_(conv_value(v)) {}
+
   template <typename T2 = T>
     requires(std::constructible_from<T, T2>)
   constexpr pixelpoint_unit(SizeTag, T2 &&v) : value_(std::forward<T2>(v)) {}
@@ -529,14 +586,12 @@ public:
   {}
 
 #define CGUI_FWD_GETSET_(X)                                                    \
-  template <bp::cvref_type<this_t> U>                                          \
-    requires(requires(bp::as_forward<U> u) {                                   \
-      { call::X((*u).value()) } -> bp::not_void;                               \
-    })                                                                         \
-  static constexpr pixelpoint_unit<                                            \
-      SizeTag,                                                                 \
-      std::remove_cvref_t<decltype(call::X(std::declval<U &&>().value()))>>    \
-  X(U &&u) {                                                                   \
+  template <bp::cvref_type<this_t> U,                                          \
+            typename OpRes = decltype(call::X(std::declval<U &&>().value())),  \
+            typename OpResClean = std::remove_cvref_t<OpRes>>                  \
+    requires(!std::is_void_v<OpRes> &&                                         \
+             std::constructible_from<OpResClean, OpRes>)                       \
+  static constexpr pixelpoint_unit<SizeTag, OpResClean> X(U &&u) {             \
     return {SizeTag{}, call::X(std::forward<U>(u).value())};                   \
   }                                                                            \
   template <bp::cvref_type<this_t> U, size_tagged_with<SizeTag> Arg>           \
@@ -559,6 +614,33 @@ public:
 
   using tag_t = SizeTag;
 #undef CGUI_FWD_GETSET_
+
+  constexpr pixelpoint_unit &operator++()
+    requires(bp::value_incrementable<T>)
+  {
+    ++value();
+    return *this;
+  }
+  constexpr pixelpoint_unit &operator--()
+    requires(bp::value_decrementable<T>)
+  {
+    --value();
+    return *this;
+  }
+  constexpr pixelpoint_unit operator++(int)
+    requires(bp::value_incrementable<T> && std::is_copy_constructible_v<T>)
+  {
+    auto r = *this;
+    ++value();
+    return r;
+  }
+  constexpr pixelpoint_unit operator--(int)
+    requires(bp::value_decrementable<T> && std::is_copy_constructible_v<T>)
+  {
+    auto r = *this;
+    --value();
+    return r;
+  }
 };
 
 template <pixelpoint_tag Tag, typename OldTag, typename T, pixelpoint_scale S>
@@ -641,6 +723,10 @@ struct numeric_limits<::cgui::pixelpoint_unit<ST, T>>
   using _base::tinyness_before;
   using _base::traps;
 };
+template <typename St, typename T>
+struct iterator_traits<::cgui::pixelpoint_unit<St, T>> {
+  using difference_type = T;
+};
 } // namespace std
 namespace cgui {
 
@@ -700,6 +786,15 @@ operator+(pixelpoint_unit<SizeTag, T> const &l,
           pixelpoint_unit<SizeTag, U> const &r) {
   return pixelpoint_unit<SizeTag, R>(l.value() + r.value());
 }
+template <typename SizeTag, typename T, typename U>
+  requires(requires(T &t, U const &r) { t += r; })
+constexpr pixelpoint_unit<SizeTag, T> &
+operator+=(pixelpoint_unit<SizeTag, T> &l,
+           pixelpoint_unit<SizeTag, U> const &r) {
+  l.value() += r.value();
+  return l;
+}
+
 template <typename SizeTag, typename T, typename U,
           typename R = decltype(std::declval<T const &>() -
                                 std::declval<U const &>())>
@@ -708,12 +803,20 @@ operator-(pixelpoint_unit<SizeTag, T> const &l,
           pixelpoint_unit<SizeTag, U> const &r) {
   return pixelpoint_unit<SizeTag, R>(l.value() - r.value());
 }
+template <typename SizeTag, typename T, typename U>
+  requires(requires(T &t, U const &r) { t -= r; })
+constexpr pixelpoint_unit<SizeTag, T> &
+operator-=(pixelpoint_unit<SizeTag, T> &l,
+           pixelpoint_unit<SizeTag, U> const &r) {
+  l.value() -= r.value();
+  return l;
+}
+
 template <typename SizeTag, typename T, typename U,
           typename R = decltype(std::declval<T const &>() *
                                 std::declval<U const &>())>
 constexpr pixelpoint_unit<SizeTag, R>
-operator*(pixelpoint_unit<SizeTag, T> const &l,
-          U const &r) {
+operator*(pixelpoint_unit<SizeTag, T> const &l, U const &r) {
   return pixelpoint_unit<SizeTag, R>(l.value() * r);
 }
 template <typename SizeTag, typename T, typename U,
@@ -727,8 +830,7 @@ template <typename SizeTag, typename T, typename U,
           typename R = decltype(std::declval<T const &>() /
                                 std::declval<U const &>())>
 constexpr pixelpoint_unit<SizeTag, R>
-operator/(pixelpoint_unit<SizeTag, T> const &l,
-          U const &r) {
+operator/(pixelpoint_unit<SizeTag, T> const &l, U const &r) {
   return pixelpoint_unit<SizeTag, R>(l.value() / r);
 }
 template <typename ST, typename T>
@@ -766,13 +868,6 @@ constexpr point_unit_t<U> point_unit(T &&in) {
   return point_unit_t<U>(std::forward<T>(in));
 }
 
-template <typename T>
-concept is_pixel_sized =
-    size_tagged<T> && std::is_same_v<tag_t_of<T>, pixel_size_tag>;
-template <typename T>
-concept is_point_sized =
-    size_tagged<T> && std::is_same_v<tag_t_of<T>, point_size_tag>;
-
 template <typename T> constexpr auto strip_unit(T const &t) {
   if constexpr (size_tagged<T>) {
     return t.value();
@@ -783,6 +878,10 @@ template <typename T> constexpr auto strip_unit(T const &t) {
 
 using default_pixel_rect = pixel_unit_t<default_rect>;
 using default_point_rect = point_unit_t<default_rect>;
+using default_pixel_coordinate = pixel_unit_t<default_coordinate>;
+using default_point_coordinate = point_unit_t<default_coordinate>;
+using default_pixel_size_wh = pixel_unit_t<default_size_wh>;
+using default_point_size_wh = point_unit_t<default_size_wh>;
 
 /// Generates a lazy view of all (integer) pointer between left and right x of
 /// b.
@@ -812,7 +911,7 @@ constexpr void set_yy(T b, TV1 ty, TV2 by) {
 
 /// Create a bounding box that has the same dimensions as b, but with its top
 /// left corner at tl.
-template <bounding_box TB, pixel_coord TC = default_pixel_coord>
+template <bounding_box TB, pixel_coord TC = default_coordinate>
 constexpr auto move_tl_to(TB b, TC tl) {
   auto w = call::width(b);
   auto h = call::height(b);
@@ -907,7 +1006,7 @@ constexpr bool valid_box(bounding_box auto const &b) {
 
 /// Creates a larger box that includes the smaller boxes. Does not check for
 /// empty boxes. Use box_add when the boxes may be empty or non-valid.
-template <typename TRes = void, bounding_box T1, bounding_box T2>
+template <typename TRes = void, bounding_box T1, same_unit_geometry_as<T1> T2>
 constexpr auto box_union(T1 const &b1, T2 const &b2) {
   CGUI_ASSERT(valid_box(b1));
   CGUI_ASSERT(valid_box(b2));
@@ -997,7 +1096,7 @@ using inside_semiopen_range_t = decltype(inside_semiopen_range);
 
 /// Check if coordinate c is inside box b, by the range checking policy
 /// inside_range.
-template <bounding_box TB, pixel_coord TC = default_pixel_coord,
+template <bounding_box TB, pixel_coord TC = default_coordinate,
           range_condition<decltype(call::x_of(std::declval<TC>()))> TRC =
               inside_semiopen_range_t>
   requires(same_unit_as<TB, TC>)
@@ -1008,7 +1107,7 @@ constexpr bool hit_box(TB const &b, TC const &c, TRC &&inside_range = {}) {
 }
 
 /// True if all corners of inner is inside the outer box.
-template <bounding_box TB1, bounding_box TB2>
+template <bounding_box TB1, same_unit_geometry_as<TB1> TB2>
   requires(same_unit_as<TB1, TB2>)
 constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
   return hit_box(outer, call::top_left(inner), inside_closed_range) &&
@@ -1056,6 +1155,39 @@ constexpr T map_box(T2 const &b, auto &&map_f) {
   }
 }
 
+namespace call {
+namespace impl {
+struct do_pixel_area {
+  template <typename T>
+    requires(has_pixel_area<T const &> ||
+             (has_point_area<T const &> && has_pixel_scale<T const &>))
+  constexpr pixel_rect auto operator()(T const &t) const {
+    if constexpr (has_pixel_area<T const &>) {
+      return _do_pixel_area::call(t);
+    } else {
+      return convert_pixelpoint<pixel_size_tag>(_do_pixel_area::call(t),
+                                                _do_pixel_scale(t));
+    }
+  }
+};
+struct do_point_area {
+  template <typename T>
+    requires(has_point_area<T const &> ||
+             (has_pixel_area<T const &> && has_pixel_scale<T const &>))
+  constexpr point_rect auto operator()(T const &t) const {
+    if constexpr (has_point_area<T const &>) {
+      return _do_point_area::call(t);
+    } else {
+      return convert_pixelpoint<point_size_tag>(_do_pixel_area::call(t),
+                                                _do_pixel_scale::call(t));
+    }
+  }
+};
+} // namespace impl
+inline constexpr impl::do_pixel_area pixel_area;
+inline constexpr impl::do_point_area point_area;
+} // namespace call
+
 /// Version of box_union that supports empty boxes.
 template <typename TRes = void, typename TB1, typename TB2>
 constexpr auto box_add(TB1 const &b1,
@@ -1069,37 +1201,6 @@ constexpr auto box_add(TB1 const &b1,
   }
   return box_union<TRes>(b1, b2);
 }
-
-template <typename T>
-concept pixel_coordinate = pixel_coord<T> && is_pixel_sized<T>;
-template <typename T>
-concept point_coordinate = pixel_coord<T> && is_point_sized<T>;
-template <typename T>
-concept pixel_or_point_coordinate_basic =
-    pixel_coordinate<T> || point_coordinate<T>;
-template <typename T>
-concept pixel_or_point_coordinate =
-    pixel_or_point_coordinate_basic<T> || requires(T &&t) {
-      { t.convert() } -> pixel_or_point_coordinate_basic;
-    };
-
-template <typename T>
-concept pixel_scalar =
-    is_pixel_sized<T> && scalar<typename std::remove_cvref_t<T>::value_type>;
-template <typename T>
-concept point_scalar =
-    is_point_sized<T> && scalar<typename std::remove_cvref_t<T>::value_type>;
-
-template <typename T>
-concept pixel_rect = bounding_box<T> && is_pixel_sized<T>;
-template <typename T>
-concept point_rect = bounding_box<T> && is_point_sized<T>;
-template <typename T>
-concept pixel_or_point_rect_basic = pixel_rect<T> || point_rect<T>;
-template <typename T>
-concept pixel_or_point_rect = pixel_or_point_rect_basic<T> || requires(T &&t) {
-  { t.convert() } -> pixel_or_point_rect_basic;
-};
 
 template <pixelpoint_tag SizeTag, typename T, typename Scale = double>
 class autoconverting_pixelpoint_unit {
@@ -1167,6 +1268,7 @@ struct common_type<::cgui::autoconverting_pixelpoint_unit<ST, T, S>,
                    ::cgui::pixelpoint_unit<ST2, U>> {
   using type = ::cgui::pixelpoint_unit<ST2, common_type_t<T, U>>;
 };
+/*
 template <typename ST, typename ST2, typename T, typename S, typename U>
   requires(requires() { typename common_type<T, U>::type; })
 struct common_type<::cgui::pixelpoint_unit<ST2, U>,
@@ -1174,6 +1276,7 @@ struct common_type<::cgui::pixelpoint_unit<ST2, U>,
   using type = common_type_t<::cgui::autoconverting_pixelpoint_unit<ST, T, S>,
                              ::cgui::pixelpoint_unit<ST2, U>>;
 };
+*/
 } // namespace std
 
 #endif

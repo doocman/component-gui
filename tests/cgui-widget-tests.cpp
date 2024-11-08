@@ -185,7 +185,7 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   EXPECT_THAT(alpha, Eq(255));
   r.drawn_pixels[0] = {};
   bounding_box auto new_area = w.handle(1);
-  expect_box_equal(new_area, r.area());
+  expect_box_equal(new_area, call::point_area(r));
   w.render(sr);
   ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
   EXPECT_THAT(red, Eq(0));
@@ -198,14 +198,14 @@ TEST(WidgetBuilder, SubcomponentsResize) // NOLINT
 {
   mock_widget subw;
   int mock_calls{};
-  auto sc_area = default_rect{};
+  auto sc_area = default_point_rect{};
   EXPECT_CALL(subw, do_area(_))
       .WillRepeatedly([&mock_calls, &sc_area](auto const &a) {
         ++mock_calls;
         sc_area = a;
       });
   auto w = widget_builder()
-               .area(default_rect{{0, 1}, {3, 4}})
+               .area(box_from_xyxy<default_point_rect>(0, 1, 3, 4))
                .subcomponents(std::ref(subw))
                .on_resize([](auto &&self, bounding_box auto const &new_area) {
                  self.subcomponent().area(new_area);
@@ -213,7 +213,7 @@ TEST(WidgetBuilder, SubcomponentsResize) // NOLINT
                .build();
   EXPECT_THAT(mock_calls, Eq(1)) << "Should be called once on creation";
   expect_box_equal(sc_area, w.area());
-  w.area({{0, 2}, {4, 5}});
+  w.area(box_from_xyxy<default_point_rect>(0, 2, 4, 5));
   EXPECT_THAT(mock_calls, Eq(2));
   expect_box_equal(sc_area, w.area());
 }
@@ -234,7 +234,7 @@ TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
                .subcomponents(std::ref(s1), std::ref(s2))
                .on_resize([](auto &&self, bounding_box auto b) {
                  auto &[s1, s2] = self.subcomponents();
-                 s1.area(trim_from_left(&b, 1));
+                 s1.area(trim_from_left(&b, point_unit(1)));
                  s2.area(b);
                })
                .build();
@@ -286,7 +286,7 @@ TEST(Widget, BasicButton) // NOLINT
   w.render(sr);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
 
-  w.handle(dummy_mouse_move_event{{-1, 0}});
+  w.handle(dummy_mouse_move_event{default_point_coordinate(-1, 0)});
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(0));
   EXPECT_THAT(last_state, Eq(off));
@@ -350,16 +350,16 @@ struct test_button_list {
     constexpr void handle(radio_button::trigger_on,
                           widget_back_propagater auto &&bp) {
       parent.on_activate(index);
-      bp.rerender(default_rect{{index, 0}, {index + 1, 1}});
+      bp.rerender(box_from_xyxy<default_point_rect>(index, 0, index + 1, 1));
     }
     constexpr void handle(radio_button::trigger_off,
                           widget_back_propagater auto &&bp) {
       parent.on_deactivate(index);
-      bp.rerender(default_rect{{index, 0}, {index + 1, 1}});
+      bp.rerender(box_from_xyxy<default_point_rect>(index, 0, index + 1, 1));
     }
     template <state_marker S, widget_back_propagater T>
     constexpr void set_state(S const &s, T &&t) const {
-      t.rerender(default_rect{{index, 0}, {index + 1, 1}});
+      t.rerender(box_from_xyxy<default_point_rect>(index, 0, index + 1, 1));
       parent.state_change(s.current_state(), index);
     }
   };
@@ -372,8 +372,8 @@ struct test_button_list {
   constexpr bool find_sub_at_location(
       pixel_coord auto const &pos,
       std::invocable<element_t &, std::size_t> auto &&on_find) {
-    if (call::x_of(pos) >= 0 && call::x_of(pos) < sz) {
-      auto i = call::x_of(pos);
+    if (call::x_of(pos).value() >= 0 && call::x_of(pos).value() < sz) {
+      auto i = call::x_of(pos).value();
       auto e = element_t(*this, i);
       on_find(e, i);
       return true;
@@ -390,7 +390,8 @@ struct test_button_list {
     for (int i = 0; i < sz; ++i) {
       auto bright =
           static_cast<std::uint_least8_t>(args.button_state(i).current_state());
-      fill(r, default_rect{{i, 0}, {i + 1, call::height(args)}},
+      fill(r,
+           box_from_xyxy<default_point_rect>(i, 0, i + 1, call::height(args)),
            default_colour_t{bright, bright, bright, 255u});
     }
   }
@@ -402,7 +403,7 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
   int current_element = lowest_possible;
   int activations{};
   int deactivations{};
-  auto constexpr full_area = default_rect{0, 0, 16, 10};
+  auto constexpr full_area = box_from_xyxy<default_point_rect>(0, 0, 16, 10);
   auto list =
       widget_builder()
           .area(full_area)
@@ -491,7 +492,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(r, ElementsAre(state2bright(hover_off), state2bright(relaxed_off),
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
-  expect_box_equal(re_area, default_rect{{0, 0}, {1, 1}});
+  expect_box_equal(re_area, box_from_xyxy<default_point_rect>(0, 0, 1, 1));
 
   state_changes.clear();
   re_area = call::handle(list, dummy_mouse_move_event{{1, 0}});
@@ -504,7 +505,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(r, ElementsAre(state2bright(relaxed_off), state2bright(hover_off),
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
-  expect_box_equal(re_area, default_rect{{0, 0}, {2, 1}});
+  expect_box_equal(re_area, box_from_xyxy<default_point_rect>(0, 0, 2, 1));
 
   state_changes.clear();
   re_area = call::handle(list, dummy_mouse_down_event{{1, 0}});
@@ -516,7 +517,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(r, ElementsAre(state2bright(relaxed_off), state2bright(hold_off),
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
-  expect_box_equal(re_area, default_rect{{1, 0}, {2, 1}});
+  expect_box_equal(re_area, box_from_xyxy<default_point_rect>(1, 0, 2, 1));
 
   state_changes.clear();
   re_area = call::handle(list, dummy_mouse_up_event{{1, 0}});
@@ -527,7 +528,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(r, ElementsAre(state2bright(relaxed_off), state2bright(hover_on),
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
-  expect_box_equal(re_area, default_rect{{1, 0}, {2, 1}});
+  expect_box_equal(re_area, box_from_xyxy<default_point_rect>(1, 0, 2, 1));
 
   click_widget(list, {});
   exp_states[0] = hover_on;
@@ -559,7 +560,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 
-  click_widget(list, default_pixel_coord{});
+  click_widget(list);
   exp_states[0] = hover_off;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
   do_render();

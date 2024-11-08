@@ -54,24 +54,24 @@ int main(int, char **) {
                                  cgui::text_renderer(std::ref(cached_font))))
                     .event(cgui::buttonlike_trigger(
                         cgui::toggle_button_state().build())),
-                cgui::widget_builder().area(area_t{}).display(
+                cgui::widget_builder().display(
                     cgui::text_renderer(std::ref(cached_font))) //
                 )
             .on_resize([](cgui::size_wh auto const &sz, auto &&widgets) {
               using namespace cgui;
               auto &[hello_world_header, quit_button, random_toggle,
                      lorum_ipsum] = widgets;
-              auto full_area = cgui::box_from_xywh<area_t>(
+              auto full_area = cgui::box_from_xywh<default_point_rect>(
                   0, 0, call::width(sz), call::height(sz));
               hello_world_header.area(trim_from_above(
                   &full_area,
-                  std::min<int>(cgui::call::height(full_area), 64)));
+                  std::min(cgui::call::height(full_area), point_unit(64))));
               std::get<0>(hello_world_header.displays())
                   .set_displayed(hello_world_header.area(), "Hello World!")
                   .text_colour({255, 255, 255, 255});
               auto button_bar_area = cgui::trim_from_below(
                   &full_area,
-                  std::min<int>(cgui::call::height(full_area), 128));
+                  std::min(cgui::call::height(full_area), point_unit(128)));
               {
                 auto &background = std::get<0>(quit_button.displays());
                 using enum cgui::momentary_button_states;
@@ -130,7 +130,7 @@ int main(int, char **) {
 
     auto next_run = steady_clock::now() + run_interval;
     while (!do_exit) {
-      SDL_Rect to_rerender{};
+      cgui::point_unit_t<SDL_Rect> to_rerender{};
       while (cgui::poll_event(sdl_context, [&]<typename T>(T e) {
                if constexpr (std::is_same_v<T, cgui::sdl_quit_event>) {
                  do_exit = true;
@@ -145,7 +145,7 @@ int main(int, char **) {
         // This is not done automatically by the gui context as it could be used
         // to overlay a gui on top of other graphics (like a menu in a game).
         renderer.clear();
-        if (cgui::box_includes_box(to_rerender, renderer.area())) {
+        if (cgui::box_includes_box(to_rerender, main_window.area())) {
           // This weird little thing is currently needed. It may be an error in
           // SDL3. A closer inspection is warranted. Follow issue at:
           // https://github.com/libsdl-org/SDL/issues/11401

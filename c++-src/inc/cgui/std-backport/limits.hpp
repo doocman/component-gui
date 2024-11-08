@@ -83,7 +83,7 @@ constexpr bool operator==(LT const &l, RT const &r) {
 /// \param r
 /// \return l <=> numeric_limits::max()
 template <typename LT, low_high_operand<LT> RT>
-constexpr bool operator<=>(LT const &l, RT const &r) {
+constexpr auto operator<=>(LT const &l, RT const &r) {
   return l <=> static_cast<LT>(r);
 }
 
@@ -120,16 +120,16 @@ inline constexpr default_init_valued_t default_init_valued;
 } // namespace cgui::bp
 
 namespace std {
-template <::cgui::bp::is_low_high_placeholder T, typename U>
-requires(std::convertible_to<T, U>)
-struct common_type<T, U> {
-  using type = U;
+#define CGUI_GEN_BP_COMMON_TYPE_(X) \
+template <typename U>\
+  requires(std::convertible_to<::cgui::bp::X, U>)\
+struct common_type<::cgui::bp::X, U> {\
+  using type = U;\
 };
-template <typename U, ::cgui::bp::is_low_high_placeholder T>
-requires(std::convertible_to<T, U>)
-struct common_type<T, U> {
-  using type = U;
-};
+CGUI_GEN_BP_COMMON_TYPE_(lowest_possible_t)
+CGUI_GEN_BP_COMMON_TYPE_(highest_possible_t)
+CGUI_GEN_BP_COMMON_TYPE_(default_init_valued_t)
+#undef CGUI_GEN_BP_COMMON_TYPE_
 }
 
 #endif // COMPONENT_GUI_LIMITS_HPP

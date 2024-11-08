@@ -187,7 +187,7 @@ concept widget_back_propagater =
       t.rerender(cbox);
     };
 
-template <typename T, typename TBox = default_rect, typename U = T>
+template <typename T, typename TBox = default_point_rect, typename U = T>
 concept subable_widget_back_propagator =
     widget_back_propagater<T, TBox> &&
     requires(T &t, TBox const &box, U const &u) {
@@ -199,11 +199,11 @@ template <typename T, bounding_box TBox = default_rect>
 using sub_of_type_t =
     decltype(std::declval<T &&>().sub(std::declval<TBox const &>()));
 
-template <typename T, typename TCoord = pixel_unit_t<default_pixel_coord>,
+template <typename T, typename TCoord = pixel_unit_t<default_coordinate>,
           typename TColour = default_colour_t>
 concept single_pixel_draw = pixel_coordinate<TCoord> && colour<TColour> &&
                             std::invocable<T, TCoord, TColour>;
-template <typename T, typename TCoord = pixel_unit_t<default_pixel_coord>>
+template <typename T, typename TCoord = pixel_unit_t<default_coordinate>>
 concept single_alpha_draw =
     pixel_coordinate<TCoord> && std::invocable<T, TCoord, std::uint_least8_t>;
 struct dummy_pixel_drawer {
@@ -211,7 +211,7 @@ struct dummy_pixel_drawer {
 };
 struct dummy_alpha_drawer {
   constexpr void
-  operator()(pixel_or_point_coordinate auto &&,
+  operator()(pixel_coordinate auto &&,
              std::convertible_to<std::uint_least8_t> auto &&) const {}
 };
 
@@ -266,10 +266,10 @@ template <colour TC> struct fill_on_draw_pixel {
   TC c;
   constexpr void
   operator()(bounding_box auto &&b,
-             single_pixel_draw<default_pixel_coord, TC> auto &&cb) const {
+             single_pixel_draw auto &&cb) const {
     for (auto y : y_view(b)) {
       for (auto x : x_view(b)) {
-        cb(default_pixel_coord{x, y}, c);
+        cb(pixel_unit_t<default_coordinate>(x, y), c);
       }
     }
   }
@@ -411,9 +411,9 @@ class widget_render_args : TState {
   TWH h_;
 
 public:
-  template <typename... Ts>
-    requires(std::constructible_from<TState, Ts && ...>)
-  constexpr widget_render_args(TWH w, TWH h, Ts &&...state_args)
+  template <typename TW, typename TH, typename... Ts>
+    requires(std::constructible_from<TWH, TW> && std::constructible_from<TWH, TH> && std::constructible_from<TState, Ts && ...>)
+  constexpr widget_render_args(TW w, TH h, Ts &&...state_args)
       : TState(std::forward<Ts>(state_args)...), w_(w), h_(h) {}
   template <typename... Ts>
     requires(std::constructible_from<TState, Ts && ...>)
@@ -427,10 +427,10 @@ public:
     return static_cast<TState const &>(*this);
   }
 };
-template <typename TWH, typename TState>
-widget_render_args(TWH, TWH, TState &&)
-    -> widget_render_args<TWH, std::remove_cvref_t<TState>>;
-template <typename TWH> widget_render_args(TWH, TWH) -> widget_render_args<TWH>;
+template <typename TW, typename TH, typename TState>
+widget_render_args(TW, TH, TState &&)
+    -> widget_render_args<std::common_type_t<TW, TH>, std::remove_cvref_t<TState>>;
+template <typename TW, typename TH> widget_render_args(TW, TH) -> widget_render_args<std::common_type_t<TW, TH>>;
 template <bounding_box B, typename TState>
 widget_render_args(B const &, TState &&)
     -> widget_render_args<
@@ -439,7 +439,9 @@ widget_render_args(B const &, TState &&)
 
 template <typename T>
 concept canvas = requires(T const &tc) {
-  { call::area(tc) } -> bounding_box;
+  { call::pixel_area(tc) } -> pixel_rect;
+  { call::point_area(tc) } -> point_rect;
+  { call::pixel_scale(tc) } -> pixelpoint_scale;
 };
 
 template <typename T, typename TR, typename... Ts>
@@ -448,12 +450,13 @@ concept has_render = call::impl::has_render<T, TR, Ts...>;
 constexpr auto center(bounding_box auto const &b) {
   auto tl = call::top_left(b);
   auto br = call::bottom_right(b);
-  return default_pixel_coord{(x_of(br) - x_of(tl)) / 2,
+  return default_coordinate{(x_of(br) - x_of(tl)) / 2,
                              (y_of(br) - y_of(tl)) / 2};
 }
 
 struct dummy_canvas {
-  constexpr default_rect area() const { return {}; }
+  constexpr default_pixel_rect area() const { return {}; }
+  static constexpr int pixel_scale() { return 1; }
 };
 
 struct dummy_renderer {

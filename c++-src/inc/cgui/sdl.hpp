@@ -31,7 +31,10 @@ template <typename T, typename ValT> struct sdl_rect_extend_api {
   static constexpr auto &&height(bp::cvref_type<T> auto &&r) {
     return std::forward<decltype(r)>(r).h;
   }
-  static constexpr T from_xywh(auto x, auto y, auto w, auto h) {
+  static constexpr T from_xywh(std::convertible_to<ValT> auto x,
+                               std::convertible_to<ValT> auto y,
+                               std::convertible_to<ValT> auto w,
+                               std::convertible_to<ValT> auto h) {
     return {static_cast<ValT>(x), static_cast<ValT>(y), static_cast<ValT>(w),
             static_cast<ValT>(h)};
   }
@@ -142,6 +145,11 @@ class sdl_canvas {
   constexpr SDL_Texture *texture() const { return t_.first_value(); }
   constexpr SDL_Texture *tmp_texture() const { return t2_.first_value(); }
 
+  constexpr auto pixel_scale() const {
+    // return SDL_GetWindowDisplayScale(w_);
+    return 1.f;
+  }
+
 public:
   // TODO: The canvas must have it's own intermediate texture if we are to only
   // re-render parts of the GUI. Create it and update it... We may need to think
@@ -155,10 +163,11 @@ public:
     SDL_RenderClear(r_);
   }
 
-  template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+  //template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+  template <typename... Args, typename UI>
   inline auto render_to(UI &&ui, Args &&...args);
 
-  [[nodiscard]] SDL_Rect area() const {
+  [[nodiscard]] pixel_unit_t<SDL_Rect> area() const {
     auto w = SDL_GetRenderWindow(r_);
     if (w == nullptr) [[unlikely]] {
       throw std::runtime_error(SDL_GetError());
@@ -166,8 +175,8 @@ public:
     SDL_Rect res;
     res.x = {};
     res.y = {};
-    SDL_GetWindowSize(w, &res.w, &res.h);
-    return res;
+    SDL_GetWindowSizeInPixels(w, &res.w, &res.h);
+    return pixel_unit(res);
   }
 };
 
@@ -207,9 +216,10 @@ class sdl_canvas_renderer {
     return false;
   }
 
-  static expected<void, std::string>
-  do_draw_pixels(SDL_Rect const &sdl_dest, auto const &true_dest,
-                 SDL_Texture *texture, auto &&cb) {
+  static expected<void, std::string> do_draw_pixels(SDL_Rect const &sdl_dest,
+                                                    auto const &true_dest,
+                                                    SDL_Texture *texture,
+                                                    auto &&cb) {
     void *raw_pix_void;
     int pitch_bytes;
     if (auto ec =
@@ -243,12 +253,13 @@ class sdl_canvas_renderer {
       SDL_PixelFormat::SDL_PIXELFORMAT_ABGR8888;
 
 public:
-  auto area() const { return p_->area(); }
+  auto pixel_area() const { return p_->area(); }
+  auto pixel_scale() const { return p_->pixel_scale(); }
 
   explicit sdl_canvas_renderer(sdl_canvas &parent) : p_(&parent) {
-    auto window_area = area();
+    auto window_area = pixel_area();
     bool new_texture = update_texture_sz(
-        texture_wrap(), call::width(window_area), call::height(window_area),
+        texture_wrap(), call::width(window_area).value(), call::height(window_area).value(),
         renderer(), SDL_TEXTUREACCESS_TARGET, std::equal_to{});
     if (!SDL_SetRenderTarget(renderer(), texture())) {
       throw std::runtime_error(SDL_GetError());
@@ -272,15 +283,15 @@ public:
       throw std::runtime_error(SDL_GetError());
     }
   }
-  expected<void, std::string>
-  draw_pixels(pixel_unit_t<SDL_Rect> const& dest_sz, canvas_pixel_callback auto &&cb) {
+  expected<void, std::string> draw_pixels(pixel_unit_t<SDL_Rect> const &dest_sz,
+                                          canvas_pixel_callback auto &&cb) {
     CGUI_ASSERT(box_includes_box(area(), dest_sz.value()));
-    auto const& sdl_dest = dest_sz.value();
+    auto const &sdl_dest = dest_sz.value();
     // Render to temporary texture implementation
     update_texture_sz(tmp_texture_wrap(), call::width(sdl_dest),
                       call::height(sdl_dest), renderer(),
                       SDL_TEXTUREACCESS_STREAMING, std::greater_equal{});
-    auto zero_point_pos = move_tl_to(sdl_dest, default_pixel_coord{});
+    auto zero_point_pos = move_tl_to(sdl_dest, default_coordinate{});
     if (auto ec = do_draw_pixels(zero_point_pos, sdl_dest, tmp_texture(), cb);
         !ec) {
       return ec;
@@ -294,7 +305,9 @@ public:
   }
 };
 
-template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+// TODO: Re-enable constraints
+//template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+template <typename... Args, typename UI>
 inline auto sdl_canvas::render_to(UI &&ui, Args &&...args) {
   return ui.render(sdl_canvas_renderer(*this), std::forward<Args>(args)...);
 }
@@ -334,16 +347,16 @@ public:
   [[nodiscard]] std::string &ctor_string_mut() { return s_; }
   void take_ownership(SDL_Window *w) { handle_.reset(w); }
 
-  [[nodiscard]] SDL_Rect local_area() const {
+  [[nodiscard]] point_unit_t<SDL_Rect> local_area() const {
     SDL_Rect r{};
     SDL_GetWindowSize(handle(), &r.w, &r.h);
-    return r;
+    return {{}, r};
   }
-  [[nodiscard]] SDL_Rect area() const {
+  [[nodiscard]] point_unit_t<SDL_Rect> area() const {
     SDL_Rect r;
     SDL_GetWindowSize(handle(), &r.w, &r.h);
     SDL_GetWindowPosition(handle(), &r.x, &r.y);
-    return r;
+    return {{}, r};
   }
 
   [[nodiscard]] expected<sdl_canvas, std::string> renderer() {
@@ -485,7 +498,7 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
   event_type(SDL_MouseMotionEvent const &) {
     return {};
   }
-  static constexpr basic_pixel_coord<float>
+  static constexpr basic_coordinate<float>
   position(SDL_MouseMotionEvent const &e) {
     return {e.x, e.y};
   }
@@ -503,7 +516,7 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
     return static_cast<mouse_buttons>(e.button);
   }
-  static constexpr basic_pixel_coord<float>
+  static constexpr basic_coordinate<float>
   position(SDL_MouseButtonEvent const &e) {
     return {e.x, e.y};
   }

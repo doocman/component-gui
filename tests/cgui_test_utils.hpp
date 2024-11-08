@@ -60,16 +60,16 @@ struct test_renderer {
     }
   };
 
-  point_unit_t<default_rect> a_;
+  pixel_unit_t<default_rect> a_;
   std::vector<default_colour_t> drawn_pixels;
   std::vector<default_rect> failed_calls;
-  std::vector<default_pixel_coord> failed_pixel_draws;
+  std::vector<default_coordinate> failed_pixel_draws;
 
   explicit test_renderer(default_rect a)
       : a_(a), drawn_pixels(call::width(a) * call::height(a)) {}
 
   auto &at(int x, int y) {
-    auto index = x + y * call::width(area().value());
+    auto index = x + y * call::width(pixel_area().value());
     return drawn_pixels.at(index);
   }
   auto &at(pixel_unit_t<int> x, pixel_unit_t<int> y) {
@@ -92,8 +92,7 @@ struct test_renderer {
     });
   }
 
-  point_unit_t<default_rect> area() const { return a_; }
-  default_pixel_rect pixel_area() const { return {a_, pixel_scale() }; }
+  default_pixel_rect pixel_area() const { return a_; }
 
   individual_colours_t individual_colours() const {
     return individual_colours_t(drawn_pixels);
@@ -101,6 +100,7 @@ struct test_renderer {
 
   static constexpr int pixel_scale() { return 1; }
 };
+static_assert(canvas<test_renderer>);
 
 struct mock_colourable {
   MOCK_METHOD(void, do_render, (), (const));
@@ -147,19 +147,19 @@ struct int_as_event_handler {
 };
 
 struct mock_widget {
-  default_rect a_{};
-  MOCK_METHOD(void, do_area, (default_rect const &));
+  default_point_rect a_{};
+  MOCK_METHOD(void, do_area, (default_point_rect const &));
   MOCK_METHOD(void, do_render, (), (const));
 
-  default_rect const &area() const { return a_; }
-  void area(bounding_box auto const &a) {
-    a_ = copy_box<default_rect>(a);
+  default_point_rect const &area() const { return a_; }
+  void area(point_rect auto const &a) {
+    a_ = copy_box<default_point_rect>(a);
     do_area(a_);
   }
   void render(auto &&...) const { do_render(); }
 };
 
-constexpr void click_widget(auto &w, default_pixel_coord const &pos = {},
+constexpr void click_widget(auto &w, default_point_coordinate const &pos = {},
                             auto &&...args) {
   w.handle(dummy_mouse_down_event{.pos = pos, .button_id = {}}, args...);
   w.handle(dummy_mouse_up_event{.pos = pos, .button_id = {}}, args...);

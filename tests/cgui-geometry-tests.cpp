@@ -850,8 +850,7 @@ TYPED_TEST(BoxApiFixture, ConstructXYWH) // NOLINT
 TYPED_TEST(BoxApiFixture, ConstructTLBR) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
-  auto v = box_from_tlbr<box_t>(default_pixel_coord{1, 2},
-                                default_pixel_coord{3, 4});
+  auto v = box_from_tlbr<box_t>(default_coordinate{1, 2}, default_coordinate{3, 4});
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
   EXPECT_THAT(call::l_x(v), Eq(1));
   EXPECT_THAT(call::t_y(v), Eq(2));

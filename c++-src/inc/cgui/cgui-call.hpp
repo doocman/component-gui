@@ -283,6 +283,7 @@ CGUI_CALL_CONCEPT(fill)
 CGUI_CALL_CONCEPT(advance_x)
 CGUI_CALL_CONCEPT(advance_y)
 CGUI_CALL_CONCEPT(pixel_area)
+CGUI_CALL_CONCEPT(point_area)
 CGUI_CALL_CONCEPT(full_height)
 CGUI_CALL_CONCEPT(ascender)
 CGUI_CALL_CONCEPT(base_to_top)
@@ -650,7 +651,6 @@ inline constexpr impl::_do_draw_pixels draw_pixels;
 inline constexpr impl::_do_draw_alpha draw_alpha;
 inline constexpr impl::_do_advance_x advance_x;
 inline constexpr impl::_do_advance_y advance_y;
-inline constexpr impl::_do_pixel_area pixel_area;
 inline constexpr impl::_do_full_height full_height;
 inline constexpr impl::_do_ascender ascender;
 inline constexpr impl::_do_base_to_top base_to_top;

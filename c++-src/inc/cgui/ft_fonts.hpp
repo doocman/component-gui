@@ -148,7 +148,7 @@ public:
   }
 #endif
 
-  constexpr auto base_to_top() const noexcept { return top_; }
+  constexpr auto base_to_top() const noexcept { return pixel_unit(top_); }
 
   constexpr expected<void, FT_Error> render(renderer auto &&rend) const {
 #if CGUI_USE_BM_GLYPH
@@ -167,8 +167,7 @@ public:
                      [&] (pixel_unit_t<default_rect> const &b, auto &&px_rend) {
                        for (auto y : cgui::y_view(b.value())) {
                          for (auto x : cgui::x_view(b.value())) {
-                           px_rend(pixel_unit(
-                                       default_pixel_coord{static_cast<int>(x), static_cast<int>(y)}),
+                           px_rend(pixel_unit(default_coordinate{static_cast<int>(x), static_cast<int>(y)}),
                                    bitmap.buffer[y * bitmap.pitch + x]);
                          }
                        }
@@ -191,14 +190,14 @@ public:
   }
 
 #if CGUI_USE_BM_GLYPH
-  constexpr auto advance_x() const { return g_->advance.x >> 16; }
-  constexpr auto advance_y() const { return g_->advance.y >> 16; }
+  constexpr auto advance_x() const { return pixel_unit(g_->advance.x >> 16); }
+  constexpr auto advance_y() const { return pixel_unit(g_->advance.y >> 16); }
   constexpr FT_Glyph handle() const noexcept { return glyph(); }
 
-  [[nodiscard]] FT_BBox pixel_area() const noexcept {
+  [[nodiscard]] pixel_unit_t<FT_BBox> pixel_area() const noexcept {
     FT_BBox b;
     FT_Glyph_Get_CBox(handle(), ft_glyph_bbox_pixels, &b);
-    return b;
+    return {{}, b};
   }
 #else
   [[nodiscard]] constexpr auto advance_x() const { return adv_x; }

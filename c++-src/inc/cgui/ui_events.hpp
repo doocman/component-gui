@@ -28,21 +28,21 @@ template <ui_events> struct ui_event_constraints {
 template <> struct ui_event_constraints<ui_events::mouse_button_down> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> pixel_coord;
+    { call::position(t) } -> point_coordinate;
     call::mouse_button(t);
   };
 };
 template <> struct ui_event_constraints<ui_events::mouse_button_up> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> pixel_coord;
+    { call::position(t) } -> point_coordinate;
     call::mouse_button(t);
   };
 };
 template <> struct ui_event_constraints<ui_events::mouse_move> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> pixel_coord;
+    { call::position(t) } -> point_coordinate;
   };
 };
 template <> struct ui_event_constraints<ui_events::window_resized> {
@@ -161,18 +161,18 @@ constexpr subset_ui_events<tEvt> event_type(dummy_event<tEvt> const &) {
 template <> struct dummy_event<ui_events::system> {};
 template <> struct dummy_event<ui_events::mouse_exit> {};
 template <> struct dummy_event<ui_events::mouse_move> {
-  default_pixel_coord pos;
+  default_point_coordinate pos;
 };
 template <> struct dummy_event<ui_events::mouse_button_down> {
-  default_pixel_coord pos;
+  default_point_coordinate pos;
   mouse_buttons button_id;
 };
 template <> struct dummy_event<ui_events::mouse_button_up> {
-  default_pixel_coord pos;
+  default_point_coordinate pos;
   mouse_buttons button_id;
 };
 template <> struct dummy_event<ui_events::window_resized> {
-  default_size_wh sz;
+  default_point_size_wh sz;
 };
 
 template <typename> constexpr bool is_dummy_event_v = false;

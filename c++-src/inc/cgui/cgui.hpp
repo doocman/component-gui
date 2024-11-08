@@ -85,6 +85,11 @@ template <canvas T, pixel_rect TB> class sub_renderer {
   T *c_;
   recursive_area_navigator<TB> area_;
   default_colour_t set_colour_{};
+public:
+
+  constexpr auto pixel_scale() const { return call::pixel_scale(*c_); }
+
+private:
 
   static constexpr TB bound_area(TB a) {
     if (!valid_box(a)) {
@@ -94,8 +99,6 @@ template <canvas T, pixel_rect TB> class sub_renderer {
     }
     return a;
   }
-
-  constexpr auto pixel_scale() const { return call::pixel_scale(*c_); }
 
   template <pixel_or_point_rect_basic TB2>
   constexpr auto to_pixels(TB2 const &b) const {
@@ -120,8 +123,7 @@ public:
   constexpr sub_renderer(T &c, TB a)
       : sub_renderer(c, recursive_area_navigator<TB>(a), {}) {}
   constexpr explicit sub_renderer(T &c)
-      : sub_renderer(c, convert_pixelpoint<pixel_size_tag>(
-                            call::area(c), call::pixel_scale(c))) {}
+      : sub_renderer(c, call::pixel_area(c)) {}
 
   template <pixel_or_point_rect_basic TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
@@ -174,12 +176,15 @@ public:
   constexpr void fill(pixel_or_point_rect_basic auto const &dest, colour auto const &c)
     //requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
   {
-    auto absolute_dest = to_absolute(to_relative_dest(dest));
+    auto absolute_dest = to_absolute(to_relative_dest(convert_pixelpoint<pixel_size_tag>(dest, pixel_scale())));
     if (empty_box(absolute_dest)) { return; }
+    //call::fill(*c_, absolute_dest, c);
     if constexpr(has_native_fill<decltype(*c_), decltype(absolute_dest), decltype(c)>) {
       call::fill(*c_, absolute_dest, c);
     } else {
-      call::fill(*c_, to_pixels(absolute_dest), c);
+      //call::draw_pixels(*this, absolute_dest, fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
+      draw_pixels(absolute_dest, fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
+      //::cgui::fill(*this, absolute_dest, c);
     }
   }
 
@@ -208,7 +213,7 @@ template <typename T, typename TB> sub_renderer(T &, TB) -> sub_renderer<T, TB>;
 template <typename T>
 sub_renderer(T &t)
     -> sub_renderer<
-        T, convert_pixelpoint_t<pixel_size_tag, decltype(call::area(t))>>;
+        T, std::remove_cvref_t<decltype(call::pixel_area(t))>>;
 
 template <point_rect TArea = point_unit_t<default_rect>>
 class basic_widget_back_propagater {
@@ -754,7 +759,7 @@ template <font_face TFont> class text_renderer {
     glyph_t g;
   };
   struct newline_entry {
-    int length{};
+    pixel_unit_t<int> length{};
   };
 
   using token_t = std::variant<newline_entry, glyph_entry>;
@@ -773,14 +778,17 @@ public:
   constexpr explicit text_renderer(std::in_place_type_t<TFont>, TU &&...f)
       : f_(std::forward<TU>(f)...) {}
 
-  constexpr text_renderer &set_displayed(bounding_box auto const &area,
+  [[deprecated]] constexpr text_renderer &set_displayed(pixel_rect auto const &area,
                                          std::string_view t) {
     return set_displayed(call::width(area), call::height(area), t);
   }
+  [[deprecated]] constexpr text_renderer &set_displayed(point_rect auto const& area, std::string_view t) {
+    return set_displayed(pixel_unit(area.value()), t);
+  }
 
   constexpr void assert_displayed() {
-    long long cur_len = -1;
-    long long measured_len{};
+    pixel_unit_t<long long> cur_len = {{}, -1};
+    pixel_unit_t<long long> measured_len{};
     long long measured_lines{};
     for (auto &tv : tokens_) {
       std::visit(
@@ -789,11 +797,11 @@ public:
               measured_len += call::advance_x(t.g);
               CGUI_ASSERT(cur_len >= measured_len);
             } else {
-              if (cur_len != -1) {
+              if (cur_len != pixel_unit(-1)) {
                 CGUI_ASSERT(cur_len == measured_len);
               }
               cur_len = t.length;
-              measured_len = 0;
+              measured_len = {};
               ++measured_lines;
             }
           },
@@ -802,7 +810,7 @@ public:
     CGUI_ASSERT(measured_lines == line_count_);
   }
 
-  constexpr text_renderer &set_displayed(int w, int, std::string_view t) {
+  [[deprecated]] constexpr text_renderer &set_displayed(pixel_unit_t<int> w, pixel_unit_t<int>, std::string_view t) {
     using iterator_t = decltype(tokens_.begin());
     tokens_.clear();
     text_.assign(t);
@@ -842,8 +850,8 @@ public:
     };
     add_line();
     std::size_t last_ws{};
-    int last_ws_length{};
-    int last_ws_size{};
+    auto last_ws_length = pixel_unit_t<int>();
+    auto last_ws_size = pixel_unit_t<int>();
     for (auto const &c : t) {
       if (c == 'd') {
         unused(c);
@@ -851,8 +859,8 @@ public:
       if (c == '\n') {
         add_line();
       } else if (auto gexp = call::glyph(f_, c)) {
-        auto gbox = call::pixel_area(*gexp);
-        auto gl_adv = call::advance_x(*gexp);
+        is_pixel_sized auto gbox = call::pixel_area(*gexp);
+        is_pixel_sized auto gl_adv = call::advance_x(*gexp);
         using int_t =
             std::common_type_t<decltype(call::width(gbox)), decltype(gl_adv)>;
         auto gl_w = std::max<int_t>(call::width(gbox), gl_adv);
@@ -871,7 +879,7 @@ public:
               } else {
                 using namespace std::views;
                 decltype(tokens_.begin()) dash_pos_native;
-                auto acc_width = 0;
+                auto acc_width = pixel_unit(0);
                 {
                   auto rev_toks = reverse(tokens_);
                   auto dash_pos = rev_toks.begin();
@@ -923,7 +931,7 @@ public:
             set_line(last_ws).length = length_left;
           }
           last_ws = 0;
-          last_ws_size = 0;
+          last_ws_size = {};
         }
         if (add_token) {
           if (c == ' ') {
@@ -951,8 +959,8 @@ public:
                         fh, count = line_count_](newline_entry nl) mutable {
       auto t_y = (base_y2 - fh * count) / 2;
       count -= 2;
-      auto x = (w.value() - nl.length) / 2;
-      return box_from_xywh<default_rect>(x, t_y, nl.length, fh);
+      auto x = (w - nl.length) / 2;
+      return box_from_xywh<default_pixel_rect>(x, t_y, nl.length, fh);
     };
     decltype(do_new_area(newline_entry{})) area;
     for (auto const &t : tokens_) {
@@ -1236,7 +1244,6 @@ public:
     }
     if constexpr (can_be_event<mouse_move, evt_t>()) {
       if (is_event<mouse_move>(evt)) {
-        // do_stuff;
         auto is_now_inside = hit_box(area, call::position(evt));
         if (is_now_inside != mouse_inside_) {
           if (mouse_inside_) {
@@ -1671,7 +1678,7 @@ concept can_trigger =
     has_handle<T, trigger_on, BP &&> && has_handle<T, trigger_off, BP &&>;
 
 template <typename T, typename TRender = dummy_renderer,
-          typename Position = default_pixel_coord,
+          typename Position = default_coordinate,
           typename BP =
               basic_widget_back_propagater<point_unit_t<default_rect>>>
 concept element =
