@@ -270,9 +270,12 @@ public:
     SDL_SetRenderTarget(renderer(), nullptr);
     SDL_RenderTexture(renderer(), texture(), nullptr, nullptr);
   }
-  void fill(pixel_rect auto const &b, colour auto const &c) {
-    CGUI_ASSERT(box_includes_box(pixel_area(), b));
-    decltype(auto) sdlb = copy_box<SDL_FRect>(b.value());
+  void fill(pixel_rect auto const &bin, colour auto const &c) {
+    auto px_area = pixel_area();
+    auto sdlb = box_intersection<SDL_FRect>(bin.value(), px_area.value());
+    CGUI_ASSERT(valid_box(sdlb));
+    // CGUI_ASSERT(box_includes_box(px_area, b));
+    // decltype(auto) sdlb = copy_box<SDL_FRect>(b.value());
     SDL_SetRenderDrawColor(renderer(), call::red(c), call::green(c),
                            call::blue(c), call::alpha(c));
     if (!SDL_RenderFillRect(renderer(), &sdlb)) {
@@ -556,7 +559,6 @@ template <> struct extend_api<SDL_WindowEvent> {
   }
   static default_point_size_wh size_of(SDL_WindowEvent const &e) {
     return scaled_point<default_point_size_wh>(e.data1, e.data2, e.windowID);
-    ;
   }
 };
 } // namespace cgui

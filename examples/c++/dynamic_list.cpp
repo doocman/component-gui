@@ -37,25 +37,19 @@ int main(int argc, char **argv) {
     bool do_exit{};
     auto renderer = main_window.renderer().value();
 
-    // TODO: Remove these two variables by adding sensible logic into the gui
-    cgui::point_unit_t<int> win_width{};
+    // TODO: Remove this variables by adding sensible logic into the gui
     bool rerender_all{};
     // TODO: Fix render-beyond-borders bug for button list.
 
     auto gui =
         cgui::gui_context_builder()
-            .on_resize([&win_width](auto &&sz, auto &&ws) {
-              win_width = cgui::call::width(sz);
+            .on_resize([](auto &&sz, auto &&ws) {
               auto &[w, end_button] = ws;
               auto full_area = cgui::box_from_xywh<cgui::default_point_rect>(
                   0, 0, cgui::call::width(sz), cgui::call::height(sz));
-              // TODO: 240 should be lesser, but we need to define it in
-              // "points" rather than pixels.
-              auto //
-              //cgui::point_unit_t<SDL_Rect> //
-                  button_area = cgui::trim_from_below(
-                  &full_area, std::min(cgui::point_unit(240), cgui::call::height(full_area)));
-              //cgui::call::area(end_button, button_area);
+              auto button_area = cgui::trim_from_below(
+                  &full_area, std::min(cgui::point_unit(120),
+                                       cgui::call::height(full_area)));
               end_button.area(button_area);
               cgui::call::area(w, full_area);
             })
@@ -80,12 +74,11 @@ int main(int argc, char **argv) {
                     .build())
             .build(full_area);
     auto &[list, end_button] = gui.widgets();
-    list.event_component().mutate_elements([argc, argv, &full_area, &end_button,
-                                            &win_width,
-                                            &rerender_all, &renderer](auto &elements) {
+    list.event_component().mutate_elements([argc, argv, &end_button,
+
+                                            &rerender_all](auto &elements) {
       auto prototype = elements.display_prototype();
       auto &[background, textr] = prototype;
-      // using enum cgui::radio_button::element_state;
       using enum cgui::toggle_button_states;
       get<relaxed_off>(background).colour() = {100, 40, 40, 255};
       get<relaxed_on>(background).colour() = {40, 40, 100, 255};
@@ -95,20 +88,18 @@ int main(int argc, char **argv) {
       get<hold_on>(background).colour() = {10, 10, 80, 255};
       textr.text_colour({255, 255, 255, 255});
       decltype(auto) f_prototype = elements.function_prototype();
-      auto display_creator = [&prototype, &full_area, &f_prototype, &end_button,
-                              &win_width, &rerender_all, &renderer,
+      auto display_creator = [&prototype, &f_prototype, &end_button,
+                              &rerender_all,
                               &dest = elements.list()](std::string_view text) {
         auto disp = prototype;
-        std::get<1>(disp).set_displayed(full_area, text);
+        std::get<1>(disp).set_text(text);
         auto f = f_prototype;
         f.get(cgui::radio_button::trigger_on{}) =
-            [&end_button, &win_width, &rerender_all, &renderer,
+            [&end_button, &rerender_all,
              ftext = fmt::format("End program (last button clicked was {})",
                                  text)] {
               auto &[textrenderer] = end_button.displays();
-              textrenderer.set_displayed(cgui::convert_pixelpoint<cgui::pixel_size_tag>(win_width, cgui::call::pixel_scale(
-                                                                                                       renderer
-                                                                                                       )), cgui::pixel_unit_t<int>(), ftext);
+              textrenderer.set_text(ftext);
               rerender_all = true;
             };
         dest.emplace_back(std::move(disp), std::move(f));
@@ -124,7 +115,7 @@ int main(int argc, char **argv) {
     {
       auto &[etxt] = end_button.displays();
       etxt.text_colour({255, 255, 255, 255});
-      etxt.set_displayed(cgui::convert_pixelpoint<cgui::pixel_size_tag>(win_width, cgui::call::pixel_scale(renderer)), cgui::pixel_unit(0), "End program");
+      etxt.set_text("End program");
     }
 
     // gui.render(renderer);
@@ -155,19 +146,20 @@ int main(int argc, char **argv) {
       if (rerender_all) {
         renderer.clear();
         renderer.render_to(gui);
-        renderer.present();
       } else if (!cgui::empty_box(to_rerender)) {
         renderer.clear();
         renderer.render_to(gui, to_rerender);
-        renderer.present();
       }
       auto post_render = steady_clock::now();
+      renderer.present();
+      auto post_present = steady_clock::now();
       if (print_time_info_counter == fps) {
         print_time_info_counter = 0;
         auto event_time = pre_render - start_tp;
         auto render_time = post_render - pre_render;
-        fmt::print("Event time: {}. render time: {}\n", event_time,
-                   render_time);
+        auto present_time = post_present - post_render;
+        fmt::print("Event time: {}. render time: {}. present time: {}\n",
+                   event_time, render_time, present_time);
       }
       ++print_time_info_counter;
       std::this_thread::sleep_until(next_run);

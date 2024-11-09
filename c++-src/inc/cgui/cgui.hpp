@@ -778,30 +778,14 @@ template <font_face TFont> class text_renderer {
 
   using token_t = std::variant<newline_entry, glyph_entry>;
   TFont f_;
-  std::vector<token_t> tokens_;
   std::string text_;
-  int line_count_{};
   default_colour_t colour_{255, 255, 255, 255};
+  // cached for faster rendering.
+  std::vector<token_t> mutable tokens_;
+  pixel_unit_t<int> mutable last_sz_{};
+  int mutable line_count_{};
 
-public:
-  template <typename... TU>
-    requires(std::constructible_from<TFont, TU && ...>)
-  constexpr explicit text_renderer(TU &&...f) : f_(std::forward<TU>(f)...) {}
-  template <typename... TU>
-    requires(std::constructible_from<TFont, TU && ...>)
-  constexpr explicit text_renderer(std::in_place_type_t<TFont>, TU &&...f)
-      : f_(std::forward<TU>(f)...) {}
-
-  [[deprecated]] constexpr text_renderer &
-  set_displayed(pixel_rect auto const &area, std::string_view t) {
-    return set_displayed(call::width(area), call::height(area), t);
-  }
-  [[deprecated]] constexpr text_renderer &
-  set_displayed(point_rect auto const &area, std::string_view t) {
-    return set_displayed(pixel_unit(area.value()), t);
-  }
-
-  constexpr void assert_displayed() {
+  constexpr void assert_displayed() const {
     pixel_unit_t<long long> cur_len = {{}, -1};
     pixel_unit_t<long long> measured_len{};
     long long measured_lines{};
@@ -825,14 +809,14 @@ public:
     CGUI_ASSERT(measured_lines == line_count_);
   }
 
-  [[deprecated]] constexpr text_renderer &
-  set_displayed(pixel_unit_t<int> w, pixel_unit_t<int>, std::string_view t) {
+  constexpr void reset_glyphs() const {
     using iterator_t = decltype(tokens_.begin());
+    auto const &t = text_;
+    auto const &w = last_sz_;
     tokens_.clear();
-    text_.assign(t);
     line_count_ = 0;
-    if (size(t) == 0) {
-      return *this;
+    if (size(text_) == 0) {
+      return;
     }
     tokens_.reserve(std::ranges::ssize(t) +
                     1); // This may be slightly less than actual used depending
@@ -962,12 +946,35 @@ public:
       unused(c);
     }
     assert_displayed();
+  }
+
+public:
+  template <typename... TU>
+    requires(std::constructible_from<TFont, TU && ...>)
+  constexpr explicit text_renderer(TU &&...f) : f_(std::forward<TU>(f)...) {}
+  template <typename... TU>
+    requires(std::constructible_from<TFont, TU && ...>)
+  constexpr explicit text_renderer(std::in_place_type_t<TFont>, TU &&...f)
+      : f_(std::forward<TU>(f)...) {}
+
+  constexpr text_renderer &set_text(std::string_view t) {
+    text_.assign(t);
     return *this;
   }
+
   constexpr void render(auto &&rorg, render_args auto &&args) const
     requires(has_render<glyph_t, decltype(rorg)>)
   {
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
+    if (empty(text_)) {
+      return;
+    }
+    auto new_w = convert_pixelpoint<pixel_size_tag>(call::width(args),
+                                                    call::pixel_scale(rorg));
+    if (empty(tokens_) || new_w != last_sz_) {
+      last_sz_ = new_w;
+      reset_glyphs();
+    }
     auto fh = call::full_height(f_);
     auto do_new_area = [w = convert_pixelpoint<pixel_size_tag>(
                             call::width(args), rorg.pixel_scale()),
