@@ -37,10 +37,8 @@ int main(int argc, char **argv) {
     bool do_exit{};
     auto renderer = main_window.renderer().value();
 
-    using area_t = decltype(full_area);
-
     // TODO: Remove these two variables by adding sensible logic into the gui
-    int win_width{};
+    cgui::point_unit_t<int> win_width{};
     bool rerender_all{};
     // TODO: Fix render-beyond-borders bug for button list.
 
@@ -49,13 +47,16 @@ int main(int argc, char **argv) {
             .on_resize([&win_width](auto &&sz, auto &&ws) {
               win_width = cgui::call::width(sz);
               auto &[w, end_button] = ws;
-              auto full_area = cgui::box_from_xywh<area_t>(
+              auto full_area = cgui::box_from_xywh<cgui::default_point_rect>(
                   0, 0, cgui::call::width(sz), cgui::call::height(sz));
               // TODO: 240 should be lesser, but we need to define it in
               // "points" rather than pixels.
-              auto button_area = cgui::trim_from_below(
-                  &full_area, std::min(240, cgui::call::height(full_area)));
-              cgui::call::area(end_button, button_area);
+              auto //
+              //cgui::point_unit_t<SDL_Rect> //
+                  button_area = cgui::trim_from_below(
+                  &full_area, std::min(cgui::point_unit(240), cgui::call::height(full_area)));
+              //cgui::call::area(end_button, button_area);
+              end_button.area(button_area);
               cgui::call::area(w, full_area);
             })
             .widgets(
@@ -81,7 +82,7 @@ int main(int argc, char **argv) {
     auto &[list, end_button] = gui.widgets();
     list.event_component().mutate_elements([argc, argv, &full_area, &end_button,
                                             &win_width,
-                                            &rerender_all](auto &elements) {
+                                            &rerender_all, &renderer](auto &elements) {
       auto prototype = elements.display_prototype();
       auto &[background, textr] = prototype;
       // using enum cgui::radio_button::element_state;
@@ -95,17 +96,19 @@ int main(int argc, char **argv) {
       textr.text_colour({255, 255, 255, 255});
       decltype(auto) f_prototype = elements.function_prototype();
       auto display_creator = [&prototype, &full_area, &f_prototype, &end_button,
-                              &win_width, &rerender_all,
+                              &win_width, &rerender_all, &renderer,
                               &dest = elements.list()](std::string_view text) {
         auto disp = prototype;
         std::get<1>(disp).set_displayed(full_area, text);
         auto f = f_prototype;
         f.get(cgui::radio_button::trigger_on{}) =
-            [&end_button, &win_width, &rerender_all,
+            [&end_button, &win_width, &rerender_all, &renderer,
              ftext = fmt::format("End program (last button clicked was {})",
                                  text)] {
               auto &[textrenderer] = end_button.displays();
-              textrenderer.set_displayed(win_width, 0, ftext);
+              textrenderer.set_displayed(cgui::convert_pixelpoint<cgui::pixel_size_tag>(win_width, cgui::call::pixel_scale(
+                                                                                                       renderer
+                                                                                                       )), cgui::pixel_unit_t<int>(), ftext);
               rerender_all = true;
             };
         dest.emplace_back(std::move(disp), std::move(f));
@@ -121,7 +124,7 @@ int main(int argc, char **argv) {
     {
       auto &[etxt] = end_button.displays();
       etxt.text_colour({255, 255, 255, 255});
-      etxt.set_displayed(win_width, {}, "End program");
+      etxt.set_displayed(cgui::convert_pixelpoint<cgui::pixel_size_tag>(win_width, cgui::call::pixel_scale(renderer)), cgui::pixel_unit(0), "End program");
     }
 
     // gui.render(renderer);
@@ -135,7 +138,7 @@ int main(int argc, char **argv) {
     auto next_run = steady_clock::now() + run_interval;
     int print_time_info_counter = 0;
     while (!do_exit) {
-      SDL_Rect to_rerender{};
+      cgui::point_unit_t<SDL_Rect> to_rerender{};
       auto start_tp = steady_clock::now();
       while (cgui::poll_event(sdl_context, [&]<typename T>(T e) {
                if constexpr (std::is_same_v<T, cgui::sdl_quit_event>) {

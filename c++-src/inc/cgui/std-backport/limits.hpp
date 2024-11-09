@@ -45,7 +45,7 @@ struct default_init_valued_t {
   /// @tparam T Type which must satisfy _has_numeric_limits_minmax.
   /// @return Zero-valued T.
   template <typename T>
-  requires(std::is_default_constructible_v<T>)
+    requires(std::is_default_constructible_v<T>)
   constexpr operator T() const noexcept {
     return T{};
   }
@@ -55,7 +55,8 @@ struct default_init_valued_t {
 /// \tparam T
 template <typename T>
 concept is_low_high_placeholder =
-    cvref_type<T, lowest_possible_t> || cvref_type<T, highest_possible_t> || cvref_type<T, default_init_valued_t>;
+    cvref_type<T, lowest_possible_t> || cvref_type<T, highest_possible_t> ||
+    cvref_type<T, default_init_valued_t>;
 
 /// Checks that T is a placeholder and U has the numeric_limits that the
 /// placeholder can convert to.
@@ -63,7 +64,8 @@ concept is_low_high_placeholder =
 /// \tparam U
 template <typename T, typename U>
 concept low_high_operand =
-    is_low_high_placeholder<T> && std::convertible_to<T, U>;//_has_numeric_limits_minmax<U>;
+    is_low_high_placeholder<T> &&
+    std::convertible_to<T, U>; //_has_numeric_limits_minmax<U>;
 
 /// Equality operator for placeholder (right)
 /// \tparam LT
@@ -120,16 +122,16 @@ inline constexpr default_init_valued_t default_init_valued;
 } // namespace cgui::bp
 
 namespace std {
-#define CGUI_GEN_BP_COMMON_TYPE_(X) \
-template <typename U>\
-  requires(std::convertible_to<::cgui::bp::X, U>)\
-struct common_type<::cgui::bp::X, U> {\
-  using type = U;\
-};
+#define CGUI_GEN_BP_COMMON_TYPE_(X)                                            \
+  template <typename U>                                                        \
+    requires(std::convertible_to<::cgui::bp::X, U>)                            \
+  struct common_type<::cgui::bp::X, U> {                                       \
+    using type = U;                                                            \
+  };
 CGUI_GEN_BP_COMMON_TYPE_(lowest_possible_t)
 CGUI_GEN_BP_COMMON_TYPE_(highest_possible_t)
 CGUI_GEN_BP_COMMON_TYPE_(default_init_valued_t)
 #undef CGUI_GEN_BP_COMMON_TYPE_
-}
+} // namespace std
 
 #endif // COMPONENT_GUI_LIMITS_HPP

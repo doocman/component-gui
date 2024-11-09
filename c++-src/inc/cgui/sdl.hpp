@@ -145,12 +145,12 @@ class sdl_canvas {
   constexpr SDL_Texture *texture() const { return t_.first_value(); }
   constexpr SDL_Texture *tmp_texture() const { return t2_.first_value(); }
 
+public:
   constexpr auto pixel_scale() const {
     // return SDL_GetWindowDisplayScale(w_);
     return 1.f;
   }
 
-public:
   // TODO: The canvas must have it's own intermediate texture if we are to only
   // re-render parts of the GUI. Create it and update it... We may need to think
   // about the API here.
@@ -163,7 +163,7 @@ public:
     SDL_RenderClear(r_);
   }
 
-  //template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+  // template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
   template <typename... Args, typename UI>
   inline auto render_to(UI &&ui, Args &&...args);
 
@@ -236,10 +236,10 @@ class sdl_canvas_renderer {
 
     cb([raw_pixels, pitch, &true_dest,
         backstep = call::l_x(true_dest) + call::t_y(true_dest) * pitch_bytes /
-                                              4](pixel_coord auto &&coord,
+                                              4](pixel_coordinate auto &&coord,
                                                  colour auto &&c) {
-      auto x = call::x_of(coord);
-      auto y = call::y_of(coord);
+      auto x = call::x_of(coord.value());
+      auto y = call::y_of(coord.value());
       auto index = x + y * pitch - backstep;
       CGUI_ASSERT(index >= 0);
       CGUI_ASSERT(index <= call::height(true_dest) * pitch);
@@ -258,9 +258,10 @@ public:
 
   explicit sdl_canvas_renderer(sdl_canvas &parent) : p_(&parent) {
     auto window_area = pixel_area();
-    bool new_texture = update_texture_sz(
-        texture_wrap(), call::width(window_area).value(), call::height(window_area).value(),
-        renderer(), SDL_TEXTUREACCESS_TARGET, std::equal_to{});
+    bool new_texture =
+        update_texture_sz(texture_wrap(), call::width(window_area).value(),
+                          call::height(window_area).value(), renderer(),
+                          SDL_TEXTUREACCESS_TARGET, std::equal_to{});
     if (!SDL_SetRenderTarget(renderer(), texture())) {
       throw std::runtime_error(SDL_GetError());
     }
@@ -274,9 +275,9 @@ public:
     SDL_SetRenderTarget(renderer(), nullptr);
     SDL_RenderTexture(renderer(), texture(), nullptr, nullptr);
   }
-  void fill(bounding_box auto const &b, colour auto const &c) {
-    CGUI_ASSERT(box_includes_box(area(), b));
-    decltype(auto) sdlb = copy_box<SDL_FRect>(b);
+  void fill(pixel_rect auto const &b, colour auto const &c) {
+    CGUI_ASSERT(box_includes_box(pixel_area(), b));
+    decltype(auto) sdlb = copy_box<SDL_FRect>(b.value());
     SDL_SetRenderDrawColor(renderer(), call::red(c), call::green(c),
                            call::blue(c), call::alpha(c));
     if (!SDL_RenderFillRect(renderer(), &sdlb)) {
@@ -285,7 +286,7 @@ public:
   }
   expected<void, std::string> draw_pixels(pixel_unit_t<SDL_Rect> const &dest_sz,
                                           canvas_pixel_callback auto &&cb) {
-    CGUI_ASSERT(box_includes_box(area(), dest_sz.value()));
+    CGUI_ASSERT(box_includes_box(pixel_area(), dest_sz));
     auto const &sdl_dest = dest_sz.value();
     // Render to temporary texture implementation
     update_texture_sz(tmp_texture_wrap(), call::width(sdl_dest),
@@ -306,7 +307,7 @@ public:
 };
 
 // TODO: Re-enable constraints
-//template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
+// template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
 template <typename... Args, typename UI>
 inline auto sdl_canvas::render_to(UI &&ui, Args &&...args) {
   return ui.render(sdl_canvas_renderer(*this), std::forward<Args>(args)...);
@@ -498,7 +499,7 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
   event_type(SDL_MouseMotionEvent const &) {
     return {};
   }
-  static constexpr basic_coordinate<float>
+  static constexpr point_unit_t<basic_coordinate<float>>
   position(SDL_MouseMotionEvent const &e) {
     return {e.x, e.y};
   }
@@ -516,7 +517,7 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
     return static_cast<mouse_buttons>(e.button);
   }
-  static constexpr basic_coordinate<float>
+  static constexpr point_unit_t<basic_coordinate<float>>
   position(SDL_MouseButtonEvent const &e) {
     return {e.x, e.y};
   }
@@ -528,7 +529,7 @@ template <> struct extend_api<SDL_WindowEvent> {
     return e.type == SDL_EVENT_WINDOW_RESIZED ? ui_events::window_resized
                                               : ui_events::system;
   }
-  static constexpr default_size_wh size_of(SDL_WindowEvent const &e) {
+  static constexpr default_point_size_wh size_of(SDL_WindowEvent const &e) {
     return {e.data1, e.data2};
   }
 };

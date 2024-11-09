@@ -55,13 +55,13 @@ TEST(RecursiveAreaNavigator, Nudger) // NOLINT
 TEST(SubRenderer, DrawPixels) // NOLINT
 {
   auto r = test_renderer({{0, 0}, {6, 7}});
-  auto sr1 = sub_renderer(r, r.area());
-  sr1.draw_pixels(r.area(),
+  auto sr1 = sub_renderer(r, call::pixel_area(r));
+  sr1.draw_pixels(call::pixel_area(r),
                   [&](bounding_box auto &&b, auto &&drawer) {
                     EXPECT_THAT(call::l_x(b).value(), Eq(0));
                     EXPECT_THAT(call::t_y(b).value(), Eq(0));
-                    EXPECT_THAT(call::width(b), Eq(call::width(r.area())));
-                    EXPECT_THAT(call::height(b), Eq(call::height(r.area())));
+                    EXPECT_THAT(call::width(b), Eq(call::width(call::pixel_area(r))));
+                    EXPECT_THAT(call::height(b), Eq(call::height(call::pixel_area(r))));
                     drawer(pixel_unit(default_coordinate{}), default_colour_t{1, 1, 1, 1});
                   });
   EXPECT_THAT(r.failed_calls, ElementsAre());
@@ -112,7 +112,7 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
 {
   auto r = test_renderer({{0, 0}, {4, 4}});
   auto s1 = sub_renderer(r, box_from_xyxy<default_pixel_rect>(1, 2, 3, 3));
-  s1.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+  s1.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
     EXPECT_THAT(call::l_x(b).value(), Eq(1));
     EXPECT_THAT(call::t_y(b).value(), Eq(2));
     EXPECT_THAT(call::r_x(b).value(), Eq(3));
@@ -148,8 +148,8 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
                             0, 0, 0, 0    //
                             ));
 
-  auto s2full = s1.sub(r.area());
-  s2full.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+  auto s2full = s1.sub(call::pixel_area(r));
+  s2full.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
     EXPECT_THAT(call::l_x(b).value(), Eq(1));
     EXPECT_THAT(call::t_y(b).value(), Eq(2));
     EXPECT_THAT(call::r_x(b).value(), Eq(3));
@@ -167,7 +167,7 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
                           ));
 
   auto s2xid = s2full.sub(box_from_xyxy<default_pixel_rect>(1, 0, 3, 4));
-  s2xid.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+  s2xid.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
     EXPECT_THAT(call::l_x(b).value(), Eq(0));
     EXPECT_THAT(call::t_y(b).value(), Eq(2));
     EXPECT_THAT(call::r_x(b).value(), Eq(2));
@@ -185,7 +185,7 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
                           ));
 
   auto s3x = s2xid.sub(box_from_xyxy<default_pixel_rect>(1, 0, 3, 4));
-  s3x.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+  s3x.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
     EXPECT_THAT(call::l_x(b).value(), Eq(0));
     EXPECT_THAT(call::t_y(b).value(), Eq(2));
     EXPECT_THAT(call::r_x(b).value(), Eq(1));
@@ -203,7 +203,7 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
                           ));
 
   auto s4 = s2full.sub(box_from_xyxy<default_pixel_rect>(2, 2, 4, 4));
-  s4.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+  s4.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
     EXPECT_THAT(call::l_x(b).value(), Eq(0));
     EXPECT_THAT(call::t_y(b).value(), Eq(0));
     EXPECT_THAT(call::r_x(b).value(), Eq(1));
@@ -224,9 +224,9 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
 TEST(SubRender, DrawPixelOutsideCanvas) // NOLINT
 {
   auto r = test_renderer({{0, 0}, {4, 4}});
-  auto s_main = sub_renderer(r, r.area());
+  auto s_main = sub_renderer(r, call::pixel_area(r));
   auto s1 = s_main.sub(box_from_xyxy<default_pixel_rect>(4, 5, 5, 6));
-  s1.draw_pixels(r.area(), [&r](bounding_box auto &&b, auto &&drawer) {
+  s1.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
     EXPECT_THAT(call::width(b).value(), Eq(0));
     EXPECT_THAT(call::height(b).value(), Eq(0));
   });

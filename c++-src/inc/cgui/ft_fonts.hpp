@@ -158,20 +158,21 @@ public:
     auto bmg = bitmap_glyph();
     auto &bitmap = bmg->bitmap;
     CGUI_ASSERT(bitmap.pitch >= 0);
-    CGUI_ASSERT(static_cast<unsigned int>(bitmap.pitch) <=
-                bitmap.width);
-    call::draw_alpha(rend,
-                     pixel_unit(default_rect{{},
-                                  {static_cast<int>(bitmap.width),
-                                   static_cast<int>(bitmap.rows)}}),
-                     [&] (pixel_unit_t<default_rect> const &b, auto &&px_rend) {
-                       for (auto y : cgui::y_view(b.value())) {
-                         for (auto x : cgui::x_view(b.value())) {
-                           px_rend(pixel_unit(default_coordinate{static_cast<int>(x), static_cast<int>(y)}),
-                                   bitmap.buffer[y * bitmap.pitch + x]);
-                         }
-                       }
-                     });
+    CGUI_ASSERT(static_cast<unsigned int>(bitmap.pitch) <= bitmap.width);
+    call::draw_alpha(
+        rend,
+        pixel_unit(default_rect{
+            {},
+            {static_cast<int>(bitmap.width), static_cast<int>(bitmap.rows)}}),
+        [&](pixel_unit_t<default_rect> const &b, auto &&px_rend) {
+          for (auto y : cgui::y_view(b.value())) {
+            for (auto x : cgui::x_view(b.value())) {
+              px_rend(pixel_unit(default_coordinate{static_cast<int>(x),
+                                                    static_cast<int>(y)}),
+                      bitmap.buffer[y * bitmap.pitch + x]);
+            }
+          }
+        });
 #else
     call::draw_alpha(
         rend,

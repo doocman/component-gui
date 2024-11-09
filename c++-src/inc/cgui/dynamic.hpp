@@ -19,10 +19,10 @@ class uni_sized_widget_list_impl
     using _ebase_t::_ebase_t;
 
     constexpr decltype(auto) display() {
-      return get<0>(static_cast<_ebase_t&>(*this));
+      return get<0>(static_cast<_ebase_t &>(*this));
     }
     constexpr decltype(auto) functions() {
-      return get<1>(static_cast<_ebase_t&>(*this));
+      return get<1>(static_cast<_ebase_t &>(*this));
     }
   };
   std::vector<raw_element_t> elements_;
@@ -32,10 +32,12 @@ class uni_sized_widget_list_impl
     return element_size_ * static_cast<int>(index);
   }
 
-  constexpr default_rect element_area(std::size_t index, auto w) const {
+  constexpr default_point_rect element_area(std::size_t index,
+                                            point_scalar auto const &w) const {
     CGUI_ASSERT(index < size(elements_));
     auto start_y = element_xy(index);
-    return {{0, start_y}, {w, start_y + element_size_}};
+    return {{},
+            default_rect{{0, start_y}, {w.value(), start_y + element_size_}}};
   }
 
   constexpr _base_t &base() { return static_cast<_base_t &>(*this); }
@@ -56,7 +58,8 @@ public:
       requires(has_handle<Functions, T, BP>)
     constexpr void handle(T &&t, BP &&b) {
       CGUI_ASSERT(index_ < size(container_->elements_));
-      call::handle(container_->elements_[index_].functions(), std::forward<T>(t), std::forward<BP>(b));
+      call::handle(container_->elements_[index_].functions(),
+                   std::forward<T>(t), std::forward<BP>(b));
     }
   };
 
@@ -85,14 +88,12 @@ public:
   constexpr auto sub_accessor(std::size_t index, auto &&) const {
     return sub_accessor(index);
   }
-  constexpr decltype(auto) display_prototype() const
-  {
+  constexpr decltype(auto) display_prototype() const {
     return this->get_first();
   }
   constexpr decltype(auto) function_prototype() const {
-    return get<1>(static_cast<_base_t const&>(*this));
+    return get<1>(static_cast<_base_t const &>(*this));
   }
-
 
   constexpr bool find_sub(std::predicate<ref_element_t, std::size_t> auto &&p,
                           std::invocable<ref_element_t, std::size_t> auto &&e) {
@@ -107,12 +108,13 @@ public:
         std::forward<decltype(p)>(p), std::forward<decltype(e)>(e));
   }
   constexpr bool
-  find_sub_at_location(pixel_coord auto &&pos,
+  find_sub_at_location(point_coordinate auto &&pos,
                        std::invocable<ref_element_t, std::size_t> auto &&e) {
     if (element_size_ == 0) {
       return false;
     }
-    auto pos_index = static_cast<std::size_t>(call::y_of(pos) / element_size_);
+    auto pos_index =
+        static_cast<std::size_t>(call::y_of(pos.value()) / element_size_);
     if (pos_index < size(elements_)) {
       std::invoke(std::forward<decltype(e)>(e), ref_element_t(*this, pos_index),
                   pos_index);
@@ -123,18 +125,22 @@ public:
   constexpr auto &list() { return elements_; }
 };
 template <typename T, typename State = widget_state_marker<int>>
-concept widget_list_constraint_c = has_render<T, dummy_renderer, widget_render_args<point_unit_t<int>, State>>;
+concept widget_list_constraint_c =
+    has_render<T, dummy_renderer, widget_render_args<point_unit_t<int>, State>>;
 
 template <typename T, typename State = widget_state_marker<int>>
-concept widget_list_builder_constraint_c = widget_list_constraint_c<T, State> || builder<T, all_states_in_marker_t<State>> && requires(bp::as_forward<T> t, all_states_in_marker_t<State> m) {
-  {call::build(*t, m) } -> widget_list_constraint_c<State>;
-};
+concept widget_list_builder_constraint_c =
+    widget_list_constraint_c<T, State> ||
+    (builder<T, all_states_in_marker_t<State>> &&
+     requires(bp::as_forward<T> t, all_states_in_marker_t<State> m) {
+       { call::build(*t, m) } -> widget_list_constraint_c<State>;
+     });
 
 template <typename State = widget_state_marker<int>>
 struct widget_list_constraint {
   template <widget_list_constraint_c<State> T>
-    /*requires(!std::is_reference_v<std::unwrap_ref_decay_t<T>> &&
-             std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>)*/
+  /*requires(!std::is_reference_v<std::unwrap_ref_decay_t<T>> &&
+           std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>)*/
   constexpr void operator()(T &&) const {}
 };
 
@@ -171,24 +177,27 @@ class uni_sized_widget_list_builder_impl
 public:
   using _base_t::_base_t;
 
-  template <typename State = widget_state_marker<int>, widget_list_builder_constraint_c<State>... T2s,
-            //typename ResG = build::args_to_group_t<
-            //    widget_list_builder_constraint<State>, T2s...>,
-            //typename ResT = uni_sized_widget_list_builder_impl<ResG, Functions> //
+  template <typename State = widget_state_marker<int>,
+            widget_list_builder_constraint_c<State>... T2s,
+            // typename ResG = build::args_to_group_t<
+            //     widget_list_builder_constraint<State>, T2s...>,
+            // typename ResT = uni_sized_widget_list_builder_impl<ResG,
+            // Functions> //
 
-            typename = void
-            >
+            typename = void>
   constexpr
-      //ResT //
+      // ResT //
       auto //
-  displays(T2s &&...ds) && {
+      displays(T2s &&...ds) && {
     static_assert(
         (std::invocable<widget_list_builder_constraint<>, T2s> && ...));
-    using res_g = build::args_to_group_t<widget_list_builder_constraint<State>, T2s...>;
+    using res_g =
+        build::args_to_group_t<widget_list_builder_constraint<State>, T2s...>;
     using res_t = uni_sized_widget_list_builder_impl<res_g, Functions>;
-    return res_t(build::args_to_group(widget_list_builder_constraint{},std::forward<T2s>(ds)...));
-    //return ResT(build::args_to_group(widget_list_builder_constraint{},
-    //                                 std::forward<T2s>(ds)...));
+    return res_t(build::args_to_group(widget_list_builder_constraint{},
+                                      std::forward<T2s>(ds)...));
+    // return ResT(build::args_to_group(widget_list_builder_constraint{},
+    //                                  std::forward<T2s>(ds)...));
   }
 
   template <typename State, State... states, typename... Triggers,

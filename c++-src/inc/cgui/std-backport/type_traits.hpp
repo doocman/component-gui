@@ -25,20 +25,16 @@ template <typename T> struct ct_value_wrapper {
 };
 template <typename T> ct_value_wrapper(T) -> ct_value_wrapper<T>;
 
-template <typename T>
-struct remove_temp_ref {
+template <typename T> struct remove_temp_ref {
   using type = T;
 };
-template <typename T>
-struct remove_temp_ref<T&&> {
+template <typename T> struct remove_temp_ref<T &&> {
   using type = std::remove_cvref_t<T>;
 };
-template <typename T>
-struct remove_temp_ref<T const&&> {
+template <typename T> struct remove_temp_ref<T const &&> {
   using type = std::remove_cvref_t<T>;
 };
-template <typename T>
-struct remove_temp_ref<T const&> {
+template <typename T> struct remove_temp_ref<T const &> {
   using type = std::remove_cvref_t<T>;
 };
 

@@ -94,7 +94,9 @@
 #define CGUI_CALL_BBOX_MEMBER(NAME, CONCEPT, MUTCONCEPT)                       \
   static constexpr decltype(auto) _fallback(auto const &b);                    \
   static constexpr decltype(auto) _fallback_mut(auto &&b, auto &&v);           \
-  static constexpr decltype(auto) call(CONCEPT auto &&b) {                     \
+  template <typename T>                                                        \
+    requires(CONCEPT<T> || has_##NAME<T>)                                      \
+  static constexpr decltype(auto) call(T &&b) {                                \
     using fwd_t = decltype(b);                                                 \
     auto bf = bp::as_forward<fwd_t>(std::forward<fwd_t>(b));                   \
     if constexpr (has_##NAME<fwd_t>) {                                         \
@@ -103,7 +105,8 @@
       return _fallback(bf);                                                    \
     }                                                                          \
   }                                                                            \
-  template <typename TVal, MUTCONCEPT<TVal> T>                                 \
+  template <typename TVal, typename T>                                         \
+    requires(MUTCONCEPT<T, TVal> || has_##NAME<T, TVal>)                       \
   static constexpr decltype(auto) call(T &&b, TVal &&v) {                      \
     auto bf = bp::as_forward<T>(std::forward<T>(b));                           \
     auto vf = bp::as_forward<TVal>(std::forward<TVal>(v));                     \
@@ -443,7 +446,8 @@ concept has_any_mut_tly =
 
 template <typename T, typename... Ts>
 concept has_any_brx =
-    has_r_x<T, Ts...> || has_width<T, Ts...> || has_bottom_right<T, Ts...>;
+    has_r_x<T, Ts...> || (has_width<T, Ts...> && has_l_x<T>) ||
+    has_bottom_right<T, Ts...>;
 template <typename T, typename TVal>
 concept has_any_mut_brx =
     has_any_brx<T, TVal> || has_assignable_get<T, _do_r_x, TVal> ||
@@ -451,7 +455,8 @@ concept has_any_mut_brx =
 
 template <typename T, typename... Ts>
 concept has_any_bry =
-    has_b_y<T, Ts...> || has_height<T, Ts...> || has_bottom_right<T, Ts...>;
+    has_b_y<T, Ts...> || (has_height<T, Ts...> && has_t_y<T>) ||
+    has_bottom_right<T, Ts...>;
 template <typename T, typename TVal>
 concept has_any_mut_bry =
     has_any_bry<T, TVal> || has_assignable_get<T, _do_b_y, TVal> ||
@@ -507,7 +512,7 @@ constexpr decltype(auto) r_x_t::_fallback(auto const &b) {
   if constexpr (requires() { _do_bottom_right::call(*b); }) {
     return _do_x_of::call(_do_bottom_right::call(*b));
   } else {
-    return l_x_t{}(*b) + _do_width::call(*b);
+    return l_x_t::call(*b) + _do_width::call(*b);
   }
 }
 constexpr decltype(auto) r_x_t::_fallback_mut(auto &&b, auto &&v) {
@@ -605,23 +610,38 @@ public:
 template <typename T, typename TX, typename TY>
 tlbr_wh_conv(T &&, TX, TY) -> tlbr_wh_conv<T, TX, TY>;
 
+template <typename TX, typename TY> class fallback_coordinate {
+  TX x_;
+  TY y_;
+
+public:
+  constexpr fallback_coordinate(TX x, TY y) : x_(x), y_(y) {}
+  constexpr TX const &x_of() const noexcept { return x_; }
+  constexpr TX const &y_of() const noexcept { return y_; }
+};
+
 constexpr decltype(auto) top_left_t::_fallback(auto const &b) {
-  return tlbr_wh_conv(*b, l_x_t{}, t_y_t{});
+  // return tlbr_wh_conv(*b, l_x_t{}, t_y_t{});
+  return fallback_coordinate(l_x_t::call(*b), t_y_t::call(*b));
 }
 constexpr decltype(auto) top_left_t::_fallback_mut(auto &&b, auto &&v) {
-  auto val = _fallback(b);
-  _do_set_x_of::call(val, _do_x_of::call(*v));
-  _do_set_y_of::call(val, _do_y_of::call(*v));
-  return val;
+  // auto val = _fallback(b);
+  //_do_set_x_of::call(val, _do_x_of::call(*v));
+  //_do_set_y_of::call(val, _do_y_of::call(*v));
+  l_x_t::call(*b, _do_x_of::call(*v));
+  t_y_t::call(*b, _do_y_of::call(*v));
 }
 constexpr decltype(auto) bottom_right_t::_fallback(auto const &b) {
-  return tlbr_wh_conv(*b, r_x_t{}, b_y_t{});
+  // return tlbr_wh_conv(*b, r_x_t{}, b_y_t{});
+  return fallback_coordinate(r_x_t::call(*b), b_y_t::call(*b));
 }
 constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
-  auto val = _fallback(b);
-  _do_set_x_of::call(val, _do_x_of::call(*v));
-  _do_set_y_of::call(val, _do_y_of::call(*v));
-  return val;
+  // auto val = _fallback(b);
+  //_do_set_x_of::call(val, _do_x_of::call(*v));
+  //_do_set_y_of::call(val, _do_y_of::call(*v));
+  // return val;
+  r_x_t::call(*b, _do_x_of::call(*v));
+  b_y_t::call(*b, _do_y_of::call(*v));
 }
 } // namespace impl
 /// @endcond

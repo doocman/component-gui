@@ -85,12 +85,11 @@ template <canvas T, pixel_rect TB> class sub_renderer {
   T *c_;
   recursive_area_navigator<TB> area_;
   default_colour_t set_colour_{};
-public:
 
+public:
   constexpr auto pixel_scale() const { return call::pixel_scale(*c_); }
 
 private:
-
   static constexpr TB bound_area(TB a) {
     if (!valid_box(a)) {
       call::height(a, 0);
@@ -124,6 +123,10 @@ public:
       : sub_renderer(c, recursive_area_navigator<TB>(a), {}) {}
   constexpr explicit sub_renderer(T &c)
       : sub_renderer(c, call::pixel_area(c)) {}
+  template <point_rect TB2>
+  constexpr sub_renderer(T &c, TB2 const &a)
+      : sub_renderer(
+            c, convert_pixelpoint<pixel_size_tag>(a, call::pixel_scale(c))) {}
 
   template <pixel_or_point_rect_basic TB2, pixel_draw_callback TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
@@ -173,17 +176,24 @@ public:
     });
   }
 
-  constexpr void fill(pixel_or_point_rect_basic auto const &dest, colour auto const &c)
-    //requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
+  constexpr void fill(pixel_or_point_rect_basic auto const &dest,
+                      colour auto const &c)
+  // requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
   {
-    auto absolute_dest = to_absolute(to_relative_dest(convert_pixelpoint<pixel_size_tag>(dest, pixel_scale())));
-    if (empty_box(absolute_dest)) { return; }
-    //call::fill(*c_, absolute_dest, c);
-    if constexpr(has_native_fill<decltype(*c_), decltype(absolute_dest), decltype(c)>) {
+    auto absolute_dest = to_absolute(to_relative_dest(
+        convert_pixelpoint<pixel_size_tag>(dest, pixel_scale())));
+    if (empty_box(absolute_dest)) {
+      return;
+    }
+    // call::fill(*c_, absolute_dest, c);
+    if constexpr (has_native_fill<decltype(*c_), decltype(absolute_dest),
+                                  decltype(c)>) {
       call::fill(*c_, absolute_dest, c);
     } else {
-      //call::draw_pixels(*this, absolute_dest, fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
-      draw_pixels(absolute_dest, fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
+      // call::draw_pixels(*this, absolute_dest,
+      // fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
+      draw_pixels(absolute_dest,
+                  fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
       //::cgui::fill(*this, absolute_dest, c);
     }
   }
@@ -209,11 +219,14 @@ public:
   constexpr TB area() const { return area_.relative_area(); }
 };
 
-template <typename T, typename TB> sub_renderer(T &, TB) -> sub_renderer<T, TB>;
+template <typename T, pixel_rect TB>
+sub_renderer(T &, TB) -> sub_renderer<T, TB>;
 template <typename T>
 sub_renderer(T &t)
-    -> sub_renderer<
-        T, std::remove_cvref_t<decltype(call::pixel_area(t))>>;
+    -> sub_renderer<T, std::remove_cvref_t<decltype(call::pixel_area(t))>>;
+template <typename T, point_rect TB>
+sub_renderer(T &, TB const &)
+    -> sub_renderer<T, convert_pixelpoint_t<pixel_size_tag, TB>>;
 
 template <point_rect TArea = point_unit_t<default_rect>>
 class basic_widget_back_propagater {
@@ -428,7 +441,8 @@ template <widget_states_aspect T> struct widget_state_wrapper : private T {
     return call::state(base(*this));
   }
 
-  template <point_scalar TWH> using arg_t = widget_render_args<TWH, state_marker_t>;
+  template <point_scalar TWH>
+  using arg_t = widget_render_args<TWH, state_marker_t>;
 
   template <renderer TR, display_component<TR> TD, typename TWH>
   constexpr void operator()(TD &display, TR &&r, TWH w, TWH h) const {
@@ -778,11 +792,12 @@ public:
   constexpr explicit text_renderer(std::in_place_type_t<TFont>, TU &&...f)
       : f_(std::forward<TU>(f)...) {}
 
-  [[deprecated]] constexpr text_renderer &set_displayed(pixel_rect auto const &area,
-                                         std::string_view t) {
+  [[deprecated]] constexpr text_renderer &
+  set_displayed(pixel_rect auto const &area, std::string_view t) {
     return set_displayed(call::width(area), call::height(area), t);
   }
-  [[deprecated]] constexpr text_renderer &set_displayed(point_rect auto const& area, std::string_view t) {
+  [[deprecated]] constexpr text_renderer &
+  set_displayed(point_rect auto const &area, std::string_view t) {
     return set_displayed(pixel_unit(area.value()), t);
   }
 
@@ -810,7 +825,8 @@ public:
     CGUI_ASSERT(measured_lines == line_count_);
   }
 
-  [[deprecated]] constexpr text_renderer &set_displayed(pixel_unit_t<int> w, pixel_unit_t<int>, std::string_view t) {
+  [[deprecated]] constexpr text_renderer &
+  set_displayed(pixel_unit_t<int> w, pixel_unit_t<int>, std::string_view t) {
     using iterator_t = decltype(tokens_.begin());
     tokens_.clear();
     text_.assign(t);
@@ -953,9 +969,11 @@ public:
   {
     CGUI_DEBUG_ONLY(bool _area_initialised{};)
     auto fh = call::full_height(f_);
-    auto do_new_area = [w = convert_pixelpoint<pixel_size_tag>(call::width(args), rorg.pixel_scale()),
-                        base_y2 =
-                            convert_pixelpoint<pixel_size_tag>(call::height(args), rorg.pixel_scale()) + 2 * fh - call::ascender(f_),
+    auto do_new_area = [w = convert_pixelpoint<pixel_size_tag>(
+                            call::width(args), rorg.pixel_scale()),
+                        base_y2 = convert_pixelpoint<pixel_size_tag>(
+                                      call::height(args), rorg.pixel_scale()) +
+                                  2 * fh - call::ascender(f_),
                         fh, count = line_count_](newline_entry nl) mutable {
       auto t_y = (base_y2 - fh * count) / 2;
       count -= 2;
@@ -1009,11 +1027,13 @@ public:
     return colour_;
   }
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
-    //call::fill(r,
-r.fill(
-         box_from_xyxy<default_point_rect>(0, 0, call::width(args),
-                                           call::height(args)),
-         colour_);
+    // call::fill(r,
+    r.fill(box_from_xyxy<default_point_rect>(0, 0, call::width(args),
+                                             call::height(args)
+                                             // args.width(),
+                                             // args.height()
+                                             ),
+           colour_);
   }
 };
 
@@ -1230,7 +1250,7 @@ public:
   /// `mouse_button_down`,
   ///            `mouse_button_up`, or `mouse_exit` from the `ui_events`
   ///            namespace.
-  void handle(bounding_box auto const &area,
+  void handle(point_rect auto const &area,
               event_types<ui_events::mouse_move, ui_events::mouse_button_down,
                           ui_events::mouse_button_up,
                           ui_events::mouse_exit> auto &&evt) {

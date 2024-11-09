@@ -97,17 +97,17 @@ concept weakly_totally_ordered_with = weakly_totally_ordered_with_impl<T, U> &&
                                       weakly_totally_ordered_with_impl<U, T>;
 
 template <typename T, typename... Args>
-concept direct_invocable = requires(T&& t, Args&&... args) {
+concept direct_invocable = requires(T &&t, Args &&...args) {
   std::forward<T>(t)(std::forward<Args>(args)...);
 };
 
 template <typename T>
-concept value_incrementable = requires(T& t) {
-  { ++t } -> std::same_as<T&>;
+concept value_incrementable = requires(T &t) {
+  { ++t } -> std::same_as<T &>;
 };
 template <typename T>
-concept value_decrementable = requires(T& t) {
-  { --t } -> std::same_as<T&>;
+concept value_decrementable = requires(T &t) {
+  { --t } -> std::same_as<T &>;
 };
 } // namespace cgui::bp
 

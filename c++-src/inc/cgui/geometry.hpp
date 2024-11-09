@@ -509,6 +509,18 @@ concept pixel_or_point_rect = pixel_or_point_rect_basic<T> || requires(T &&t) {
   { t.convert() } -> pixel_or_point_rect_basic;
 };
 
+template <typename T>
+concept pixel_size_wh = size_wh<T> && is_pixel_sized<T>;
+template <typename T>
+concept point_size_wh = size_wh<T> && is_point_sized<T>;
+template <typename T>
+concept pixel_or_point_size_wh_basic = pixel_size_wh<T> || point_size_wh<T>;
+template <typename T>
+concept pixel_or_point_size_wh =
+    pixel_or_point_size_wh_basic<T> || requires(T &&t) {
+      { t.convert() } -> pixel_or_point_size_wh_basic;
+    };
+
 template <pixelpoint_tag SizeTag, typename T> class pixelpoint_unit {
   using this_t = pixelpoint_unit;
   T value_{};
@@ -571,7 +583,8 @@ public:
 
   template <typename T2 = T, typename... Ts>
     requires(std::constructible_from<T, T2, Ts...>)
-  constexpr explicit(sizeof...(Ts) == 0) pixelpoint_unit(T2 &&v, Ts&&... args) : value_(std::forward<T2>(v), std::forward<Ts>(args)...) {}
+  constexpr explicit(sizeof...(Ts) == 0) pixelpoint_unit(T2 &&v, Ts &&...args)
+      : value_(std::forward<T2>(v), std::forward<Ts>(args)...) {}
   template <typename T2>
     requires(!std::constructible_from<T, T2> && same_unit_geometry_as<T2, T>)
   constexpr explicit pixelpoint_unit(T2 &&v) : value_(conv_value(v)) {}
@@ -1110,8 +1123,13 @@ constexpr bool hit_box(TB const &b, TC const &c, TRC &&inside_range = {}) {
 template <bounding_box TB1, same_unit_geometry_as<TB1> TB2>
   requires(same_unit_as<TB1, TB2>)
 constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
-  return hit_box(outer, call::top_left(inner), inside_closed_range) &&
-         hit_box(outer, call::bottom_right(inner), inside_closed_range);
+  if constexpr (size_tagged<TB1>) {
+    return hit_box(outer, TB2::top_left(inner), inside_closed_range) &&
+           hit_box(outer, TB2::bottom_right(inner), inside_closed_range);
+  } else {
+    return hit_box(outer, call::top_left(inner), inside_closed_range) &&
+           hit_box(outer, call::bottom_right(inner), inside_closed_range);
+  }
 }
 
 /// Returns true if the box is empty.

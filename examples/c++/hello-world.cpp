@@ -34,11 +34,9 @@ int main(int, char **) {
     bool do_exit{};
     auto renderer = main_window.renderer().value();
 
-    using area_t = decltype(full_area);
     auto gui =
         cgui::gui_context_builder()
             .widgets(
-
                 cgui::widget_builder().display(
                     cgui::text_renderer(std::ref(cached_font))),
                 cgui::widget_builder()

@@ -48,7 +48,7 @@ template <> struct ui_event_constraints<ui_events::mouse_move> {
 template <> struct ui_event_constraints<ui_events::window_resized> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
-    { call::size_of(t) } -> size_wh;
+    { call::size_of(t) } -> point_size_wh;
   };
 };
 
@@ -91,9 +91,7 @@ template <ui_events evt> struct subset_ui_events<evt> {
 };
 
 template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
-  requires()
-{
+concept subset_ui_event_c = std::convertible_to<T, ui_events> && requires() {
   {
     std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
   } -> std::convertible_to<bool>;
@@ -294,7 +292,8 @@ public:
     requires((std::invocable<Fs, decltype(evt)> ||
                   std::invocable<Fs, decltype(evt), Data &&> ||
                   std::invocable < Fs,
-              decltype(evt), Data &&, decltype(args)... >) && ...)
+              decltype(evt), Data &&, decltype(args)... >) &&
+             ...)
   {
     using evt_t = decltype(evt);
     auto sf = bp::as_forward<decltype(self)>(self);

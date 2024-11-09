@@ -180,7 +180,7 @@ concept set_state_with_rerender =
       { call::set_state(*t, *args...) } -> bounding_box;
     };
 
-template <typename T, typename TBox = default_point_rect >
+template <typename T, typename TBox = default_point_rect>
 concept widget_back_propagater =
     point_rect<TBox> && requires(T &t, TBox const &cbox) {
       t.rerender();
@@ -207,7 +207,8 @@ template <typename T, typename TCoord = pixel_unit_t<default_coordinate>>
 concept single_alpha_draw =
     pixel_coordinate<TCoord> && std::invocable<T, TCoord, std::uint_least8_t>;
 struct dummy_pixel_drawer {
-  constexpr void operator()(pixel_or_point_coordinate auto &&, colour auto &&) {}
+  constexpr void operator()(pixel_or_point_coordinate auto &&, colour auto &&) {
+  }
 };
 struct dummy_alpha_drawer {
   constexpr void
@@ -264,9 +265,8 @@ concept has_draw_pixels =
 
 template <colour TC> struct fill_on_draw_pixel {
   TC c;
-  constexpr void
-  operator()(bounding_box auto &&b,
-             single_pixel_draw auto &&cb) const {
+  constexpr void operator()(bounding_box auto &&b,
+                            single_pixel_draw auto &&cb) const {
     for (auto y : y_view(b)) {
       for (auto x : x_view(b)) {
         cb(pixel_unit_t<default_coordinate>(x, y), c);
@@ -275,8 +275,8 @@ template <colour TC> struct fill_on_draw_pixel {
   }
 };
 
-constexpr auto fill =
-    []<typename T, pixel_or_point_rect_basic TB, colour TC>(T &&v, TB const &b, TC const &c)
+constexpr auto fill = []<typename T, pixel_or_point_rect_basic TB, colour TC>(
+                          T &&v, TB const &b, TC const &c)
   requires(has_native_fill<T, TB, TC> ||
            has_draw_pixels<T, TB, fill_on_draw_pixel<TC>>)
 {
@@ -412,7 +412,9 @@ class widget_render_args : TState {
 
 public:
   template <typename TW, typename TH, typename... Ts>
-    requires(std::constructible_from<TWH, TW> && std::constructible_from<TWH, TH> && std::constructible_from<TState, Ts && ...>)
+    requires(std::constructible_from<TWH, TW> &&
+             std::constructible_from<TWH, TH> &&
+             std::constructible_from<TState, Ts && ...>)
   constexpr widget_render_args(TW w, TH h, Ts &&...state_args)
       : TState(std::forward<Ts>(state_args)...), w_(w), h_(h) {}
   template <typename... Ts>
@@ -429,8 +431,10 @@ public:
 };
 template <typename TW, typename TH, typename TState>
 widget_render_args(TW, TH, TState &&)
-    -> widget_render_args<std::common_type_t<TW, TH>, std::remove_cvref_t<TState>>;
-template <typename TW, typename TH> widget_render_args(TW, TH) -> widget_render_args<std::common_type_t<TW, TH>>;
+    -> widget_render_args<std::common_type_t<TW, TH>,
+                          std::remove_cvref_t<TState>>;
+template <typename TW, typename TH>
+widget_render_args(TW, TH) -> widget_render_args<std::common_type_t<TW, TH>>;
 template <bounding_box B, typename TState>
 widget_render_args(B const &, TState &&)
     -> widget_render_args<
@@ -451,28 +455,28 @@ constexpr auto center(bounding_box auto const &b) {
   auto tl = call::top_left(b);
   auto br = call::bottom_right(b);
   return default_coordinate{(x_of(br) - x_of(tl)) / 2,
-                             (y_of(br) - y_of(tl)) / 2};
+                            (y_of(br) - y_of(tl)) / 2};
 }
 
 struct dummy_canvas {
-  constexpr default_pixel_rect area() const { return {}; }
+  constexpr default_pixel_rect pixel_area() const { return {}; }
   static constexpr int pixel_scale() { return 1; }
 };
 
 struct dummy_renderer {
   constexpr void draw_pixels(pixel_or_point_rect auto const &,
-                             pixel_draw_callback
-                             auto &&) {}
+                             pixel_draw_callback auto &&) {}
   constexpr void draw_alpha(pixel_or_point_rect auto const &,
-                            alpha_draw_callback
-                            auto &&) {}
+                            alpha_draw_callback auto &&) {}
   constexpr dummy_renderer with(colour auto &&) const { return {}; }
-  constexpr dummy_renderer sub(pixel_or_point_rect auto &&, colour auto &&) const {
+  constexpr dummy_renderer sub(pixel_or_point_rect auto &&,
+                               colour auto &&) const {
     return {};
   }
   constexpr dummy_renderer sub(pixel_or_point_rect auto &&) const { return {}; }
   static constexpr int pixel_scale() { return 1; }
-  constexpr void fill(pixel_or_point_rect_basic auto const&, colour auto const&) {}
+  constexpr void fill(pixel_or_point_rect_basic auto const &,
+                      colour auto const &) {}
 };
 
 template <typename T, typename TRender = dummy_renderer>

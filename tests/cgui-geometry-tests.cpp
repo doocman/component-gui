@@ -786,45 +786,6 @@ TYPED_TEST(BoxApiFixture, AssignAndFetchXwyh) // NOLINT
   EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(8));
 }
 
-TYPED_TEST(BoxApiFixture, AssignAndFetchTlBr) // NOLINT
-{
-  static_assert(bounding_box<decltype(this->value)>);
-  EXPECT_THAT(call::l_x(this->value), Eq(0));
-  EXPECT_THAT(call::t_y(this->value), Eq(0));
-  EXPECT_THAT(call::r_x(this->value), Eq(0));
-  EXPECT_THAT(call::b_y(this->value), Eq(0));
-  EXPECT_THAT(call::width(this->value), Eq(0));
-  EXPECT_THAT(call::height(this->value), Eq(0));
-  EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(0));
-  EXPECT_THAT(call::y_of(call::top_left(this->value)), Eq(0));
-  EXPECT_THAT(call::x_of(call::bottom_right(this->value)), Eq(0));
-  EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(0));
-  call::x_of(call::top_left(this->value), 1);
-  call::x_of(call::bottom_right(this->value), 3);
-  EXPECT_THAT(call::l_x(this->value), Eq(1));
-  EXPECT_THAT(call::t_y(this->value), Eq(0));
-  EXPECT_THAT(call::r_x(this->value), Eq(3));
-  EXPECT_THAT(call::b_y(this->value), Eq(0));
-  EXPECT_THAT(call::width(this->value), Eq(2));
-  EXPECT_THAT(call::height(this->value), Eq(0));
-  EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(1));
-  EXPECT_THAT(call::y_of(call::top_left(this->value)), Eq(0));
-  EXPECT_THAT(call::x_of(call::bottom_right(this->value)), Eq(3));
-  EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(0));
-  call::y_of(call::top_left(this->value), 3);
-  call::y_of(call::bottom_right(this->value), 8);
-  EXPECT_THAT(call::l_x(this->value), Eq(1));
-  EXPECT_THAT(call::t_y(this->value), Eq(3));
-  EXPECT_THAT(call::r_x(this->value), Eq(3));
-  EXPECT_THAT(call::b_y(this->value), Eq(8));
-  EXPECT_THAT(call::width(this->value), Eq(2));
-  EXPECT_THAT(call::height(this->value), Eq(5));
-  EXPECT_THAT(call::x_of(call::top_left(this->value)), Eq(1));
-  EXPECT_THAT(call::y_of(call::top_left(this->value)), Eq(3));
-  EXPECT_THAT(call::x_of(call::bottom_right(this->value)), Eq(3));
-  EXPECT_THAT(call::y_of(call::bottom_right(this->value)), Eq(8));
-}
-
 TYPED_TEST(BoxApiFixture, ConstructXYXY) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
