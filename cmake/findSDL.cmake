@@ -9,14 +9,14 @@ else ()
 endif ()
 
 foreach (E IN LISTS CGUI_SDL_FETCH)
-    if(_CGUI_SDL_FOUND)
+    if (_CGUI_SDL_FOUND)
         break()
     else ()
-        if(E STREQUAL "fetch")
+        if (E STREQUAL "fetch")
             fetchcontent_declare(
                     sdl3
                     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-                    GIT_TAG 802686699449289109f58b9ec4e6200f061e9dd2 # main (SDL3-prerelease)
+                    GIT_TAG 559223ff9dbd7893ad26de5ba4d0847d758bc1e3 # main (SDL3-prerelease)
             )
             if (CGUI_SDL_STATIC)
                 set(SDL_STATIC ON)
@@ -45,8 +45,8 @@ foreach (E IN LISTS CGUI_SDL_FETCH)
 
         elseif (E STREQUAL "system")
             find_package(SDL3 REQUIRED)
-            if(NOT TARGET ${_CGUI_SDL_LIB})
-                if(NOT TARGET SDL3)
+            if (NOT TARGET ${_CGUI_SDL_LIB})
+                if (NOT TARGET SDL3)
                     add_library(SDL3 INTERFACE)
                     target_link_libraries(SDL3 INTERFACE "${SDL3_LIBRARIES}")
                     target_include_directories(SDL3 INTERFACE "${SDL3_INCLUDE_DIRS}")

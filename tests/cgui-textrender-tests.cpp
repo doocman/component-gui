@@ -90,7 +90,7 @@ TEST(TextRender, PerfectWidthString) // NOLINT
 {
   using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
-  call::set_displayed(t2r, pixel_unit(4), pixel_unit(1), "1 0");
+  t2r.set_text("1 0");
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
@@ -114,8 +114,7 @@ TEST(TextRender, CenterAligned) // NOLINT
 
   auto r = test_renderer({0, 0, 6, 3});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.pixel_area()),
-                      call::height(r.pixel_area()), "1 0");
+  t2r.set_text("1 0");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr,
                widget_render_args(call::width(call::point_area(r)),
@@ -144,8 +143,7 @@ TEST(TextRender, TwoLinesSpace) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.pixel_area()),
-                      call::height(r.pixel_area()), "1 1");
+  t2r.set_text("1 1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr,
                widget_render_args(call::width(call::point_area(r)),
@@ -172,8 +170,7 @@ TEST(TextRender, TwoLinesDashDirect) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.pixel_area()),
-                      call::height(r.pixel_area()), "120");
+  t2r.set_text("120");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr,
                widget_render_args(call::width(call::point_area(r)),
@@ -197,8 +194,7 @@ TEST(TextRender, TwoLinesDashIndirect) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.pixel_area()),
-                      call::height(r.pixel_area()), "1001");
+  t2r.set_text("1001");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr,
                widget_render_args(call::width(call::point_area(r)),
@@ -223,8 +219,7 @@ TEST(TextRender, ManualNewLine) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.pixel_area()),
-                      call::height(r.pixel_area()), "1\n1");
+  t2r.set_text("1\n1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr,
                widget_render_args(call::width(call::point_area(r)),
@@ -248,8 +243,7 @@ TEST(TextRender, ThreeLines) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 3});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.pixel_area()),
-                      call::height(r.pixel_area()), "10011");
+  t2r.set_text("10011");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr,
                widget_render_args(call::width(call::point_area(r)),
@@ -273,8 +267,7 @@ TEST(TextRender,
 
   auto r = test_renderer({0, 0, 6, 5});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.pixel_area()),
-                      call::height(r.pixel_area()), "012");
+  t2r.set_text("012");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr,
                widget_render_args(call::width(call::point_area(r)),
@@ -296,7 +289,7 @@ TEST(TextRender, RefFace) // NOLINT
 {
   auto face = dummy_font_face();
   auto t2r = text_renderer(std::ref(face));
-  t2r.set_displayed(pixel_unit(1), pixel_unit(1), "?");
+  t2r.set_text("?");
   dummy_renderer r;
   t2r.render(r, widget_render_args(1, 1));
   EXPECT_THAT(face.faulty_glyphs, Eq(1));
@@ -318,7 +311,7 @@ TEST(TextRender, CachedGlyphs) // NOLINT
       .WillRepeatedly([](auto &&...) { return dummy_font_face().glyph('0'); });
   auto face = cached_font(std::ref(mface));
   auto t2r = text_renderer(std::ref(face));
-  t2r.set_displayed(pixel_unit(5), pixel_unit(5), "00");
+  t2r.set_text("00");
   dummy_renderer r;
   t2r.render(r, widget_render_args(1, 1));
 }
@@ -327,7 +320,7 @@ TEST(TextRender, CachedGlyphs4) // NOLINT
   using font_t = cached_font<dummy_font_face &>;
   auto dummy_face = dummy_font_face();
   auto t2r = text_renderer(font_t(dummy_face));
-  call::set_displayed(t2r, pixel_unit(7), pixel_unit(1), "1 02");
+  t2r.set_text("1 02");
   auto r = test_renderer({0, 0, 7, 1});
   auto sr = sub_renderer(r);
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
@@ -349,8 +342,7 @@ TEST(TextRender, TooSmallBox) // NOLINT
 
   auto r = test_renderer({0, 0, 7, 5});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.pixel_area()),
-                      call::height(r.pixel_area()), "111111111");
+  t2r.set_text("111111111");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
   call::render(t2r, sr,
                widget_render_args(call::width(call::point_area(r)),
