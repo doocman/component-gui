@@ -136,7 +136,7 @@ class sdl_canvas {
     }
   };
   SDL_Renderer *r_;
-  SDL_Window const *w_;
+  SDL_Window *w_;
   cleanup_object_t<decltype(cleanup), SDL_Texture *> t_{};
   cleanup_object_t<decltype(cleanup), SDL_Texture *> t2_{};
   default_colour_t clear_colour_{0, 0, 0, 255};
@@ -146,15 +146,9 @@ class sdl_canvas {
   constexpr SDL_Texture *tmp_texture() const { return t2_.first_value(); }
 
 public:
-  constexpr auto pixel_scale() const {
-    // return SDL_GetWindowDisplayScale(w_);
-    return 1.f;
-  }
+  auto pixel_scale() const { return SDL_GetWindowDisplayScale(w_); }
 
-  // TODO: The canvas must have it's own intermediate texture if we are to only
-  // re-render parts of the GUI. Create it and update it... We may need to think
-  // about the API here.
-  constexpr sdl_canvas(SDL_Renderer *r, SDL_Window const *w) : r_(r), w_(w) {}
+  constexpr sdl_canvas(SDL_Renderer *r, SDL_Window *w) : r_(r), w_(w) {}
 
   void present() { SDL_RenderPresent(r_); }
   void clear() {
@@ -163,11 +157,10 @@ public:
     SDL_RenderClear(r_);
   }
 
-  // template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
-  template <typename... Args, typename UI>
+  template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
   inline auto render_to(UI &&ui, Args &&...args);
 
-  [[nodiscard]] pixel_unit_t<SDL_Rect> area() const {
+  [[nodiscard]] pixel_unit_t<SDL_Rect> pixel_area() const {
     auto w = SDL_GetRenderWindow(r_);
     if (w == nullptr) [[unlikely]] {
       throw std::runtime_error(SDL_GetError());
@@ -187,7 +180,9 @@ class sdl_canvas_renderer {
   constexpr auto &texture_wrap() const { return p_->t_; }
   constexpr auto const &texture() const { return texture_wrap().first_value(); }
   constexpr auto &tmp_texture_wrap() { return p_->t2_; }
-  constexpr auto &tmp_texture() { return tmp_texture_wrap().first_value(); }
+  constexpr std::add_pointer_t<SDL_Texture> &tmp_texture() {
+    return tmp_texture_wrap().first_value();
+  }
 
   static bool update_texture_sz(auto &to_update, int w_in, int h_in,
                                 SDL_Renderer *r, SDL_TextureAccess access,
@@ -253,7 +248,7 @@ class sdl_canvas_renderer {
       SDL_PixelFormat::SDL_PIXELFORMAT_ABGR8888;
 
 public:
-  auto pixel_area() const { return p_->area(); }
+  auto pixel_area() const { return p_->pixel_area(); }
   auto pixel_scale() const { return p_->pixel_scale(); }
 
   explicit sdl_canvas_renderer(sdl_canvas &parent) : p_(&parent) {
@@ -306,9 +301,7 @@ public:
   }
 };
 
-// TODO: Re-enable constraints
-// template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
-template <typename... Args, typename UI>
+template <typename... Args, has_render<sdl_canvas_renderer, Args...> UI>
 inline auto sdl_canvas::render_to(UI &&ui, Args &&...args) {
   return ui.render(sdl_canvas_renderer(*this), std::forward<Args>(args)...);
 }
@@ -334,9 +327,17 @@ class sdl_window {
     return SDL_GetRenderer(handle());
   }
 
+  template <typename... Ts> void pixel_to_points(Ts *...vals) const {
+    auto sc = SDL_GetWindowDisplayScale(handle());
+    unused((*vals = static_cast<Ts>(std::lround(*vals / sc)))...);
+  }
+
 public:
   sdl_window() = default;
-  explicit sdl_window(SDL_Window *w) : handle_(w) {}
+  explicit sdl_window(SDL_Window *w) : handle_(w) {
+    CGUI_ASSERT(w != nullptr);
+    SDL_ShowWindow(w);
+  }
 
   static sdl_window string_owner(std::string s) {
     auto res = sdl_window();
@@ -351,12 +352,14 @@ public:
   [[nodiscard]] point_unit_t<SDL_Rect> local_area() const {
     SDL_Rect r{};
     SDL_GetWindowSize(handle(), &r.w, &r.h);
+    pixel_to_points(&r.w, &r.h);
     return {{}, r};
   }
   [[nodiscard]] point_unit_t<SDL_Rect> area() const {
     SDL_Rect r;
     SDL_GetWindowSize(handle(), &r.w, &r.h);
     SDL_GetWindowPosition(handle(), &r.x, &r.y);
+    pixel_to_points(&r.x, &r.y, &r.w, &r.h);
     return {{}, r};
   }
 
@@ -368,13 +371,11 @@ public:
   }
 
   [[nodiscard]] expected<sdl_display_dpi, std::string> dpi() const {
-    // auto display_index = SDL_GetDisplayForWindow(handle());
-    sdl_display_dpi res; // NOLINT(*-pro-type-member-init)
     auto scale = SDL_GetWindowDisplayScale(handle());
     // TODO: figure out how we should set this... Android and IOS uses 160.
-    res.hori = scale * 96;
-    res.diag = scale * 96;
-    res.vert = scale * 96;
+    constexpr auto platform_dpi = 96.f;
+    sdl_display_dpi res{scale * platform_dpi, scale * platform_dpi,
+                        scale * platform_dpi};
     return res;
   }
 };
@@ -412,9 +413,16 @@ public:
 
   expected<sdl_window, std::string> build() && {
     auto happy_res = sdl_window::string_owner(std::move(title_));
-    if (auto w =
-            SDL_CreateWindow(happy_res.ctor_string().c_str(), w_, h_, flags_);
+    if (auto w = SDL_CreateWindow(happy_res.ctor_string().c_str(), w_, h_,
+                                  flags_ | SDL_WINDOW_HIDDEN);
         w != nullptr) {
+      auto pxs = SDL_GetWindowDisplayScale(w);
+      if (pxs == 0.f) {
+        title_ = std::move(happy_res.ctor_string_mut());
+        return unexpected(std::string(SDL_GetError()));
+      }
+      SDL_SetWindowSize(w, static_cast<int>(std::lround(pxs * w_)),
+                        static_cast<int>(std::lround(pxs * h_)));
       if (auto r = SDL_GetRenderer(w); r != nullptr) {
         return sdl_window(w);
       }
@@ -492,6 +500,21 @@ inline int poll_event(sdl_context_instance &, sdl_event_callback auto &&cb) {
   }
   return 0;
 }
+
+template <typename Out, typename In> constexpr Out int_cast(In const &in) {
+  if constexpr (std::is_integral_v<Out> && !std::is_integral_v<In>) {
+    return static_cast<Out>(std::lround(in));
+  } else {
+    return static_cast<Out>(in);
+  }
+}
+
+template <is_point_sized T, typename TX, typename TY>
+T scaled_point(TX x, TY y, auto win_id) {
+  auto *w = SDL_GetWindowFromID(win_id);
+  auto s = SDL_GetWindowDisplayScale(w);
+  return {int_cast<TX>(x / s), int_cast<TY>(y / s)};
+}
 } // namespace
 
 template <> struct extend_api<SDL_MouseMotionEvent> {
@@ -499,9 +522,10 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
   event_type(SDL_MouseMotionEvent const &) {
     return {};
   }
-  static constexpr point_unit_t<basic_coordinate<float>>
+  static point_unit_t<basic_coordinate<float>>
   position(SDL_MouseMotionEvent const &e) {
-    return {e.x, e.y};
+    return scaled_point<point_unit_t<basic_coordinate<float>>>(e.x, e.y,
+                                                               e.windowID);
   }
 };
 template <> struct extend_api<SDL_MouseButtonEvent> {
@@ -517,9 +541,10 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
     return static_cast<mouse_buttons>(e.button);
   }
-  static constexpr point_unit_t<basic_coordinate<float>>
+  static point_unit_t<basic_coordinate<float>>
   position(SDL_MouseButtonEvent const &e) {
-    return {e.x, e.y};
+    return scaled_point<point_unit_t<basic_coordinate<float>>>(e.x, e.y,
+                                                               e.windowID);
   }
 };
 template <> struct extend_api<SDL_WindowEvent> {
@@ -529,8 +554,9 @@ template <> struct extend_api<SDL_WindowEvent> {
     return e.type == SDL_EVENT_WINDOW_RESIZED ? ui_events::window_resized
                                               : ui_events::system;
   }
-  static constexpr default_point_size_wh size_of(SDL_WindowEvent const &e) {
-    return {e.data1, e.data2};
+  static default_point_size_wh size_of(SDL_WindowEvent const &e) {
+    return scaled_point<default_point_size_wh>(e.data1, e.data2, e.windowID);
+    ;
   }
 };
 } // namespace cgui

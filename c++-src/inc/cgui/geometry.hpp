@@ -686,12 +686,14 @@ struct common_type<::cgui::pixelpoint_unit<ST, T>,
   using type = ::cgui::pixelpoint_unit<ST, common_type_t<T, U>>;
 };
 template <typename ST, typename T, typename U>
-  requires(requires() { typename common_type<T, U>::type; })
+  requires(!::cgui::bp::is_low_high_placeholder<U> &&
+           requires() { typename common_type<T, U>::type; })
 struct common_type<::cgui::pixelpoint_unit<ST, T>, U> {
   using type = ::cgui::pixelpoint_unit<ST, common_type_t<T, U>>;
 };
 template <typename ST, typename T, typename U>
-  requires(requires() { typename common_type<T, U>::type; })
+  requires(!::cgui::bp::is_low_high_placeholder<U> &&
+           requires() { typename common_type<T, U>::type; })
 struct common_type<U, ::cgui::pixelpoint_unit<ST, T>> {
   using type = ::cgui::pixelpoint_unit<ST, common_type_t<T, U>>;
 };
