@@ -2,6 +2,7 @@
 #ifndef COMPONENT_GUI_CGUI_GEOMETRY_HPP
 #define COMPONENT_GUI_CGUI_GEOMETRY_HPP
 
+#include <cmath>
 #include <concepts>
 #include <ranges>
 #include <type_traits>
