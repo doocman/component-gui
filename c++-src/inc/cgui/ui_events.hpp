@@ -149,59 +149,59 @@ template <ui_events tEvt, typename T> constexpr bool is_event(T &&evt) {
 template <typename T, ui_events... tEvents>
 concept event_types = (can_be_event<tEvents, T>() || ...);
 
-template <ui_events> struct dummy_event;
+template <ui_events> struct default_event;
 
 template <ui_events tEvt>
-constexpr subset_ui_events<tEvt> event_type(dummy_event<tEvt> const &) {
+constexpr subset_ui_events<tEvt> event_type(default_event<tEvt> const &) {
   return {};
 }
 
-template <> struct dummy_event<ui_events::system> {};
-template <> struct dummy_event<ui_events::mouse_exit> {};
-template <> struct dummy_event<ui_events::mouse_move> {
+template <> struct default_event<ui_events::system> {};
+template <> struct default_event<ui_events::mouse_exit> {};
+template <> struct default_event<ui_events::mouse_move> {
   default_point_coordinate pos;
 };
-template <> struct dummy_event<ui_events::mouse_button_down> {
-  default_point_coordinate pos;
-  mouse_buttons button_id;
-};
-template <> struct dummy_event<ui_events::mouse_button_up> {
+template <> struct default_event<ui_events::mouse_button_down> {
   default_point_coordinate pos;
   mouse_buttons button_id;
 };
-template <> struct dummy_event<ui_events::window_resized> {
+template <> struct default_event<ui_events::mouse_button_up> {
+  default_point_coordinate pos;
+  mouse_buttons button_id;
+};
+template <> struct default_event<ui_events::window_resized> {
   default_point_size_wh sz;
 };
 
-template <typename> constexpr bool is_dummy_event_v = false;
+template <typename> constexpr bool is_cgui_default_event_v = false;
 template <ui_events tEvt>
-constexpr bool is_dummy_event_v<dummy_event<tEvt>> = true;
+constexpr bool is_cgui_default_event_v<default_event<tEvt>> = true;
 
 template <typename T>
-concept is_dummy_event_c = is_dummy_event_v<T>;
+concept is_cgui_default_event_c = is_cgui_default_event_v<T>;
 
-template <is_dummy_event_c T>
+template <is_cgui_default_event_c T>
   requires(requires(T const &t) { t.pos; })
 constexpr auto position(T const &t) {
   return t.pos;
 }
 
-template <is_dummy_event_c T>
+template <is_cgui_default_event_c T>
   requires(requires(T const &t) { t.button_id; })
 constexpr mouse_buttons mouse_button(T const &t) {
   return t.button_id;
 }
-template <is_dummy_event_c T>
+template <is_cgui_default_event_c T>
   requires(requires(T const &t) { t.sz; })
 constexpr auto size_of(T const &t) {
   return t.sz;
 }
 
-using dummy_mouse_move_event = dummy_event<ui_events::mouse_move>;
-using dummy_mouse_down_event = dummy_event<ui_events::mouse_button_down>;
-using dummy_mouse_up_event = dummy_event<ui_events::mouse_button_up>;
-using dummy_mouse_exit_event = dummy_event<ui_events::mouse_exit>;
-using dummy_window_resized_event = dummy_event<ui_events::window_resized>;
+using default_mouse_move_event = default_event<ui_events::mouse_move>;
+using default_mouse_down_event = default_event<ui_events::mouse_button_down>;
+using default_mouse_up_event = default_event<ui_events::mouse_button_up>;
+using default_mouse_exit_event = default_event<ui_events::mouse_exit>;
+using default_window_resized_event = default_event<ui_events::window_resized>;
 
 struct cgui_mouse_exit_event {
   static constexpr subset_ui_events<ui_events::mouse_exit> event_type(auto &&) {
