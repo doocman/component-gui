@@ -1,4 +1,7 @@
 
+
+#include <cgui/std-backport/limits.hpp>
+
 #include <cgui/cgui-types.hpp>
 #include <cgui/cgui.hpp>
 #include <cgui/std-backport/concepts.hpp>
@@ -20,9 +23,15 @@
 #include <cgui_test_utils.hpp>
 
 namespace cgui::tests {
+static_assert(
+    std::is_same_v<std::common_type_t<bp::default_init_valued_t, int>, int>);
 static_assert(requires(std::tuple<int> t) {
   call::impl::do_apply_to{}(t, bp::no_op);
 });
+static_assert(single_pixel_draw<dummy_pixel_drawer>);
+static_assert(single_alpha_draw<dummy_alpha_drawer>);
+static_assert(pixel_draw_callback<dummy_pixel_draw_callback>);
+static_assert(alpha_draw_callback<dummy_alpha_draw_callback>);
 
 using namespace ::testing;
 
@@ -99,7 +108,7 @@ TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
   EXPECT_CALL(checkpoint, Call());
   EXPECT_CALL(button_state, do_on_button_click(Eq(mouse_buttons::primary)));
   EXPECT_CALL(button_state, do_on_button_exit());
-  constexpr auto area = default_rect{{0, 0}, {4, 4}};
+  constexpr auto area = point_unit(default_rect{{0, 0}, {4, 4}});
   trig.handle(area, dummy_mouse_move_event{{1, 1}});
   trig.handle(area, dummy_mouse_down_event{{1, 1}, mouse_buttons::primary});
   checkpoint.Call();
@@ -111,7 +120,7 @@ struct mock_widget_resize {
 
   MOCK_METHOD(void, do_resize, (int w, int h));
   void area(bounding_box auto const &b) {
-    do_resize(call::width(b), call::height(b));
+    do_resize(call::width(b.value()), call::height(b.value()));
   }
   void render(auto &&) const {}
 };
@@ -128,16 +137,17 @@ TEST(GuiContext, BuildResize) // NOLINT
   InSequence s;
   EXPECT_CALL(w, do_resize(2, 2));
   EXPECT_CALL(w, do_resize(3, 3));
-  auto gui =
-      gui_context_builder()
-          .widgets(std::ref(w))
-          .on_resize([](size_wh auto const &wh, auto &&widgets) {
-            auto &[w] = widgets;
-            w.area(default_rect{0, 0, call::width(wh), call::height(wh)});
-          })
-          .build({{0, 0}, {2, 2}});
+  auto gui = gui_context_builder()
+                 .widgets(std::ref(w))
+                 .on_resize([](size_wh auto const &wh, auto &&widgets) {
+                   auto &[w] = widgets;
+                   w.area(extend_api_t<default_point_rect>::from_xywh(
+                       bp::default_init_valued, bp::default_init_valued,
+                       call::width(wh), call::height(wh)));
+                 })
+                 .build({{0, 0}, {2, 2}});
   auto area = gui.handle(dummy_window_resized_event{{3, 3}});
-  expect_box_equal(area, default_rect{{0, 0}, {3, 3}});
+  expect_box_equal(area, box_from_xyxy<default_point_rect>(0, 0, 3, 3));
 }
 
 struct rerender_if_state {
@@ -151,7 +161,6 @@ struct rerender_if_state {
     }
   }
 };
-
 TEST(GuiContext, RerenderOutput) // NOLINT
 {
   auto w1b = widget_builder()
@@ -172,9 +181,11 @@ TEST(GuiContext, RerenderOutput) // NOLINT
                   .build({{0, 0}, {1, 1}});
   guic.render(r);
   auto rarea = guic.handle(1);
-  expect_box_equal(rarea, default_rect{{1, 0}, {2, 1}});
+  expect_box_equal(rarea, box_from_xyxy<default_pixel_rect>(1, 0, 2, 1));
   rarea = guic.handle(0);
-  EXPECT_TRUE(box_includes_box(rarea, default_rect{{0, 0}, {1, 1}}));
-  EXPECT_TRUE(box_includes_box(rarea, default_rect{{2, 0}, {3, 1}}));
+  EXPECT_TRUE(
+      box_includes_box(rarea, box_from_xyxy<default_point_rect>(0, 0, 1, 1)));
+  EXPECT_TRUE(
+      box_includes_box(rarea, box_from_xyxy<default_point_rect>(0, 0, 1, 1)));
 }
 } // namespace cgui::tests

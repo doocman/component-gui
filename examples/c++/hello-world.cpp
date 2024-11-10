@@ -34,46 +34,41 @@ int main(int, char **) {
     bool do_exit{};
     auto renderer = main_window.renderer().value();
 
-    using area_t = decltype(full_area);
     auto gui =
         cgui::gui_context_builder()
-            .widgets(
-
-                cgui::widget_builder().area(area_t{}).display(
-                    cgui::text_renderer(std::ref(cached_font))),
-                cgui::widget_builder()
-                    .area(area_t{})
-                    .display(cgui::display_per_state(cgui::fill_rect()),
-                             cgui::text_renderer(std::ref(cached_font)))
-                    .event(cgui::buttonlike_trigger(
-                        cgui::momentary_button{}
-                            .click([&do_exit] { do_exit = true; })
-                            .build())),
-                cgui::widget_builder()
-                    .area(area_t{})
-                    .display(cgui::fill_rect(),
-                             cgui::display_per_state(
-                                 cgui::text_renderer(std::ref(cached_font))))
-                    .event(cgui::buttonlike_trigger(
-                        cgui::toggle_button_state().build())),
-                cgui::widget_builder().area(area_t{}).display(
-                    cgui::text_renderer(std::ref(cached_font))) //
-                )
+            .widgets(cgui::widget_builder().display(
+                         cgui::text_renderer(std::ref(cached_font))),
+                     cgui::widget_builder()
+                         .display(cgui::display_per_state(cgui::fill_rect()),
+                                  cgui::text_renderer(std::ref(cached_font)))
+                         .event(cgui::buttonlike_trigger(
+                             cgui::momentary_button{}
+                                 .click([&do_exit] { do_exit = true; })
+                                 .build())),
+                     cgui::widget_builder()
+                         .display(cgui::fill_rect(),
+                                  cgui::display_per_state(cgui::text_renderer(
+                                      std::ref(cached_font))))
+                         .event(cgui::buttonlike_trigger(
+                             cgui::toggle_button_state().build())),
+                     cgui::widget_builder().display(
+                         cgui::text_renderer(std::ref(cached_font))) //
+                     )
             .on_resize([](cgui::size_wh auto const &sz, auto &&widgets) {
               using namespace cgui;
               auto &[hello_world_header, quit_button, random_toggle,
                      lorum_ipsum] = widgets;
-              auto full_area = cgui::box_from_xywh<area_t>(
+              auto full_area = cgui::box_from_xywh<default_point_rect>(
                   0, 0, call::width(sz), call::height(sz));
               hello_world_header.area(trim_from_above(
                   &full_area,
-                  std::min<int>(cgui::call::height(full_area), 64)));
+                  std::min(cgui::call::height(full_area), point_unit(64))));
               std::get<0>(hello_world_header.displays())
-                  .set_displayed(hello_world_header.area(), "Hello World!")
+                  .set_text("Hello World!")
                   .text_colour({255, 255, 255, 255});
               auto button_bar_area = cgui::trim_from_below(
                   &full_area,
-                  std::min<int>(cgui::call::height(full_area), 128));
+                  std::min(cgui::call::height(full_area), point_unit(128)));
               {
                 auto &background = std::get<0>(quit_button.displays());
                 using enum cgui::momentary_button_states;
@@ -88,28 +83,24 @@ int main(int, char **) {
               {
                 auto &texts = std::get<1>(random_toggle.displays());
                 using enum cgui::toggle_button_states;
-                auto a = random_toggle.area();
-                get<relaxed_off>(texts).set_displayed(
-                    a, "I'm a happy off'ed button");
-                get<hover_off>(texts).set_displayed(
-                    a, "Don't you dare to click me!");
-                get<hold_off>(texts).set_displayed(a, "You are clicking...");
-                get<relaxed_on>(texts).set_displayed(
-                    a, "Noo, come back and fix this. You must click me again!");
-                get<hover_on>(texts).set_displayed(a,
-                                                   "Click me back please...");
-                get<hold_on>(texts).set_displayed(
-                    a, "Pressing, and now... let it goooo!");
+                get<relaxed_off>(texts).set_text("I'm a happy off'ed button");
+                get<hover_off>(texts).set_text("Don't you dare to click me!");
+                get<hold_off>(texts).set_text("You are clicking...");
+                get<relaxed_on>(texts).set_text(
+                    "Noo, come back and fix this. You must click me again!");
+                get<hover_on>(texts).set_text("Click me back please...");
+                get<hold_on>(texts).set_text(
+                    "Pressing, and now... let it goooo!");
               }
 
               std::get<1>(quit_button.displays())
-                  .set_displayed(quit_button.area(), "Quit")
+                  .set_text("Quit")
                   .text_colour({255, 255, 255, 255});
 
               lorum_ipsum.area(full_area);
               std::get<0>(lorum_ipsum.displays())
-                  .set_displayed(
-                      lorum_ipsum.area(),
+                  .set_text(
+
                       "Lorem ipsum dolor sit amet, consectetur adipiscing "
                       "elit, sed do eiusmod tempor incididunt ut labore et "
                       "dolore magna aliqua. Ut enim ad minim veniam, quis "
@@ -132,7 +123,7 @@ int main(int, char **) {
 
     auto next_run = steady_clock::now() + run_interval;
     while (!do_exit) {
-      SDL_Rect to_rerender{};
+      cgui::point_unit_t<SDL_Rect> to_rerender{};
       while (cgui::poll_event(sdl_context, [&]<typename T>(T e) {
                if constexpr (std::is_same_v<T, cgui::sdl_quit_event>) {
                  do_exit = true;
@@ -147,7 +138,7 @@ int main(int, char **) {
         // This is not done automatically by the gui context as it could be used
         // to overlay a gui on top of other graphics (like a menu in a game).
         renderer.clear();
-        if (cgui::box_includes_box(to_rerender, renderer.area())) {
+        if (cgui::box_includes_box(to_rerender, main_window.area())) {
           // This weird little thing is currently needed. It may be an error in
           // SDL3. A closer inspection is warranted. Follow issue at:
           // https://github.com/libsdl-org/SDL/issues/11401
@@ -155,8 +146,8 @@ int main(int, char **) {
           renderer.clear();
         }
         renderer.render_to(gui, to_rerender);
-        renderer.present();
       }
+      renderer.present();
       std::this_thread::sleep_until(next_run);
       next_run += run_interval;
     }

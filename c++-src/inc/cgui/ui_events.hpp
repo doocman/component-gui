@@ -28,27 +28,27 @@ template <ui_events> struct ui_event_constraints {
 template <> struct ui_event_constraints<ui_events::mouse_button_down> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> pixel_coord;
+    { call::position(t) } -> point_coordinate;
     call::mouse_button(t);
   };
 };
 template <> struct ui_event_constraints<ui_events::mouse_button_up> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> pixel_coord;
+    { call::position(t) } -> point_coordinate;
     call::mouse_button(t);
   };
 };
 template <> struct ui_event_constraints<ui_events::mouse_move> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> pixel_coord;
+    { call::position(t) } -> point_coordinate;
   };
 };
 template <> struct ui_event_constraints<ui_events::window_resized> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
-    { call::size_of(t) } -> size_wh;
+    { call::size_of(t) } -> point_size_wh;
   };
 };
 
@@ -91,9 +91,7 @@ template <ui_events evt> struct subset_ui_events<evt> {
 };
 
 template <typename T>
-concept subset_ui_event_c = std::convertible_to<T, ui_events> &&
-  requires()
-{
+concept subset_ui_event_c = std::convertible_to<T, ui_events> && requires() {
   {
     std::remove_cvref_t<T>::can_be_event(ui_event_identity<ui_events::system>{})
   } -> std::convertible_to<bool>;
@@ -161,18 +159,18 @@ constexpr subset_ui_events<tEvt> event_type(dummy_event<tEvt> const &) {
 template <> struct dummy_event<ui_events::system> {};
 template <> struct dummy_event<ui_events::mouse_exit> {};
 template <> struct dummy_event<ui_events::mouse_move> {
-  default_pixel_coord pos;
+  default_point_coordinate pos;
 };
 template <> struct dummy_event<ui_events::mouse_button_down> {
-  default_pixel_coord pos;
+  default_point_coordinate pos;
   mouse_buttons button_id;
 };
 template <> struct dummy_event<ui_events::mouse_button_up> {
-  default_pixel_coord pos;
+  default_point_coordinate pos;
   mouse_buttons button_id;
 };
 template <> struct dummy_event<ui_events::window_resized> {
-  default_size_wh sz;
+  default_point_size_wh sz;
 };
 
 template <typename> constexpr bool is_dummy_event_v = false;
@@ -294,7 +292,8 @@ public:
     requires((std::invocable<Fs, decltype(evt)> ||
                   std::invocable<Fs, decltype(evt), Data &&> ||
                   std::invocable < Fs,
-              decltype(evt), Data &&, decltype(args)... >) && ...)
+              decltype(evt), Data &&, decltype(args)... >) &&
+             ...)
   {
     using evt_t = decltype(evt);
     auto sf = bp::as_forward<decltype(self)>(self);

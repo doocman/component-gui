@@ -9,53 +9,57 @@ namespace cgui::tests {
 using namespace ::testing;
 
 struct dummy_glyph {
-  int length;
-  int ascend;
-  int descend;
+  pixel_unit_t<int> length;
+  pixel_unit_t<int> ascend;
+  pixel_unit_t<int> descend;
   std::uint_least8_t alpha;
 
-  dummy_glyph(int l, auto a, int asc, int des)
-      : length(l), alpha(a), ascend(asc), descend(des) {}
+  dummy_glyph(int l, auto a, pixel_unit_t<int> asc, pixel_unit_t<int> des)
+      : length(pixel_unit(l)), alpha(a), ascend(asc), descend(des) {}
 
-  constexpr int height() const { return ascend + descend + 1; }
+  constexpr pixel_unit_t<int> height() const {
+    return ascend + descend + pixel_unit(1);
+  }
   void render(auto &&renderer) const {
     call::draw_alpha(
-        renderer, default_rect{0, 0, length, height()},
+        renderer, box_from_xywh<default_pixel_rect>(0, 0, length, height()),
         [alpha = alpha](bounding_box auto &&bbox, auto &&drawer) {
           for (auto i = call::l_x(bbox); i < call::r_x(bbox); ++i) {
             for (auto j = call::t_y(bbox); j < call::b_y(bbox); ++j) {
-              drawer(default_pixel_coord{i, j}, alpha);
+              drawer(pixel_unit_t<default_coordinate>(i, j), alpha);
             }
           }
         });
   }
 
-  constexpr std::uint_least8_t advance_x() const { return length; }
-  static constexpr std::uint_least8_t advance_y() { return {}; }
-  constexpr default_rect pixel_area() const {
-    return {{0, 0}, {length, height()}};
+  constexpr pixel_unit_t<std::uint_least8_t> advance_x() const {
+    return length;
   }
-  constexpr auto base_to_top() const { return ascend + 1; }
+  static constexpr pixel_unit_t<std::uint_least8_t> advance_y() { return {}; }
+  constexpr default_pixel_rect pixel_area() const {
+    return box_from_xywh<default_pixel_rect>(0, 0, length, height());
+  }
+  constexpr auto base_to_top() const { return ascend + pixel_unit(1); }
 };
 struct dummy_font_face {
-  int faulty_glyphs{};
+  int mutable faulty_glyphs{};
   bool use_height_{};
 
   constexpr dummy_font_face() = default;
   constexpr explicit dummy_font_face(bool use_height)
       : use_height_(use_height) {}
 
-  constexpr int _gheight(int h) const {
+  constexpr auto _gheight(int h) const {
     if (use_height_) {
-      return h;
+      return pixel_unit_t<int>(h);
     }
-    return 0;
+    return pixel_unit_t<int>();
   }
 
-  constexpr int ascender() const { return _gheight(1); }
-  constexpr int descender() const { return _gheight(1); }
+  constexpr auto ascender() const { return _gheight(1); }
+  constexpr auto descender() const { return _gheight(1); }
 
-  expected<dummy_glyph, bool> glyph(char c) {
+  expected<dummy_glyph, bool> glyph(char c) const {
     switch (c) {
     case '0':
       return dummy_glyph{1, 255, _gheight(0), _gheight(1)};
@@ -72,18 +76,21 @@ struct dummy_font_face {
       return unexpected(false);
     }
   }
-  constexpr int full_height() const { return ascender() + descender() + 1; }
+  constexpr auto full_height() const {
+    return ascender() + descender() + pixel_unit_t<int>(1);
+  }
 };
 
-constexpr int bitmap_top(dummy_font_face const &font, dummy_glyph const &g) {
-  return font.ascender() - g.ascend - 1;
+constexpr pixel_unit_t<int> bitmap_top(dummy_font_face const &font,
+                                       dummy_glyph const &g) {
+  return font.ascender() - g.ascend - pixel_unit_t<int>(1);
 }
 
 TEST(TextRender, PerfectWidthString) // NOLINT
 {
   using t2r_t = text_renderer<dummy_font_face>;
   auto t2r = t2r_t(dummy_font_face{});
-  call::set_displayed(t2r, 4, 1, "1 0");
+  t2r.set_text("1 0");
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
@@ -107,12 +114,11 @@ TEST(TextRender, CenterAligned) // NOLINT
 
   auto r = test_renderer({0, 0, 6, 3});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
-                      "1 0");
+  t2r.set_text("1 0");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(
-      t2r, sr,
-      widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(t2r, sr,
+               widget_render_args(call::width(call::point_area(r)),
+                                  call::height(call::point_area(r))));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -137,12 +143,11 @@ TEST(TextRender, TwoLinesSpace) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
-                      "1 1");
+  t2r.set_text("1 1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(
-      t2r, sr,
-      widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(t2r, sr,
+               widget_render_args(call::width(call::point_area(r)),
+                                  call::height(call::point_area(r))));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -165,12 +170,11 @@ TEST(TextRender, TwoLinesDashDirect) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
-                      "120");
+  t2r.set_text("120");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(
-      t2r, sr,
-      widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(t2r, sr,
+               widget_render_args(call::width(call::point_area(r)),
+                                  call::height(call::point_area(r))));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -190,12 +194,11 @@ TEST(TextRender, TwoLinesDashIndirect) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
-                      "1001");
+  t2r.set_text("1001");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(
-      t2r, sr,
-      widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(t2r, sr,
+               widget_render_args(call::width(call::point_area(r)),
+                                  call::height(call::point_area(r))));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -216,12 +219,11 @@ TEST(TextRender, ManualNewLine) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 2});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
-                      "1\n1");
+  t2r.set_text("1\n1");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(
-      t2r, sr,
-      widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(t2r, sr,
+               widget_render_args(call::width(call::point_area(r)),
+                                  call::height(call::point_area(r))));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -241,12 +243,11 @@ TEST(TextRender, ThreeLines) // NOLINT
 
   auto r = test_renderer({0, 0, 4, 3});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
-                      "10011");
+  t2r.set_text("10011");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(
-      t2r, sr,
-      widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(t2r, sr,
+               widget_render_args(call::width(call::point_area(r)),
+                                  call::height(call::point_area(r))));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -266,12 +267,11 @@ TEST(TextRender,
 
   auto r = test_renderer({0, 0, 6, 5});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
-                      "012");
+  t2r.set_text("012");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(
-      t2r, sr,
-      widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(t2r, sr,
+               widget_render_args(call::width(call::point_area(r)),
+                                  call::height(call::point_area(r))));
   EXPECT_THAT(r.failed_calls, IsEmpty());
   EXPECT_THAT(r.failed_pixel_draws, IsEmpty());
   EXPECT_THAT(t2r.font().faulty_glyphs, Eq(0));
@@ -289,16 +289,16 @@ TEST(TextRender, RefFace) // NOLINT
 {
   auto face = dummy_font_face();
   auto t2r = text_renderer(std::ref(face));
-  t2r.set_displayed(1, 1, "?");
+  t2r.set_text("?");
   dummy_renderer r;
   t2r.render(r, widget_render_args(1, 1));
   EXPECT_THAT(face.faulty_glyphs, Eq(1));
 }
 struct mock_face {
   MOCK_METHOD((expected<dummy_glyph, bool>), glyph, (char), (const));
-  inline int full_height() const { return 1; }
-  inline int ascender() const { return 1; }
-  inline int descender() const { return 1; }
+  inline pixel_unit_t<int> full_height() const { return {{}, 1}; }
+  inline pixel_unit_t<int> ascender() const { return {{}, 1}; }
+  inline pixel_unit_t<int> descender() const { return {{}, 1}; }
 };
 TEST(TextRender, CachedGlyphs) // NOLINT
 {
@@ -311,7 +311,7 @@ TEST(TextRender, CachedGlyphs) // NOLINT
       .WillRepeatedly([](auto &&...) { return dummy_font_face().glyph('0'); });
   auto face = cached_font(std::ref(mface));
   auto t2r = text_renderer(std::ref(face));
-  t2r.set_displayed(5, 5, "00");
+  t2r.set_text("00");
   dummy_renderer r;
   t2r.render(r, widget_render_args(1, 1));
 }
@@ -320,7 +320,7 @@ TEST(TextRender, CachedGlyphs4) // NOLINT
   using font_t = cached_font<dummy_font_face &>;
   auto dummy_face = dummy_font_face();
   auto t2r = text_renderer(font_t(dummy_face));
-  call::set_displayed(t2r, 7, 1, "1 02");
+  t2r.set_text("1 02");
   auto r = test_renderer({0, 0, 7, 1});
   auto sr = sub_renderer(r);
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
@@ -342,12 +342,11 @@ TEST(TextRender, TooSmallBox) // NOLINT
 
   auto r = test_renderer({0, 0, 7, 5});
   auto sr = sub_renderer(r);
-  call::set_displayed(t2r, call::width(r.area()), call::height(r.area()),
-                      "111111111");
+  t2r.set_text("111111111");
   call::text_colour(t2r, default_colour_t{255, 0, 0, 255});
-  call::render(
-      t2r, sr,
-      widget_render_args(call::width(r.area()), call::height(r.area())));
+  call::render(t2r, sr,
+               widget_render_args(call::width(call::point_area(r)),
+                                  call::height(call::point_area(r))));
   // No expects, the assert will hit.
 }
 

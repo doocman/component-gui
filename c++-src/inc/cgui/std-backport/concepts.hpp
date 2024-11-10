@@ -74,6 +74,41 @@ concept invocable_or_invocable_args =
 template <typename T, typename Operator, typename... EachOperand>
 concept can_be_operand_for_all =
     (std::invocable<Operator, T, EachOperand> && ...);
+
+template <typename T>
+concept empty_type = std::is_empty_v<T>;
+
+template <typename T, typename U>
+concept weakly_comparable_with_impl = requires(T &&t, U &&u) {
+  { t == u } -> std::convertible_to<bool>;
+};
+template <typename T, typename U>
+concept weakly_comparable_with =
+    weakly_comparable_with_impl<T, U> && weakly_comparable_with_impl<U, T>;
+template <typename T, typename U>
+concept weakly_totally_ordered_with_impl = requires(T &&t, U &&u) {
+  { t < u } -> std::convertible_to<bool>;
+  { t > u } -> std::convertible_to<bool>;
+  { t <= u } -> std::convertible_to<bool>;
+  { t >= u } -> std::convertible_to<bool>;
+};
+template <typename T, typename U>
+concept weakly_totally_ordered_with = weakly_totally_ordered_with_impl<T, U> &&
+                                      weakly_totally_ordered_with_impl<U, T>;
+
+template <typename T, typename... Args>
+concept direct_invocable = requires(T &&t, Args &&...args) {
+  std::forward<T>(t)(std::forward<Args>(args)...);
+};
+
+template <typename T>
+concept value_incrementable = requires(T &t) {
+  { ++t } -> std::same_as<T &>;
+};
+template <typename T>
+concept value_decrementable = requires(T &t) {
+  { --t } -> std::same_as<T &>;
+};
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_CONCEPTS_HPP

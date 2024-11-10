@@ -24,6 +24,23 @@ template <typename T> struct ct_value_wrapper {
   constexpr bool operator==(const ct_value_wrapper &) const = default;
 };
 template <typename T> ct_value_wrapper(T) -> ct_value_wrapper<T>;
+
+template <typename T> struct remove_temp_ref {
+  using type = T;
+};
+template <typename T> struct remove_temp_ref<T &&> {
+  using type = std::remove_cvref_t<T>;
+};
+template <typename T> struct remove_temp_ref<T const &&> {
+  using type = std::remove_cvref_t<T>;
+};
+template <typename T> struct remove_temp_ref<T const &> {
+  using type = std::remove_cvref_t<T>;
+};
+
+template <typename T>
+using remove_temp_ref_t = typename remove_temp_ref<T>::type;
+
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_TYPE_TRAITS_HPP
