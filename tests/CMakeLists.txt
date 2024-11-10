@@ -33,7 +33,7 @@ function(cgui_add_test FILE)
 endfunction()
 
 cgui_add_test(cgui-bp-tests.cpp)
-cgui_add_test(cgui-events.cpp)
+cgui_add_test(cgui-events-tests.cpp)
 cgui_add_test(cgui-geometry-tests.cpp)
 cgui_add_test(cgui-subable-tests.cpp)
 cgui_add_test(cgui-tests.cpp)

@@ -1,5 +1,5 @@
 
-#include <cgui/cgui.hpp>
+#include <cgui/ui_events.hpp>
 
 #include <gmock/gmock.h>
 
@@ -48,6 +48,41 @@ TEST(UiEventsMatcher, BasicsState) // NOLINT
   my_switch(default_mouse_move_event{});
   my_switch(default_mouse_down_event{});
   my_switch(default_mouse_up_event{});
+}
+
+TEST(GestureEvents, MouseClick) // NOLINT
+{
+  using namespace std::chrono_literals;
+  interpreted_events last_event{};
+  using state_t = std::variant<int, primary_mouse_click_translator::state>;
+  int last_confirmed = -1;
+  int event_calls{};
+  auto to_test = event_interpreter<primary_mouse_click_translator>{};
+  auto reset_values = [&] {
+    last_confirmed = -1;
+    last_event = {};
+    event_calls = {};
+  };
+  auto test_callback = [&] <interpreted_events ev, bool confirmed> (interpreted_event<ev, confirmed> const&) {
+    ++event_calls;
+    last_event = ev;
+    last_confirmed = confirmed ? 1 : 0;
+  };
+  auto invoke_tt = [&] (auto const& input_evt) {
+    reset_values();
+    to_test.handle(input_evt, test_callback);
+  };
+  invoke_tt(default_mouse_down_event{});
+  EXPECT_THAT(event_calls, Eq(0));
+  invoke_tt(default_mouse_up_event{});
+  EXPECT_THAT(last_event, Eq(interpreted_events::primary_click));
+  EXPECT_THAT(last_confirmed, Eq(0));
+  EXPECT_THAT(event_calls, Eq(1));
+  reset_values();
+  to_test.pass_time(201ms, test_callback);
+  EXPECT_THAT(last_event, Eq(interpreted_events::primary_click));
+  EXPECT_THAT(last_confirmed, Eq(1));
+  EXPECT_THAT(event_calls, Eq(1));
 }
 
 }

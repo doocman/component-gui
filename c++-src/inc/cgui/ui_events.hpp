@@ -2,6 +2,7 @@
 #ifndef COMPONENT_GUI_CGUI_UI_EVENTS_HPP
 #define COMPONENT_GUI_CGUI_UI_EVENTS_HPP
 
+#include <chrono>
 #include <tuple>
 
 #include <cgui/cgui-types.hpp>
@@ -204,9 +205,53 @@ using default_mouse_up_event = default_event<input_events::mouse_button_up>;
 using default_mouse_exit_event = default_event<input_events::mouse_exit>;
 using default_window_resized_event = default_event<input_events::window_resized>;
 
+enum class interpreted_events {
+  primary_click = 1
+};
+enum class early_event_tag {
+  preliminary, confirmed, cancelled
+};
+
+template <interpreted_events, early_event_tag>
+struct interpreted_event;
+
+template <interpreted_events e>
+using confirmed_interpreted_event = interpreted_event<e, early_event_tag::confirmed>;
+template <interpreted_events e>
+using preliminary_interpreted_event = interpreted_event<e, early_event_tag::preliminary>;
+template <interpreted_events e>
+using cancelled_interpreted_event = interpreted_event<e, early_event_tag::cancelled>;
+
+template <early_event_tag tag> struct interpreted_event<interpreted_events::primary_click, tag> {};
+
+using primary_click_event = confirmed_interpreted_event<interpreted_events::primary_click>;
+
 struct cgui_mouse_exit_event {
   static constexpr subset_input_events<input_events::mouse_exit> event_type(auto &&) {
     return {};
+  }
+};
+
+struct primary_mouse_click_translator {
+  struct state {};
+  template <typename Evt, typename F>
+  constexpr std::optional<state> handle(Evt const&, F&&, auto&&) {
+    return {};
+  }
+  template <typename F>
+  constexpr std::optional<state> pass_time(std::chrono::nanoseconds, F&&, auto&&) {
+    return {};
+  }
+};
+
+template <typename... Interpreters>
+class event_interpreter {
+public:
+  template <typename Evt, typename F>
+  constexpr void handle(Evt const&, F&&) {
+  }
+  template <typename F>
+  constexpr void pass_time(std::chrono::nanoseconds, F&&) {
   }
 };
 
