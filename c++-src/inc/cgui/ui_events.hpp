@@ -248,7 +248,7 @@ using default_mouse_exit_event = default_event<input_events::mouse_exit>;
 using default_window_resized_event =
     default_event<input_events::window_resized>;
 
-enum class interpreted_events { primary_click = 1 };
+enum class interpreted_events { primary_click = 1, double_primary_click };
 enum class early_event_tag { preliminary, confirmed, cancelled };
 
 template <interpreted_events, typename...> struct interpreted_event_impl;
@@ -300,6 +300,12 @@ template <> struct interpreted_event_impl<interpreted_events::primary_click> {
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
       : pos(copy_coordinate<position_t>(p)) {}
 };
+template <> struct interpreted_event_impl<interpreted_events::double_primary_click> {
+  using position_t = default_point_coordinate;
+  position_t pos{};
+  constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
+      : pos(copy_coordinate<position_t>(p)) {}
+};
 
 struct cgui_mouse_exit_event {
   static constexpr subset_input_events<input_events::mouse_exit>
@@ -319,6 +325,14 @@ template <typename Interpreter> struct state_interpreter_pair {
     return std::get<typename interpreter::settings>(t);
   }
 };
+template <typename Interpreter>
+constexpr auto _to_state(state_interpreter_pair<Interpreter>* sip) -> decltype(&sip->state) {
+  if (sip == nullptr) {
+    return nullptr;
+  } else {
+    return &sip->state;
+  }
+}
 
 template <typename TimePoint = typename std::chrono::steady_clock::time_point,
           template <typename> typename... Interpreters>
@@ -522,7 +536,7 @@ saved_ui_event_switch(Data &&d, event_case_t<evt_vs, Fs> &&...cases) {
 
 struct primary_mouse_click_translator_settings {
   std::chrono::nanoseconds double_click_timeout =
-      std::chrono::milliseconds(200);
+      std::chrono::milliseconds(500);
 };
 
 template <typename F, typename C, typename... Args>
@@ -547,14 +561,29 @@ template <typename TimePoint> struct primary_mouse_click_translator {
         std::tuple<F &&, state const *, std::optional<state> &>(f, in, out),
         event_case<input_events::mouse_button_up>([](auto const &e, auto &&d) {
           auto &[f, s_in, s_out] = d;
-          s_out = state{
-              call::time_stamp(e),
-              copy_coordinate<default_point_coordinate>(call::position(e))};
-          _invoke_with_interpreted_event(f,
-                                         create_interpreted_event_from_event<
-                                             early_event_tag::preliminary,
-                                             interpreted_events::primary_click>,
-                                         e, call::position(e));
+          if (s_in == nullptr) {
+            // No previous state, so this is the first 'click'.
+            s_out = state{
+                call::time_stamp(e),
+                copy_coordinate<default_point_coordinate>(call::position(e))};
+            _invoke_with_interpreted_event(f,
+                                           create_interpreted_event_from_event<
+                                               early_event_tag::preliminary,
+                                               interpreted_events::primary_click>,
+                                           e, call::position(e));
+          } else {
+            s_out = std::nullopt;
+            _invoke_with_interpreted_event(f,
+                                           create_interpreted_event_from_event<
+                                               early_event_tag::cancelled,
+                                               interpreted_events::primary_click>,
+                                           e, call::position(e));
+            _invoke_with_interpreted_event(f,
+                                           create_interpreted_event_from_event<
+                                               early_event_tag::confirmed,
+                                               interpreted_events::double_primary_click>,
+                                           e, call::position(e));
+          }
         }));
   }
   template <typename Evt, typename F>
@@ -562,7 +591,7 @@ template <typename TimePoint> struct primary_mouse_click_translator {
                                                settings const &) {
     std::optional<state> s_out;
     unused(s_in);
-    evt_switch(f, nullptr, s_out)(e);
+    evt_switch(f, _to_state(s_in), s_out)(e);
     return s_out;
   }
   template <typename F>

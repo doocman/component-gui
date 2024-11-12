@@ -111,20 +111,57 @@ TEST(GestureEvents, MouseClick) // NOLINT
   first_ts += 101ms;
   to_test.pass_time(first_ts, test_callback);
   EXPECT_THAT(event_calls, Eq(0));
-  first_ts += 100ms;
+  first_ts += 400ms;
   to_test.pass_time(first_ts, test_callback);
   EXPECT_THAT(last_event, Eq(interpreted_events::primary_click));
   EXPECT_THAT(last_confirmed, Eq(early_event_tag::confirmed));
   EXPECT_THAT(event_calls, Eq(1));
   reset_values();
-  first_ts += 101ms;
+  first_ts += 501ms;
   to_test.pass_time(first_ts, test_callback);
   EXPECT_THAT(event_calls, Eq(0));
 }
 
+struct event_counter {
+  std::vector<interpreted_events> event_types;
+  std::vector<early_event_tag> event_ee_tags;
+  template <typename Evt>
+  constexpr void operator()(Evt const& e) {
+    //last_event = to_interpred_event_enum<Evt>();
+    //last_confirmed = early_event_status<Evt>();
+    event_types.push_back(to_interpred_event_enum<Evt>());
+    event_ee_tags.push_back(early_event_status<Evt>());
+  }
+
+  void reset() {
+    event_types.clear();
+    event_ee_tags.clear();
+  }
+};
+
 TEST(GestureEvents, MouseDoubleClick) // NOLINT
 {
-  FAIL() << "Not yet implemented";
+  using namespace std::chrono;
+  using time_point_t = steady_clock::time_point;
+  auto first_ts = time_point_t{};
+  auto counter = event_counter();
+  auto to_test =
+      event_interpreter<time_point_t, primary_mouse_click_translator>{};
+
+  auto invoke_tt = [&](auto const &input_evt) {
+    counter.reset();
+    to_test.handle(input_evt, counter);
+  };
+  invoke_tt(default_mouse_down_event{.common_data{first_ts}});
+  invoke_tt(default_mouse_up_event{.common_data{first_ts}});
+  invoke_tt(default_mouse_up_event{.common_data{first_ts}});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::primary_click, interpreted_events::double_primary_click));
+  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::cancelled, early_event_tag::confirmed));
+  first_ts += 5001ms;
+  counter.reset();
+  to_test.pass_time(first_ts, counter);
+  EXPECT_THAT(counter.event_ee_tags, IsEmpty());
+  EXPECT_THAT(counter.event_types, IsEmpty());
 }
 
 } // namespace cgui::tests
