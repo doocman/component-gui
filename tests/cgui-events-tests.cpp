@@ -1,6 +1,8 @@
 
 #include <cgui/ui_events.hpp>
 
+#include <type_traits>
+
 #include <gmock/gmock.h>
 
 #include <cgui_test_utils.hpp>
@@ -50,39 +52,79 @@ TEST(UiEventsMatcher, BasicsState) // NOLINT
   my_switch(default_mouse_up_event{});
 }
 
+template <interpreted_events ie_v, typename... Ts>
+constexpr interpreted_events to_interpred_event_enum(
+    std::type_identity<interpreted_event_impl<ie_v, Ts...>>) {
+  return ie_v;
+}
+template <typename Impl, early_event_tag eet, typename TimePoint>
+constexpr interpreted_events to_interpred_event_enum(
+    std::type_identity<interpreted_event<Impl, eet, TimePoint>>) {
+  return to_interpred_event_enum(std::type_identity<Impl>());
+}
+
+template <typename Evt> constexpr interpreted_events to_interpred_event_enum() {
+  return to_interpred_event_enum(std::type_identity<Evt>());
+}
+
+template <typename Impl, early_event_tag eet, typename TimePoint>
+constexpr early_event_tag early_event_status(
+    std::type_identity<interpreted_event<Impl, eet, TimePoint>>) {
+  return eet;
+}
+
+template <typename Evt> constexpr early_event_tag early_event_status() {
+  return early_event_status(std::type_identity<Evt>());
+}
+
 TEST(GestureEvents, MouseClick) // NOLINT
 {
-  using namespace std::chrono_literals;
+  using namespace std::chrono;
+  using time_point_t = steady_clock::time_point;
+  auto first_ts = time_point_t{};
   interpreted_events last_event{};
-  using state_t = std::variant<int, primary_mouse_click_translator::state>;
-  int last_confirmed = -1;
+  auto last_confirmed = static_cast<early_event_tag>(-1);
   int event_calls{};
-  auto to_test = event_interpreter<primary_mouse_click_translator>{};
+  auto to_test =
+      event_interpreter<time_point_t, primary_mouse_click_translator>{};
   auto reset_values = [&] {
-    last_confirmed = -1;
+    last_confirmed = static_cast<early_event_tag>(-1);
     last_event = {};
     event_calls = {};
   };
-  auto test_callback = [&] <interpreted_events ev, bool confirmed> (interpreted_event<ev, confirmed> const&) {
+  auto test_callback = [&]<any_interpreted_event_c Evt>(Evt const &) {
     ++event_calls;
-    last_event = ev;
-    last_confirmed = confirmed ? 1 : 0;
+    last_event = to_interpred_event_enum<Evt>();
+    last_confirmed = early_event_status<Evt>();
   };
-  auto invoke_tt = [&] (auto const& input_evt) {
+  auto invoke_tt = [&](auto const &input_evt) {
     reset_values();
     to_test.handle(input_evt, test_callback);
   };
-  invoke_tt(default_mouse_down_event{});
+  invoke_tt(default_mouse_down_event{.common_data{first_ts}});
   EXPECT_THAT(event_calls, Eq(0));
-  invoke_tt(default_mouse_up_event{});
+  invoke_tt(default_mouse_up_event{.common_data{first_ts}});
   EXPECT_THAT(last_event, Eq(interpreted_events::primary_click));
-  EXPECT_THAT(last_confirmed, Eq(0));
+  EXPECT_THAT(last_confirmed, Eq(early_event_tag::preliminary));
   EXPECT_THAT(event_calls, Eq(1));
   reset_values();
-  to_test.pass_time(201ms, test_callback);
+  first_ts += 101ms;
+  to_test.pass_time(first_ts, test_callback);
+  EXPECT_THAT(event_calls, Eq(0));
+  first_ts += 100ms;
+  to_test.pass_time(first_ts, test_callback);
   EXPECT_THAT(last_event, Eq(interpreted_events::primary_click));
-  EXPECT_THAT(last_confirmed, Eq(1));
+  EXPECT_THAT(last_confirmed, Eq(early_event_tag::confirmed));
   EXPECT_THAT(event_calls, Eq(1));
+  reset_values();
+  first_ts += 101ms;
+  to_test.pass_time(first_ts, test_callback);
+  EXPECT_THAT(event_calls, Eq(0));
 }
 
+TEST(GestureEvents, MouseDoubleClick) // NOLINT
+{
+  FAIL() << "Not yet implemented";
 }
+
+} // namespace cgui::tests
