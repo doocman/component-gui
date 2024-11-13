@@ -348,13 +348,17 @@ class event_interpreter
 
   template <typename Interpreter, typename Evt, typename F>
   constexpr bool interpret(Evt &&e, F &&f) {
+    auto* interpreter_state = std::get_if<state_interpreter_pair<Interpreter>>(&state_);
     auto new_state = Interpreter::handle(
         std::forward<Evt>(e), std::forward<F>(f),
-        std::get_if<state_interpreter_pair<Interpreter>>(&state_),
+        interpreter_state,
         std::get<typename Interpreter::settings>(std::as_const(settings_)));
     if (new_state) {
       state_ = state_interpreter_pair<Interpreter>{*new_state};
       return true;
+    }
+    else if(interpreter_state != nullptr) {
+      state_ = empty_state{};
     }
     return false;
   }
