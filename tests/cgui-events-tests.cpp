@@ -125,10 +125,9 @@ TEST(GestureEvents, MouseClick) // NOLINT
 struct event_counter {
   std::vector<interpreted_events> event_types;
   std::vector<early_event_tag> event_ee_tags;
-  template <typename Evt>
-  constexpr void operator()(Evt const& e) {
-    //last_event = to_interpred_event_enum<Evt>();
-    //last_confirmed = early_event_status<Evt>();
+  template <typename Evt> constexpr void operator()(Evt const &e) {
+    // last_event = to_interpred_event_enum<Evt>();
+    // last_confirmed = early_event_status<Evt>();
     event_types.push_back(to_interpred_event_enum<Evt>());
     event_ee_tags.push_back(early_event_status<Evt>());
   }
@@ -155,13 +154,75 @@ TEST(GestureEvents, MouseDoubleClick) // NOLINT
   invoke_tt(default_mouse_down_event{.common_data{first_ts}});
   invoke_tt(default_mouse_up_event{.common_data{first_ts}});
   invoke_tt(default_mouse_up_event{.common_data{first_ts}});
-  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::primary_click, interpreted_events::double_primary_click));
-  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::cancelled, early_event_tag::confirmed));
+  EXPECT_THAT(counter.event_types,
+              ElementsAre(interpreted_events::primary_click,
+                          interpreted_events::double_primary_click));
+  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::cancelled,
+                                                 early_event_tag::confirmed));
   first_ts += 5001ms;
   counter.reset();
   to_test.pass_time(first_ts, counter);
   EXPECT_THAT(counter.event_ee_tags, IsEmpty());
   EXPECT_THAT(counter.event_types, IsEmpty());
+}
+
+template <typename> struct dummy_event_interpreter {
+  struct state {};
+  struct settings {};
+  template <typename E>
+  static constexpr auto can_handle =
+      _interpreter_can_handle<input_events::system>::op<E>;
+
+  static constexpr std::optional<state>
+  handle(default_event<input_events::system>, auto &&...) {
+    return state{};
+  }
+  static constexpr std::optional<state> pass_time(auto &&...) {
+    return std::nullopt;
+  }
+  static constexpr void cancel_state(auto &&...) {}
+};
+
+TEST(GestureEvents, MultiInterpretersQuickconfirm) // NOLINT
+{
+  using namespace std::chrono;
+  using time_point_t = steady_clock::time_point;
+  auto first_ts = time_point_t{};
+  auto counter = event_counter();
+  auto to_test = event_interpreter<time_point_t, primary_mouse_click_translator,
+                                   dummy_event_interpreter>{};
+  auto invoke_tt = [&](auto const &input_evt) {
+    counter.reset();
+    to_test.handle(input_evt, counter);
+  };
+  invoke_tt(default_mouse_down_event{.common_data{first_ts}});
+  invoke_tt(default_mouse_up_event{.common_data{first_ts}});
+  invoke_tt(default_event<input_events::system>{});
+  EXPECT_THAT(counter.event_types,
+              ElementsAre(interpreted_events::primary_click));
+  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
+}
+
+TEST(GestureEvents, ContextMenuMouseClick) // NOLINT
+{
+  using namespace std::chrono;
+  using time_point_t = steady_clock::time_point;
+  auto first_ts = time_point_t{};
+  auto counter = event_counter();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = [&](auto const &input_evt) {
+    counter.reset();
+    to_test.handle(input_evt, counter);
+  };
+  invoke_tt(default_mouse_down_event{.button_id = mouse_buttons::secondary,
+                                     .common_data{first_ts}});
+  EXPECT_THAT(counter.event_types, IsEmpty());
+  EXPECT_THAT(counter.event_ee_tags, IsEmpty());
+  invoke_tt(default_mouse_up_event{.button_id = mouse_buttons::secondary,
+                                   .common_data{first_ts}});
+  EXPECT_THAT(counter.event_types,
+              ElementsAre(interpreted_events::context_menu_click));
+  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
 }
 
 } // namespace cgui::tests
