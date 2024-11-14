@@ -1244,6 +1244,16 @@ public:
     return call::state(state_impl(*this));
   }
 
+
+  template <point_rect Area, interpreted_event_types<interpreted_events::pointer_hover> Evt>
+  constexpr void handle(
+      point_rect auto const &area,
+      Evt const& e) {
+    if constexpr(interpreted_event_types<Evt, interpreted_events::pointer_enter>) {
+      // TODO: We probably must have a global state for enter/exit events, to get rid of the bools in this class...
+    }
+  }
+#if 0
   /// @brief Handles mouse-based events for button interactions.
   ///
   /// This function processes a variety of user input events and
@@ -1302,6 +1312,7 @@ public:
       }
     }
   }
+#endif
 };
 template <typename T>
 buttonlike_trigger(T &&) -> buttonlike_trigger<std::unwrap_ref_decay_t<T>>;

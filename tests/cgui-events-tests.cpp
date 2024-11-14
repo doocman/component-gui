@@ -243,4 +243,14 @@ TEST_F(GestureEventsTests, MouseNotDragAfterClick) // NOLINT
   EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
 }
 
+TEST_F(GestureEventsTests, MouseHover) // NOLINT
+{
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_mouse_move_event{});
+  EXPECT_THAT(counter.event_types,
+              ElementsAre(interpreted_events::pointer_hover));
+  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
+}
+
 } // namespace cgui::tests

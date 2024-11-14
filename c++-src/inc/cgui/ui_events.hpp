@@ -255,8 +255,12 @@ enum class interpreted_events {
   pointer_drag_start,
   pointer_drag_move,
   pointer_drag_finished,
+  pointer_hover,
 };
 enum class early_event_tag { preliminary, confirmed, cancelled };
+
+template <typename T, interpreted_events... ie_vs>
+concept interpreted_event_types = (can_be_event<ie_vs, T>() || ...);
 
 template <interpreted_events> struct interpreted_event_impl;
 template <interpreted_events ie_v, early_event_tag eet, typename TimePoint>
@@ -333,6 +337,12 @@ struct interpreted_event_impl<interpreted_events::pointer_drag_finished> {
                                             point_coordinate auto const &ep)
       : start_pos(copy_coordinate<position_t>(sp)),
         end_pos(copy_coordinate<position_t>(ep)) {}
+};
+template <> struct interpreted_event_impl<interpreted_events::pointer_hover> {
+  using position_t = default_point_coordinate;
+  position_t pos{};
+  constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
+      : pos(copy_coordinate<position_t>(p)) {}
 };
 
 struct cgui_mouse_exit_event {
@@ -707,6 +717,9 @@ _move(_primary_mouse_interpreter_variant<TP> const *v, E const &e, F &&f,
         },
         *v);
   } else {
+    f(create_interpreted_event_from_event<early_event_tag::confirmed,
+                                          interpreted_events::pointer_hover>(
+        e, call::position(e)));
     return std::nullopt;
   }
 }
