@@ -291,6 +291,7 @@ CGUI_CALL_CONCEPT(full_height)
 CGUI_CALL_CONCEPT(ascender)
 CGUI_CALL_CONCEPT(base_to_top)
 CGUI_CALL_CONCEPT(position)
+CGUI_CALL_CONCEPT(time_stamp)
 CGUI_CALL_CONCEPT(handle)
 CGUI_CALL_CONCEPT(set_state)
 CGUI_CALL_CONCEPT(state)
@@ -657,7 +658,9 @@ inline constexpr impl::_do_set_green green;
 inline constexpr impl::_do_set_blue blue;
 inline constexpr impl::_do_set_alpha alpha;
 inline constexpr impl::_do_set_x_of x_of;
+using x_of_t = decltype(x_of);
 inline constexpr impl::_do_set_y_of y_of;
+using y_of_t = decltype(y_of);
 inline constexpr impl::_do_size_of size_of;
 
 /// Function like object that calls pixel_scale for a type. The function takes
@@ -679,6 +682,9 @@ inline constexpr impl::_do_set_state set_state;
 inline constexpr impl::_do_state state;
 inline constexpr impl::_do_handle handle;
 inline constexpr impl::_do_position position;
+using position_t = decltype(position);
+inline constexpr impl::_do_time_stamp time_stamp;
+using time_stamp_t = decltype(time_stamp);
 
 /// Calls fill or fall backs to calling draw_pixels to fill the area in
 /// software.
@@ -717,6 +723,26 @@ inline constexpr impl::top_left_t top_left;
 /// achieve the desired result. This should never change the left x nor the top
 /// y.
 inline constexpr impl::bottom_right_t bottom_right;
+
+/// @brief Determines the result type of calling an instance of type `T` with
+/// arguments `Ts&&...`, preserving const, volatile, and reference qualifiers.
+/// @tparam T Callable type to be invoked.
+/// @tparam Ts Argument types to be passed to `T`.
+/// @returns The type resulting from calling `T` with `Ts&&...`, maintaining
+/// const, volatile, and reference qualifiers.
+template <typename T, typename... Ts>
+using call_result_cvref_t = decltype(T{}(std::declval<Ts &&>()...));
+
+/// @brief Determines the result type of calling an instance of type `T` with
+/// arguments `Ts&&...`, with const, volatile, and reference qualifiers removed
+/// from the result type.
+/// @tparam T Callable type to be invoked.
+/// @tparam Ts Argument types to be passed to `T`.
+/// @returns The type resulting from calling `T` with `Ts&&...`, with qualifiers
+/// removed.
+template <typename T, typename... Ts>
+using call_result_t = std::remove_cvref_t<call_result_cvref_t<T, Ts...>>;
+
 } // namespace call
 } // namespace cgui
 

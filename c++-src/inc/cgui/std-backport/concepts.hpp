@@ -109,6 +109,9 @@ template <typename T>
 concept value_decrementable = requires(T &t) {
   { --t } -> std::same_as<T &>;
 };
+
+template <typename T, typename... Ts>
+concept same_as_any = (std::same_as<T, Ts> || ...);
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_CONCEPTS_HPP

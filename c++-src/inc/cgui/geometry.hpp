@@ -1141,6 +1141,36 @@ constexpr bool empty_box(bounding_box auto const &b) {
          call::height(b) == bp::default_init_valued;
 }
 
+template <pixel_coord T1, same_unit_geometry_as<T1> T2>
+constexpr T1 copy_coordinate(T2 &&p) {
+  if constexpr (std::constructible_from<T1, T2>) {
+    return T1(std::forward<T2>(p));
+  } else {
+    using out_x = call::call_result_t<call::x_of_t, T1>;
+    using in_x = call::call_result_t<call::x_of_t, T2>;
+    if constexpr (std::is_integral_v<out_x> && !std::is_integral_v<in_x>) {
+      // We assume x and y are the same types for both T1 and T2.
+      return T1(static_cast<out_x>(call::x_of(p)),
+                static_cast<out_x>(call::y_of(p)));
+    } else {
+      return T1(call::x_of(p), call::y_of(p));
+    }
+  }
+}
+
+constexpr auto square_value(auto &&v) { return v * v; }
+
+template <pixel_coord T1, same_unit_geometry_as<T1> T2>
+constexpr auto distance_sqr(T1 const &p1, T2 const &p2) {
+  if constexpr (size_tagged<T1>) {
+    // We currently don't support 'unit to the power of ...'.
+    return distance_sqr(p1.value(), p2.value());
+  } else {
+    return square_value(call::x_of(p1) - call::x_of(p2)) +
+           square_value(call::y_of(p1) - call::y_of(p2));
+  }
+}
+
 /// Copies a box of type T2 into a box of type T.
 template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
   if constexpr (bp::cvref_type<T2, T>) {

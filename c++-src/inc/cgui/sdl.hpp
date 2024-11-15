@@ -521,7 +521,7 @@ T scaled_point(TX x, TY y, auto win_id) {
 } // namespace
 
 template <> struct extend_api<SDL_MouseMotionEvent> {
-  static constexpr subset_ui_events<ui_events::mouse_move>
+  static constexpr subset_input_events<input_events::mouse_move>
   event_type(SDL_MouseMotionEvent const &) {
     return {};
   }
@@ -532,13 +532,13 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
   }
 };
 template <> struct extend_api<SDL_MouseButtonEvent> {
-  static constexpr subset_ui_events<ui_events::mouse_button_up,
-                                    ui_events::mouse_button_down>
+  static constexpr subset_input_events<input_events::mouse_button_up,
+                                    input_events::mouse_button_down>
   event_type(SDL_MouseButtonEvent const &e) {
     CGUI_ASSERT(e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
                 e.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
-    return {e.type == SDL_EVENT_MOUSE_BUTTON_UP ? ui_events::mouse_button_up
-                                                : ui_events::mouse_button_down};
+    return {e.type == SDL_EVENT_MOUSE_BUTTON_UP ? input_events::mouse_button_up
+                                                : input_events::mouse_button_down};
   }
 
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
@@ -551,11 +551,11 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
   }
 };
 template <> struct extend_api<SDL_WindowEvent> {
-  static constexpr subset_ui_events<ui_events::window_resized,
-                                    ui_events::system>
+  static constexpr subset_input_events<input_events::window_resized,
+                                    input_events::system>
   event_type(SDL_WindowEvent const &e) {
-    return e.type == SDL_EVENT_WINDOW_RESIZED ? ui_events::window_resized
-                                              : ui_events::system;
+    return e.type == SDL_EVENT_WINDOW_RESIZED ? input_events::window_resized
+                                              : input_events::system;
   }
   static default_point_size_wh size_of(SDL_WindowEvent const &e) {
     return scaled_point<default_point_size_wh>(e.data1, e.data2, e.windowID);

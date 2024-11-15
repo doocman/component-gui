@@ -22,7 +22,7 @@ expect_colour_eq(cgui::colour auto const &val,
 }
 
 template <bounding_box ToTest, bounding_box ToExpect>
-requires(!size_tagged<ToTest> && !size_tagged<ToExpect>)
+  requires(!size_tagged<ToTest> && !size_tagged<ToExpect>)
 inline void expect_box_equal(
     ToTest const &to_test, ToExpect const &to_expect,
     std::source_location const &sl = std::source_location::current()) {
@@ -38,7 +38,8 @@ inline void expect_box_equal(
 }
 
 inline void expect_box_equal(
-    pixel_or_point_rect_basic auto const &to_test, pixel_or_point_rect_basic auto const &to_expect,
+    pixel_or_point_rect_basic auto const &to_test,
+    pixel_or_point_rect_basic auto const &to_expect,
     std::source_location const &sl = std::source_location::current()) {
   return expect_box_equal(to_test.value(), to_expect.value(), sl);
 }
@@ -78,13 +79,16 @@ struct test_renderer {
 
   void draw_pixels(default_pixel_rect b, auto &&cb) {
     if (!box_includes_box(pixel_area(), b)) {
-      failed_calls.push_back(box_from_xyxy<default_pixel_rect>(
-          call::l_x(b), call::t_y(b), call::r_x(b), call::b_y(b)).value());
+      failed_calls.push_back(
+          box_from_xyxy<default_pixel_rect>(call::l_x(b), call::t_y(b),
+                                            call::r_x(b), call::b_y(b))
+              .value());
       return;
     }
     cb([this, &b](auto &&pos, auto &&col) {
       if (!hit_box(b, pos)) {
-        failed_pixel_draws.emplace_back(call::x_of(pos).value(), call::y_of(pos).value());
+        failed_pixel_draws.emplace_back(call::x_of(pos).value(),
+                                        call::y_of(pos).value());
         return;
       }
       at(call::x_of(pos), call::y_of(pos)) = {
@@ -161,8 +165,8 @@ struct mock_widget {
 
 constexpr void click_widget(auto &w, default_point_coordinate const &pos = {},
                             auto &&...args) {
-  w.handle(dummy_mouse_down_event{.pos = pos, .button_id = {}}, args...);
-  w.handle(dummy_mouse_up_event{.pos = pos, .button_id = {}}, args...);
+  w.handle(default_mouse_down_event{.pos = pos, .button_id = {}}, args...);
+  w.handle(default_mouse_up_event{.pos = pos, .button_id = {}}, args...);
 }
 
 } // namespace cgui::tests
