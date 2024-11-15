@@ -633,171 +633,171 @@ constexpr std::optional<T> _to_optional(TIn &&in) {
   }
 }
 
-template <typename TimePoint> struct _primary_mouse_first_click {
-  TimePoint click_time{};
-  default_point_coordinate click_position{};
-};
-template <typename TimePoint> struct _primary_mouse_first_down {
-  TimePoint click_time{};
-  default_point_coordinate click_position{};
-};
-template <typename TimePoint> struct _primary_mouse_second_down {
-  TimePoint click_time{};
-  default_point_coordinate click_position{};
-};
-struct _primary_mouse_drag {
-  default_point_coordinate start_position{};
-};
+template <typename TimePoint> class primary_mouse_click_translator {
+  struct first_click_t {
+    TimePoint click_time{};
+    default_point_coordinate click_position{};
+  };
+  struct first_down_t {
+    TimePoint click_time{};
+    default_point_coordinate click_position{};
+  };
+  struct second_down_t {
+    TimePoint click_time{};
+    default_point_coordinate click_position{};
+  };
+  struct drag_t {
+    default_point_coordinate start_position{};
+  };
 
-template <typename TimePoint>
-using _primary_mouse_interpreter_variant =
-    std::variant<_primary_mouse_first_down<TimePoint>,
-                 _primary_mouse_first_click<TimePoint>,
-                 _primary_mouse_second_down<TimePoint>, _primary_mouse_drag>;
+public:
+  using state =
+      std::variant<first_down_t, first_click_t,
+                   second_down_t, drag_t>;
 
-template <typename TP, typename F>
-constexpr void _cancel(_primary_mouse_interpreter_variant<TP> const &v, F &&f,
-                       primary_mouse_click_translator_settings const &) {
-  std::visit(
-      [&]<typename T>(T const &s) {
-        if constexpr (bp::same_as_any<T, _primary_mouse_first_click<TP>,
-                                      _primary_mouse_second_down<TP>>) {
-          f(create_interpreted_event_from_tp<early_event_tag::confirmed,
-                                             interpreted_events::primary_click>(
-              s.click_time, s.click_position));
-        }
-      },
-      v);
-}
-template <typename TP, typename F>
-constexpr void _cancel(_primary_mouse_interpreter_variant<TP> const *v, F &&f,
-                       primary_mouse_click_translator_settings const &conf) {
-  if (v != nullptr) {
-    _cancel(*v, f, conf);
-  }
-}
-
-template <typename E, typename TP, typename F,
-          typename S = _primary_mouse_interpreter_variant<TP>>
-constexpr std::optional<S>
-_move(_primary_mouse_interpreter_variant<TP> const *v, E const &e, F &&f,
-      primary_mouse_click_translator_settings const &conf) {
-  if (v != nullptr) {
-    return std::visit(
-        [&]<typename T>(T const &s) -> std::optional<S> {
-          if constexpr (std::is_same_v<T, _primary_mouse_drag>) {
-            f(create_interpreted_event_from_event<
-                early_event_tag::confirmed,
-                interpreted_events::pointer_drag_move>(e, s.start_position,
-                                                       call::position(e)));
-            return _to_optional<S>(s);
-          } else {
-            if (distance_sqr(s.click_position.value(),
-                             call::position(e).value()) >
-                (conf.drag_threshold * conf.drag_threshold)) {
-              if constexpr (bp::same_as_any<T, _primary_mouse_first_click<TP>,
-                                            _primary_mouse_second_down<TP>>) {
-                f(create_interpreted_event_from_tp<
-                    early_event_tag::confirmed,
-                    interpreted_events::primary_click>(s.click_time,
-                                                       call::position(e)));
-              }
-              if constexpr (bp::same_as_any<T, _primary_mouse_first_down<TP>,
-                                            _primary_mouse_second_down<TP>>) {
-                f(create_interpreted_event_from_event<
-                    early_event_tag::confirmed,
-                    interpreted_events::pointer_drag_start>(e,
-                                                            call::position(e)));
-              }
-              return _to_optional<S>(_primary_mouse_drag{s.click_position});
-            } else {
-              return _to_optional<S>(s);
-            }
-          }
-        },
-        *v);
-  } else {
-    f(create_interpreted_event_from_event<early_event_tag::confirmed,
-                                          interpreted_events::pointer_hover>(
-        e, call::position(e)));
-    return std::nullopt;
-  }
-}
-
-template <typename E, typename TP, typename F,
-          typename S = _primary_mouse_interpreter_variant<TP>>
-constexpr std::optional<S>
-_bdown(_primary_mouse_interpreter_variant<TP> const *v, E const &e, F &&,
-       primary_mouse_click_translator_settings const &) {
-  if (v == nullptr) {
-    return std::optional<S>(
-        std::in_place,
-        _primary_mouse_first_down<TP>{
-            call::time_stamp(e),
-            copy_coordinate<default_point_coordinate>(call::position(e))});
-  } else {
-    return *v;
-  }
-}
-
-template <typename E, typename TP, typename F,
-          typename S = _primary_mouse_interpreter_variant<TP>>
-constexpr std::optional<S>
-_bup(_primary_mouse_interpreter_variant<TP> const *v, E const &e, F &&f,
-     primary_mouse_click_translator_settings const &conf) {
-  if (call::mouse_button(e) == mouse_buttons::secondary) {
-    _cancel(v, f, conf);
-    f(create_interpreted_event_from_event<
-        early_event_tag::confirmed, interpreted_events::context_menu_click>(
-        e, call::position(e)));
-    return {};
-  }
-  if (v != nullptr) {
-    return std::visit(
-        [&]<typename T>(T const &s) -> std::optional<S> {
-          if constexpr (std::is_same_v<T, _primary_mouse_first_click<TP>>) {
+private:
+  template <typename F>
+  static constexpr void
+  _cancel(state const &v, F &&f,
+          primary_mouse_click_translator_settings const &) {
+    std::visit(
+        [&]<typename T>(T const &s) {
+          if constexpr (bp::same_as_any<T, first_click_t,
+                                        second_down_t>) {
             f(create_interpreted_event_from_tp<
-                early_event_tag::cancelled, interpreted_events::primary_click>(
+                early_event_tag::confirmed, interpreted_events::primary_click>(
                 s.click_time, s.click_position));
-            f(create_interpreted_event_from_event<
-                early_event_tag::confirmed,
-                interpreted_events::double_primary_click>(e,
-                                                          call::position(e)));
-            return std::nullopt;
-          } else if constexpr (std::is_same_v<T, _primary_mouse_drag>) {
-            f(create_interpreted_event_from_event<
-                early_event_tag::confirmed,
-                interpreted_events::pointer_drag_finished>(e, s.start_position,
-                                                           call::position(e)));
-            return std::nullopt;
-          } else if constexpr (std::is_same_v<T,
-                                              _primary_mouse_first_down<TP>>) {
-            f(create_interpreted_event_from_event<
-                early_event_tag::preliminary,
-                interpreted_events::primary_click>(e, call::position(e)));
-            return _to_optional<S>(_primary_mouse_first_click<TP>{
-                call::time_stamp(e),
-                copy_coordinate<default_point_coordinate>(call::position(e))});
           }
-          return _to_optional<S>(s);
         },
-        *v);
-  } else {
-    // We should never arrive here, doing so would indicate either lost or
-    // unordered events.
-    f(create_interpreted_event_from_event<early_event_tag::preliminary,
-                                          interpreted_events::primary_click>(
-        e, call::position(e)));
-    return std::optional<S>{
-        std::in_place,
-        _primary_mouse_first_click<TP>{
-            call::time_stamp(e),
-            copy_coordinate<default_point_coordinate>(call::position(e))}};
+        v);
   }
-}
+  template <typename F>
+  static constexpr void
+  _cancel(state const *v, F &&f,
+          primary_mouse_click_translator_settings const &conf) {
+    if (v != nullptr) {
+      _cancel(*v, f, conf);
+    }
+  }
 
-template <typename TimePoint> struct primary_mouse_click_translator {
-  using state = _primary_mouse_interpreter_variant<TimePoint>;
+  template <typename E, typename F, typename S = state>
+  static constexpr std::optional<S>
+  _move(state const *v, E const &e, F &&f,
+        primary_mouse_click_translator_settings const &conf) {
+    if (v != nullptr) {
+      return std::visit(
+          [&]<typename T>(T const &s) -> std::optional<S> {
+            if constexpr (std::is_same_v<T, drag_t>) {
+              f(create_interpreted_event_from_event<
+                  early_event_tag::confirmed,
+                  interpreted_events::pointer_drag_move>(e, s.start_position,
+                                                         call::position(e)));
+              return _to_optional<S>(s);
+            } else {
+              if (distance_sqr(s.click_position.value(),
+                               call::position(e).value()) >
+                  (conf.drag_threshold * conf.drag_threshold)) {
+                if constexpr (bp::same_as_any<T, first_click_t,
+                                              second_down_t>) {
+                  f(create_interpreted_event_from_tp<
+                      early_event_tag::confirmed,
+                      interpreted_events::primary_click>(s.click_time,
+                                                         call::position(e)));
+                }
+                if constexpr (bp::same_as_any<T, first_down_t,
+                                              second_down_t>) {
+                  f(create_interpreted_event_from_event<
+                      early_event_tag::confirmed,
+                      interpreted_events::pointer_drag_start>(
+                      e, call::position(e)));
+                }
+                return _to_optional<S>(drag_t{s.click_position});
+              } else {
+                return _to_optional<S>(s);
+              }
+            }
+          },
+          *v);
+    } else {
+      f(create_interpreted_event_from_event<early_event_tag::confirmed,
+                                            interpreted_events::pointer_hover>(
+          e, call::position(e)));
+      return std::nullopt;
+    }
+  }
+
+  template <typename E, typename F, typename S = state>
+  static constexpr std::optional<S>
+  _bdown(state const *v, E const &e, F &&,
+         primary_mouse_click_translator_settings const &) {
+    if (v == nullptr) {
+      return std::optional<S>(
+          std::in_place,
+          first_down_t{
+              call::time_stamp(e),
+              copy_coordinate<default_point_coordinate>(call::position(e))});
+    } else {
+      return *v;
+    }
+  }
+
+  template <typename E, typename F, typename S = state>
+  static constexpr std::optional<S>
+  _bup(state const *v, E const &e, F &&f,
+       primary_mouse_click_translator_settings const &conf) {
+    if (call::mouse_button(e) == mouse_buttons::secondary) {
+      _cancel(v, f, conf);
+      f(create_interpreted_event_from_event<
+          early_event_tag::confirmed, interpreted_events::context_menu_click>(
+          e, call::position(e)));
+      return {};
+    }
+    if (v != nullptr) {
+      return std::visit(
+          [&]<typename T>(T const &s) -> std::optional<S> {
+            if constexpr (std::is_same_v<T, first_click_t>) {
+              f(create_interpreted_event_from_tp<
+                  early_event_tag::cancelled,
+                  interpreted_events::primary_click>(s.click_time,
+                                                     s.click_position));
+              f(create_interpreted_event_from_event<
+                  early_event_tag::confirmed,
+                  interpreted_events::double_primary_click>(e,
+                                                            call::position(e)));
+              return std::nullopt;
+            } else if constexpr (std::is_same_v<T, drag_t>) {
+              f(create_interpreted_event_from_event<
+                  early_event_tag::confirmed,
+                  interpreted_events::pointer_drag_finished>(
+                  e, s.start_position, call::position(e)));
+              return std::nullopt;
+            } else if constexpr (std::is_same_v<T, first_down_t>) {
+              f(create_interpreted_event_from_event<
+                  early_event_tag::preliminary,
+                  interpreted_events::primary_click>(e, call::position(e)));
+              return _to_optional<S>(first_click_t{
+                  call::time_stamp(e),
+                  copy_coordinate<default_point_coordinate>(
+                      call::position(e))});
+            }
+            return _to_optional<S>(s);
+          },
+          *v);
+    } else {
+      // We should never arrive here, doing so would indicate either lost or
+      // unordered events.
+      f(create_interpreted_event_from_event<early_event_tag::preliminary,
+                                            interpreted_events::primary_click>(
+          e, call::position(e)));
+      return std::optional<S>{
+          std::in_place,
+          first_click_t{
+              call::time_stamp(e),
+              copy_coordinate<default_point_coordinate>(call::position(e))}};
+    }
+  }
+
+public:
   using settings = primary_mouse_click_translator_settings;
   template <typename E>
   static constexpr auto can_handle =
@@ -838,7 +838,7 @@ template <typename TimePoint> struct primary_mouse_click_translator {
   template <typename F>
   static constexpr std::optional<state>
   pass_time(TimePoint const &tp, F &&f, state s_in, settings const &conf) {
-    if (auto *s = std::get_if<_primary_mouse_first_click<TimePoint>>(&s_in);
+    if (auto *s = std::get_if<first_click_t>(&s_in);
         s != nullptr && tp - s->click_time > conf.double_click_timeout) {
       f(create_interpreted_event_from_tp<early_event_tag::confirmed,
                                          interpreted_events::primary_click>(
