@@ -130,6 +130,10 @@
 /// Primary CGUI namespace
 namespace cgui {
 
+/// @brief Class used as a placeholder when no special functionality is
+/// expected.
+struct empty_placeholder_t {};
+
 /// @brief Used in arguments when types needs to be deduced as part of a
 /// function signature
 ///

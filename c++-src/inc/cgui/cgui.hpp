@@ -1381,7 +1381,7 @@ public:
   }
 };
 
-template <typename TState = empty_state, typename TClick = bp::no_op_t,
+template <typename TState = empty_placeholder_t, typename TClick = bp::no_op_t,
           typename THover = bp::no_op_t, typename THold = bp::no_op_t,
           typename TExit = bp::no_op_t>
 struct momentary_button {
@@ -1539,7 +1539,7 @@ public:
 /// @tparam TToOff Type of the action to perform when the button is toggled to
 ///                "off" state.
 ///                Defaults to a no-operation.
-template <typename TState = empty_state, std::invocable TToOn = bp::no_op_t,
+template <typename TState = empty_placeholder_t, std::invocable TToOn = bp::no_op_t,
           std::invocable TToOff = bp::no_op_t>
 class toggle_button_state {
   TState cb_state_{};
