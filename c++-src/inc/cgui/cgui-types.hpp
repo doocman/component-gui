@@ -47,8 +47,6 @@ concept has_for_each = requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
   call::for_each(*t, *cb);
 };
 
-struct empty_state {};
-
 template <typename T>
 concept colour = requires(T &&t) {
   { call::red(t) } -> pixel_coord_value_cv_t;

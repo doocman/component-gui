@@ -378,7 +378,7 @@ template <typename TimePoint = typename std::chrono::steady_clock::time_point,
 class event_interpreter
     : bp::empty_structs_optimiser<Interpreters<TimePoint>...> {
   using fickle_state_t =
-      std::variant<empty_state,
+      std::variant<empty_placeholder_t,
                    state_interpreter_pair<Interpreters<TimePoint>>...>;
   using time_point_t = TimePoint;
 
@@ -392,7 +392,7 @@ class event_interpreter
   constexpr void cancel_state(auto &&f) {
     std::visit(
         [this, &f]<typename T>(T &t) {
-          if constexpr (!std::is_same_v<T, empty_state>) {
+          if constexpr (!std::is_same_v<T, empty_placeholder_t>) {
             using interp = typename T::interpreter;
             interp::cancel_state(t.state, std::forward<decltype(f)>(f),
                                  get_settings<interp>());
@@ -426,7 +426,7 @@ class event_interpreter
         state_ = state_interpreter_pair<Interpreter>{*new_state};
         return true;
       } else if (interpreter_state != nullptr) {
-        state_ = empty_state{};
+        state_ = empty_placeholder_t{};
       }
     }
     return false;
@@ -442,7 +442,7 @@ public:
     state_ = std::visit(
         [this, tp = bp::as_forward<TP>(tp),
          f = bp::as_forward<F>(f)]<typename T>(T &t) -> fickle_state_t {
-          if constexpr (!std::is_same_v<T, empty_state>) {
+          if constexpr (!std::is_same_v<T, empty_placeholder_t>) {
             using interpreter_t = T::interpreter;
             if constexpr (requires() {
                             interpreter_t::pass_time(*tp, *f, t.state,

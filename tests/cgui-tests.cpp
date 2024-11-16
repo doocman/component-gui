@@ -2,6 +2,7 @@
 
 #include <cgui/std-backport/limits.hpp>
 
+#include <cgui/auto_ref.hpp>
 #include <cgui/cgui-types.hpp>
 #include <cgui/cgui.hpp>
 #include <cgui/std-backport/concepts.hpp>
@@ -145,5 +146,45 @@ TEST(GuiContext, RerenderOutput) // NOLINT
       box_includes_box(rarea, box_from_xyxy<default_point_rect>(0, 0, 1, 1)));
   EXPECT_TRUE(
       box_includes_box(rarea, box_from_xyxy<default_point_rect>(0, 0, 1, 1)));
+}
+
+struct parent_ref_tester : auto_parent<parent_ref_tester, int> {
+  int **to_zero_on_destruct{};
+
+  parent_ref_tester() = default;
+  template <typename... Ts>
+  explicit parent_ref_tester(int **to_zero, Ts &&...args)
+      : auto_parent<parent_ref_tester, int>(std::forward<Ts>(args)...),
+        to_zero_on_destruct(to_zero) {}
+
+  constexpr void on_parent_destruct(int &&i) noexcept {
+    if (to_zero_on_destruct != nullptr && *to_zero_on_destruct == &i) {
+      *to_zero_on_destruct = nullptr;
+    }
+  }
+};
+
+TEST(ParentReference, BasicBehaviour) // NOLINT
+{
+  auto parent = parent_ref_tester{};
+  auto &[ch] = parent.children();
+  EXPECT_THAT(ch.parent(), Eq(&parent));
+  auto ch_cpy = ch;
+  EXPECT_THAT(ch_cpy.parent(), Eq(nullptr));
+  ch_cpy = ch;
+  EXPECT_THAT(ch_cpy.parent(), Eq(nullptr));
+  auto ch_mv = std::move(ch);
+  EXPECT_THAT(ch_mv.parent(), Eq(nullptr));
+  auto p2 = parent;
+  auto &[ch2] = p2.children();
+  EXPECT_THAT(ch2.parent(), Eq(&p2));
+  int *my_pointer{};
+  {
+    auto tmp_p = parent_ref_tester(&my_pointer, 5);
+    my_pointer = &get<0>(tmp_p.children()).value();
+    EXPECT_THAT(my_pointer, Ne(nullptr));
+    EXPECT_THAT(*my_pointer, Eq(5));
+  }
+  EXPECT_THAT(my_pointer, Eq(nullptr));
 }
 } // namespace cgui::tests
