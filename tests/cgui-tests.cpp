@@ -148,43 +148,35 @@ TEST(GuiContext, RerenderOutput) // NOLINT
       box_includes_box(rarea, box_from_xyxy<default_point_rect>(0, 0, 1, 1)));
 }
 
-struct parent_ref_tester : auto_parent<parent_ref_tester, int> {
-  int **to_zero_on_destruct{};
+struct reference_stack_tester {
+  int my_value{};
 
-  parent_ref_tester() = default;
-  template <typename... Ts>
-  explicit parent_ref_tester(int **to_zero, Ts &&...args)
-      : auto_parent<parent_ref_tester, int>(std::forward<Ts>(args)...),
-        to_zero_on_destruct(to_zero) {}
+  // not constexpr by intention
+  explicit reference_stack_tester(int mv) : my_value(mv) {}
 
-  constexpr void on_parent_destruct(int &&i) noexcept {
-    if (to_zero_on_destruct != nullptr && *to_zero_on_destruct == &i) {
-      *to_zero_on_destruct = nullptr;
+  // Recursively collect `my_value` from the stack into a vector.
+  static constexpr std::vector<int>
+  collect_stack_values(auto &&refstack, std::vector<int> result = {}) {
+    result.push_back(refstack.ref().my_value);
+    if constexpr (requires() { refstack.previous(); }) {
+      return collect_stack_values(refstack.previous(), std::move(result));
+    } else {
+      return result;
     }
   }
 };
 
-TEST(ParentReference, BasicBehaviour) // NOLINT
-{
-  auto parent = parent_ref_tester{};
-  auto &[ch] = parent.children();
-  EXPECT_THAT(ch.parent(), Eq(&parent));
-  auto ch_cpy = ch;
-  EXPECT_THAT(ch_cpy.parent(), Eq(nullptr));
-  ch_cpy = ch;
-  EXPECT_THAT(ch_cpy.parent(), Eq(nullptr));
-  auto ch_mv = std::move(ch);
-  EXPECT_THAT(ch_mv.parent(), Eq(nullptr));
-  auto p2 = parent;
-  auto &[ch2] = p2.children();
-  EXPECT_THAT(ch2.parent(), Eq(&p2));
-  int *my_pointer{};
-  {
-    auto tmp_p = parent_ref_tester(&my_pointer, 5);
-    my_pointer = &get<0>(tmp_p.children()).value();
-    EXPECT_THAT(my_pointer, Ne(nullptr));
-    EXPECT_THAT(*my_pointer, Eq(5));
-  }
-  EXPECT_THAT(my_pointer, Eq(nullptr));
+TEST(ReferenceStack, BasicBehaviour) {
+  reference_stack_tester v1{1};
+  std::vector<int> vals =
+      reference_stack_tester::collect_stack_values(reference_stack(v1));
+  EXPECT_THAT(vals, ElementsAre(1));
+  static_assert(size(reference_stack(v1)) == 1);
+
+  reference_stack_tester v2{2}, v3{3};
+  vals = reference_stack_tester::collect_stack_values(
+      reference_stack(v1).push(v2).push(v3));
+  EXPECT_THAT(vals, ElementsAre(3, 2, 1));
+  static_assert(size(reference_stack(v1).push(v2).push(v3)) == 3);
 }
 } // namespace cgui::tests
