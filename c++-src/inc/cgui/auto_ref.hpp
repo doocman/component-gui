@@ -17,10 +17,11 @@ namespace cgui {
 /// copy and move assignments become no-operations.
 ///
 /// \tparam T The underlying type to be wrapped. Must be default-constructible.
-template <typename T>
+/// \tparam DefaultSet How to construct v_ in default cases.
+template <typename T, typename DefaultSet = decltype([] { return T{}; })>
   requires(std::is_default_constructible_v<T>)
 class ignore_copy {
-  T v_{};
+  T v_ = DefaultSet{}();
   static constexpr bool _is_noexcept =
       std::is_nothrow_default_constructible_v<T>;
 

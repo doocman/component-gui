@@ -8,6 +8,7 @@
 #include <variant>
 #include <vector>
 
+#include <cgui/auto_ref.hpp>
 #include <cgui/build_utility.hpp>
 #include <cgui/cgui-types.hpp>
 #include <cgui/std-backport/array.hpp>
@@ -497,8 +498,11 @@ class widget
     : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
   using display_state_callbacks_t = basic_widget_back_propagater<TArea>;
   using widget_ref_t = widget_ref_no_set_area<widget>;
+  using on_destruct_f_t = ignore_copy<std::function<void(widget &&)>,
+                                      bp::return_constant_t<bp::no_op_t>>;
   TArea area_{};
   TDisplay display_;
+  on_destruct_f_t on_destruct_;
   using base_t =
       bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize>;
 
@@ -547,6 +551,15 @@ public:
                std::forward<TRSZ>(rsz)),
         area_(a), display_(std::forward<TD>(d)) {
     call_resize();
+  }
+
+  constexpr widget(widget const &) = default;
+  constexpr widget(widget &&) noexcept = default;
+  constexpr widget &operator=(widget const &) = default;
+  constexpr widget &operator=(widget &&) noexcept = default;
+  constexpr ~widget() {
+    CGUI_ASSERT(on_destruct_.value());
+    on_destruct_.value()(std::move(*this));
   }
 
   [[nodiscard]] TArea const &area() const { return area_; }
@@ -633,6 +646,12 @@ public:
   {
     return event_handler(*this);
   }
+
+  constexpr void set_on_destruct(auto &&f) {
+    CGUI_DEBUG_ONLY(CGUI_ASSERT(on_destruct_.value().target_type() == typeid(bp::no_op_t));)
+    on_destruct_.value() = std::forward<decltype(f)>(f);
+  }
+  constexpr void reset_on_destruct() { on_destruct_.value() = bp::no_op; }
 };
 
 template <renderer TR, typename TStateArgs>
@@ -1268,8 +1287,9 @@ public:
   /// `mouse_button_down`,
   ///            `mouse_button_up`, or `mouse_exit` from the `ui_events`
   ///            namespace.
-  void handle(point_rect auto const &area,
-              event_types<input_events::mouse_move, input_events::mouse_button_down,
+  void
+  handle(point_rect auto const &area,
+         event_types<input_events::mouse_move, input_events::mouse_button_down,
                      input_events::mouse_button_up,
                      input_events::mouse_exit> auto &&evt) {
     using enum input_events;
@@ -1539,7 +1559,8 @@ public:
 /// @tparam TToOff Type of the action to perform when the button is toggled to
 ///                "off" state.
 ///                Defaults to a no-operation.
-template <typename TState = empty_placeholder_t, std::invocable TToOn = bp::no_op_t,
+template <typename TState = empty_placeholder_t,
+          std::invocable TToOn = bp::no_op_t,
           std::invocable TToOff = bp::no_op_t>
 class toggle_button_state {
   TState cb_state_{};
@@ -1888,12 +1909,11 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
 
 public:
   using base_t::base_t;
-  template <
-      bounding_box T,
-      event_types<input_events::mouse_move, input_events::mouse_exit,
+  template <bounding_box T,
+            event_types<input_events::mouse_move, input_events::mouse_exit,
                         input_events::mouse_button_down,
                         input_events::mouse_button_up>
-          TEvt>
+                TEvt>
   constexpr void handle(T const &, TEvt &&evt,
                         subable_widget_back_propagator auto &&back_prop) {
     if constexpr (can_be_event<input_events::mouse_exit, TEvt>()) {
