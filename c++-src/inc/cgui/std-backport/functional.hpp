@@ -6,7 +6,9 @@
 #define COMPONENT_GUI_FUNCTIONAL_HPP
 
 #include <functional>
+#include <variant>
 
+#include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/tuple.hpp>
 #include <cgui/std-backport/utility.hpp>
 
@@ -61,11 +63,46 @@ template <typename T, T result_v = T{}> struct return_constant_t {
   }
 };
 
+/// Function-like object that throws a 'bad_function_call' exception on
+/// execution.
+struct throw_bad_call_f_t {
+  template <typename T> using function = T;
+
+  /// Static call function that throws a 'bad_function_call'.
+  ///
+  /// \tparam R Return type
+  /// \tparam Args Argument types
+  /// \param ...
+  /// \return always throws.
+  template <typename R = void, typename... Args> static R call(Args...) {
+    throw std::bad_function_call();
+  }
+
+  /// Member call operator function that throws a 'bad_function_call'.
+  ///
+  /// \tparam R Return type
+  /// \param ...
+  /// \return always throws.
+  template <typename R = void> R operator()(auto &&...) const {
+    return call<R>();
+  }
+
+  /// Implicit to-function-pointer conversion operator. Note: this function
+  /// itself is noexcept, even though the pointer returned is not.
+  /// \tparam Ts Type of the arguments
+  /// \return function pointer to bad call throwing function.
+  template <typename R, typename... Ts>
+  constexpr explicit(false) operator function<R(Ts...)> *() const noexcept {
+    return &call<R, Ts...>;
+  }
+};
+
 /// Predicate that always returns result_v.
 template <bool result_v>
 using pretend_predicate_t = return_constant_t<bool, result_v>;
 
 inline constexpr no_op_t no_op;
+inline constexpr throw_bad_call_f_t throw_bad_call_f;
 template <typename T, T r>
 inline constexpr return_constant_t<T, r> return_constant;
 template <bool r> inline constexpr pretend_predicate_t<r> pretend_predicate;

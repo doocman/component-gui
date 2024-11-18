@@ -75,6 +75,14 @@ template <typename T, typename Operator, typename... EachOperand>
 concept can_be_operand_for_all =
     (std::invocable<Operator, T, EachOperand> && ...);
 
+/// Concept to test if a type is purely stateless, i.e. no side-effects occur on
+/// destruction and construction and it has no internal state.
+/// \tparam T
+template <typename T>
+concept stateless =
+    std::is_empty_v<T> && std::is_trivially_constructible_v<T> &&
+    std::is_trivially_destructible_v<T>;
+
 template <typename T>
 concept empty_type = std::is_empty_v<T>;
 
