@@ -1,5 +1,6 @@
 
 #include <cgui/std-backport/expected.hpp>
+#include <cgui/std-backport/functional.hpp>
 #include <cgui/std-backport/tuple.hpp>
 #include <cgui/std-backport/utility.hpp>
 #include <cgui/stl_extend.hpp>
@@ -85,5 +86,92 @@ TEST(EtdEmptyBaseOptimiser, GetIndex) // NOLINT
   EXPECT_THAT(get<1>(tested), Eq(2));
   EXPECT_THAT(get<3>(tested), Eq(3));
 }
+
+TEST(EtdTrivialFunction, EmptyLambdaTarget) // NOLINT
+{
+  int my_val{};
+  auto the_func =
+      bp::trivial_function<void(int &), 1, 1>([](int &i) { i += 1; });
+  EXPECT_THAT(my_val, Eq(0));
+  the_func(my_val);
+  EXPECT_THAT(my_val, Eq(1));
+  auto f2 = the_func;
+  EXPECT_THAT(my_val, Eq(1));
+  f2(my_val);
+  EXPECT_THAT(my_val, Eq(2));
+  static_assert(std::is_nothrow_move_constructible_v<decltype(the_func)>);
+  static_assert(std::is_nothrow_move_assignable_v<decltype(the_func)>);
+  static_assert(std::is_nothrow_swappable_v<decltype(the_func)>);
+}
+
+TEST(EtdTrivialFunction, StatefulLambdaTarget) // NOLINT
+{
+  int my_val{};
+  auto the_func = bp::trivial_function<void(), sizeof(int *), alignof(int *)>(
+      [&my_val]() { my_val += 1; });
+  EXPECT_THAT(my_val, Eq(0));
+  the_func();
+  EXPECT_THAT(my_val, Eq(1));
+  auto f2 = the_func;
+  EXPECT_THAT(my_val, Eq(1));
+  f2();
+  EXPECT_THAT(my_val, Eq(2));
+  static_assert(std::is_nothrow_move_constructible_v<decltype(the_func)>);
+  static_assert(std::is_nothrow_move_assignable_v<decltype(the_func)>);
+  static_assert(std::is_nothrow_swappable_v<decltype(the_func)>);
+}
+
+TEST(EtdTrivialFunction, ExcessSize) // NOLINT
+{
+  int my_val{};
+  int unused_val{};
+  auto the_func =
+      bp::trivial_function<void(), sizeof(int *) * 3, alignof(int *)>(
+          [unused_val, &my_val]() {
+            my_val += 1;
+            unused(unused_val);
+          });
+  EXPECT_THAT(my_val, Eq(0));
+  the_func();
+  EXPECT_THAT(my_val, Eq(1));
+  auto f2 = the_func;
+  EXPECT_THAT(my_val, Eq(1));
+  f2();
+  EXPECT_THAT(my_val, Eq(2));
+  static_assert(std::is_nothrow_move_constructible_v<decltype(the_func)>);
+  static_assert(std::is_nothrow_move_assignable_v<decltype(the_func)>);
+  static_assert(std::is_nothrow_swappable_v<decltype(the_func)>);
+}
+
+TEST(EtdTrivialFunction, IsAssignable) // NOLINT
+{
+  auto the_func = bp::trivial_function<void(int &), 1, 1>();
+  the_func = [](int &i) { ++i; };
+  int i = 0;
+  EXPECT_THAT(i, Eq(0));
+  the_func(i);
+  EXPECT_THAT(i, Eq(1));
+  the_func(i);
+  EXPECT_THAT(i, Eq(2));
+}
+
+struct large_functionlike {
+  char b[64];
+
+  void operator()() const {}
+};
+
+struct alignas(16) heavy_align_functionlike {
+  void operator()() const {}
+};
+
+static_assert(!std::constructible_from<bp::trivial_function<void(), 1, 8>,
+                                       large_functionlike>);
+static_assert(std::constructible_from<bp::trivial_function<void(), 64, 1>,
+                                      large_functionlike>);
+static_assert(!std::constructible_from<bp::trivial_function<void(), 1, 8>,
+                                       heavy_align_functionlike>);
+static_assert(std::constructible_from<bp::trivial_function<void(), 1, 32>,
+                                      heavy_align_functionlike>);
 
 } // namespace cgui::tests

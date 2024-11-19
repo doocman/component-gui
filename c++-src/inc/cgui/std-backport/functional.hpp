@@ -5,10 +5,13 @@
 #ifndef COMPONENT_GUI_FUNCTIONAL_HPP
 #define COMPONENT_GUI_FUNCTIONAL_HPP
 
+#include <algorithm>
 #include <functional>
+#include <type_traits>
 #include <variant>
 
 #include <cgui/std-backport/concepts.hpp>
+#include <cgui/std-backport/math.hpp>
 #include <cgui/std-backport/tuple.hpp>
 #include <cgui/std-backport/utility.hpp>
 
@@ -65,7 +68,7 @@ template <typename T, T result_v = T{}> struct return_constant_t {
 
 /// Function-like object that throws a 'bad_function_call' exception on
 /// execution.
-struct throw_bad_call_f_t {
+struct terminate_f_t {
   template <typename T> using function = T;
 
   /// Static call function that throws a 'bad_function_call'.
@@ -75,7 +78,7 @@ struct throw_bad_call_f_t {
   /// \param ...
   /// \return always throws.
   template <typename R = void, typename... Args> static R call(Args...) {
-    throw std::bad_function_call();
+    std::terminate();
   }
 
   /// Member call operator function that throws a 'bad_function_call'.
@@ -102,7 +105,7 @@ template <bool result_v>
 using pretend_predicate_t = return_constant_t<bool, result_v>;
 
 inline constexpr no_op_t no_op;
-inline constexpr throw_bad_call_f_t throw_bad_call_f;
+inline constexpr terminate_f_t terminate_f;
 template <typename T, T r>
 inline constexpr return_constant_t<T, r> return_constant;
 template <bool r> inline constexpr pretend_predicate_t<r> pretend_predicate;
@@ -147,6 +150,117 @@ template <typename TF, typename... TArgs>
 trailing_curried(TF &&, TArgs &&...)
     -> trailing_curried<std::unwrap_ref_decay_t<TF>,
                         std::unwrap_ref_decay_t<TArgs>...>;
+
+/// std::function replacement type that only accepts trivially
+/// copyable+destructible objects and stores them unconditionally on the stack.
+/// \tparam sz Size of stack-aligned data.
+/// \tparam al
+template <typename, std::size_t sz = sizeof(void *),
+          std::size_t al = alignof(void *)>
+  requires(is_power_of_2(al))
+class trivial_function;
+
+// Dummy bool to help choosing the correct constructor for trivial_function:s.
+template <typename> constexpr bool _is_trivial_function = false;
+template <typename T, std::size_t sz, std::size_t al>
+constexpr bool _is_trivial_function<trivial_function<T, sz, al>> = true;
+
+/// Actual implementation of trivial function.
+/// \tparam R return value type of the function.
+/// \tparam Args arguments to pass into the function.
+/// \tparam sz Minimum size (actual size may be increases due to alignment).
+/// \tparam align Minimum alignment (alignment will at least be that of a
+/// function pointer).
+template <typename R, typename... Args, std::size_t sz, std::size_t align>
+class trivial_function<R(Args...), sz, align> {
+  using _dummy_f_t = std::add_pointer_t<R(Args...)>;
+
+  static consteval auto actual_align() {
+    return std::max(alignof(_dummy_f_t), align);
+  }
+  static consteval auto actual_size() {
+    auto align_multiple = (sz + actual_align() - 1) / actual_align();
+    return align_multiple * actual_align();
+  }
+  using buffer_t = unsigned char[sz];
+  using f_type = std::add_pointer_t<R(buffer_t &, Args...)>;
+  static_assert(alignof(_dummy_f_t) == alignof(f_type),
+                "What kind of a platform are you on to fail this assert??? "
+                "Please report to component-gui Github repository");
+
+  f_type f_ = terminate_f;
+  alignas(align) buffer_t mutable data_{};
+
+  template <typename T2, std::size_t sz2, std::size_t al2>
+    requires(is_power_of_2(al2))
+  friend class trivial_function;
+
+  template <typename TRaw> static consteval bool _eligible_for_construction() {
+    // clang appears to need this branch as it fails to substitute the
+    // expression when checking move/copy semantics otherwise.
+    if constexpr (!_is_trivial_function<TRaw>) {
+      return alignof(TRaw) <= actual_align() && sizeof(TRaw) <= actual_size() &&
+             std::is_trivially_copy_constructible_v<TRaw> &&
+             std::is_trivially_destructible_v<TRaw> &&
+             bp::invocable_r<TRaw &, R, Args...>;
+    } else {
+      return false;
+    }
+  }
+
+  constexpr void _ct_data() {
+    if (std::is_constant_evaluated()) {
+      std::ranges::fill(data_, char{});
+    }
+  }
+
+public:
+  template <typename T, typename TRaw = std::remove_cvref_t<T>>
+    requires(_eligible_for_construction<TRaw>())
+  constexpr explicit trivial_function(T &&t) noexcept
+      : f_([](buffer_t &b, Args... args) {
+          return std::invoke(reinterpret_cast<TRaw &>(b),
+                             std::forward<Args>(args)...);
+        }) {
+    _ct_data();
+    new (&data_) TRaw(std::forward<T>(t));
+  }
+  template <typename T, typename TRaw = std::remove_cvref_t<T>>
+    requires(_eligible_for_construction<TRaw>())
+  constexpr trivial_function &operator=(T &&t) noexcept {
+    f_ = [](buffer_t &b, Args... args) {
+      return std::invoke(reinterpret_cast<TRaw &>(b),
+                         std::forward<Args>(args)...);
+    };
+    new (&data_) TRaw(std::forward<T>(t));
+    return *this;
+  }
+
+  constexpr trivial_function() noexcept = default;
+  template <std::size_t sz2, std::size_t al2>
+    requires(sz2 <= sz && al2 <= align && (sz2 != sz || al2 != align))
+  constexpr explicit(false) trivial_function(
+      trivial_function<R(Args...), sz2, al2> const &f2) noexcept
+      : f_(f2.f_) {
+    if (std::is_constant_evaluated()) {
+      auto res = std::ranges::copy(f2.data_, std::begin(data_));
+      // Necessary to satisfy constexpr.
+      std::ranges::fill(res.out, std::ranges::end(data_), char{});
+    } else {
+      std::memcpy(data_, f2.data_, f2.actual_size());
+    }
+  }
+
+  template <std::convertible_to<Args>... Ts>
+  constexpr R operator()(Ts &&...args) const {
+    return f_(data_, std::forward<Ts>(args)...);
+  }
+
+  constexpr void swap(trivial_function &other) noexcept {
+    std::ranges::swap(other.data_, data_);
+    std::swap(other.f_, f_);
+  }
+};
 
 } // namespace cgui::bp
 

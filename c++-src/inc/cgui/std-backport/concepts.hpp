@@ -120,6 +120,14 @@ concept value_decrementable = requires(T &t) {
 
 template <typename T, typename... Ts>
 concept same_as_any = (std::same_as<T, Ts> || ...);
+
+template <typename T, typename R, typename... Ts>
+concept invocable_r =
+    std::invocable<T, Ts...> && requires(T &&t, Ts &&...args) {
+      {
+        std::invoke(std::forward<T>(t), std::forward<Ts>(args)...)
+      } -> std::convertible_to<R>;
+    };
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_CONCEPTS_HPP
