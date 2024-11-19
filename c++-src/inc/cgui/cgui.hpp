@@ -498,7 +498,9 @@ class widget
     : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
   using display_state_callbacks_t = basic_widget_back_propagater<TArea>;
   using widget_ref_t = widget_ref_no_set_area<widget>;
-  using on_destruct_f_t = ignore_copy<bp::trivial_function<void(widget &&), sizeof(void*) * 3, alignof(void*)>,
+  using on_destruct_f_t = ignore_copy<
+  bp::trivial_function<void(widget &&), sizeof(void*) * 3, alignof(void*)>, //
+  //std::function<void(widget&&)>,//
                                       bp::return_constant_t<bp::no_op_t>>;
   TArea area_{};
   TDisplay display_;

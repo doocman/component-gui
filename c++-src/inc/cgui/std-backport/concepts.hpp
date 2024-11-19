@@ -6,6 +6,7 @@
 #define COMPONENT_GUI_CONCEPTS_HPP
 
 #include <concepts>
+#include <functional>
 #include <type_traits>
 #include <utility>
 

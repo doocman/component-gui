@@ -6,6 +6,7 @@
 #define COMPONENT_GUI_FUNCTIONAL_HPP
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <type_traits>
 #include <variant>
@@ -157,7 +158,6 @@ trailing_curried(TF &&, TArgs &&...)
 /// \tparam al
 template <typename, std::size_t sz = sizeof(void *),
           std::size_t al = alignof(void *)>
-  requires(is_power_of_2(al))
 class trivial_function;
 
 // Dummy bool to help choosing the correct constructor for trivial_function:s.
@@ -172,6 +172,7 @@ constexpr bool _is_trivial_function<trivial_function<T, sz, al>> = true;
 /// \tparam align Minimum alignment (alignment will at least be that of a
 /// function pointer).
 template <typename R, typename... Args, std::size_t sz, std::size_t align>
+  requires(is_power_of_2(align))
 class trivial_function<R(Args...), sz, align> {
   using _dummy_f_t = std::add_pointer_t<R(Args...)>;
 
@@ -188,11 +189,10 @@ class trivial_function<R(Args...), sz, align> {
                 "What kind of a platform are you on to fail this assert??? "
                 "Please report to component-gui Github repository");
 
-  f_type f_ = terminate_f;
+  f_type f_ = static_cast<f_type>(terminate_f);
   alignas(align) buffer_t mutable data_{};
 
   template <typename T2, std::size_t sz2, std::size_t al2>
-    requires(is_power_of_2(al2))
   friend class trivial_function;
 
   template <typename TRaw> static consteval bool _eligible_for_construction() {
@@ -202,7 +202,7 @@ class trivial_function<R(Args...), sz, align> {
       return alignof(TRaw) <= actual_align() && sizeof(TRaw) <= actual_size() &&
              std::is_trivially_copy_constructible_v<TRaw> &&
              std::is_trivially_destructible_v<TRaw> &&
-             bp::invocable_r<TRaw &, R, Args...>;
+             std::invocable<TRaw&, Args&&...>;
     } else {
       return false;
     }
