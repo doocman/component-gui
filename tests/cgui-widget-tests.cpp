@@ -569,4 +569,22 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 }
 
+TEST(Widget, OnDestruct) // NOLINT
+{
+  void *ptr_to_widget = nullptr;
+  {
+    auto w = widget_builder().build();
+    ptr_to_widget = &w;
+    w.set_on_destruct([&ptr_to_widget](auto &&w) {
+      EXPECT_THAT(w, Address(Eq(ptr_to_widget)));
+      ptr_to_widget = nullptr;
+    });
+    // We create a copy of w2. If things works out correctly, w2:s destruction f
+    // will be a no-op, making the EXPECT_THAT further up pass.
+    auto w2 = w;
+    unused(w2);
+  }
+  EXPECT_THAT(ptr_to_widget, Eq(nullptr));
+}
+
 } // namespace cgui::tests

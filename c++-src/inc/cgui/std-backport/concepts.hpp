@@ -6,6 +6,7 @@
 #define COMPONENT_GUI_CONCEPTS_HPP
 
 #include <concepts>
+#include <functional>
 #include <type_traits>
 #include <utility>
 
@@ -75,6 +76,14 @@ template <typename T, typename Operator, typename... EachOperand>
 concept can_be_operand_for_all =
     (std::invocable<Operator, T, EachOperand> && ...);
 
+/// Concept to test if a type is purely stateless, i.e. no side-effects occur on
+/// destruction and construction and it has no internal state.
+/// \tparam T
+template <typename T>
+concept stateless =
+    std::is_empty_v<T> && std::is_trivially_constructible_v<T> &&
+    std::is_trivially_destructible_v<T>;
+
 template <typename T>
 concept empty_type = std::is_empty_v<T>;
 
@@ -112,6 +121,14 @@ concept value_decrementable = requires(T &t) {
 
 template <typename T, typename... Ts>
 concept same_as_any = (std::same_as<T, Ts> || ...);
+
+template <typename T, typename R, typename... Ts>
+concept invocable_r =
+    std::invocable<T, Ts...> && requires(T &&t, Ts &&...args) {
+      {
+        std::invoke(std::forward<T>(t), std::forward<Ts>(args)...)
+      } -> std::convertible_to<R>;
+    };
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_CONCEPTS_HPP
