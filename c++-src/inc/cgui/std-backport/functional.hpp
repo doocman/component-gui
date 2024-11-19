@@ -262,7 +262,7 @@ public:
   }
 
   constexpr operator bool() const noexcept {
-    return f_ == static_cast<f_type>(terminate_f);
+    return f_ != static_cast<f_type>(terminate_f);
   }
 };
 
