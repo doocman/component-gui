@@ -9,6 +9,14 @@
 
 namespace cgui {
 
+template <typename T, typename DefaultSet = decltype([] { return T{}; })>
+  requires(bp::invocable_r<DefaultSet, T>)
+class ignore_copy;
+
+template <typename> constexpr bool _is_ignore_copy = false;
+template <typename T, typename DefaultSet>
+constexpr bool _is_ignore_copy<ignore_copy<T, DefaultSet>> = true;
+
 /// A wrapper class that disables copy and move semantics for the underlying
 /// type, effectively making the object default-constructible and immutable
 /// in terms of its copy/move behavior.
@@ -18,12 +26,23 @@ namespace cgui {
 ///
 /// \tparam T The underlying type to be wrapped. Must be default-constructible.
 /// \tparam DefaultSet How to construct v_ in default cases.
-template <typename T, typename DefaultSet = decltype([] { return T{}; })>
-  requires(std::is_default_constructible_v<T>)
+template <typename T, typename DefaultSet>
+  requires(bp::invocable_r<DefaultSet, T>)
 class ignore_copy {
   T v_ = DefaultSet{}();
   static constexpr bool _is_noexcept =
       std::is_nothrow_default_constructible_v<T>;
+
+  // Hack to get clang for windows to work as it otherwise somehow manages to
+  // get a circular reference to std::constructible_from<T, Ts...>.
+  template <typename... Ts> static constexpr bool _eligible_for_construction() {
+    if constexpr (sizeof...(Ts) != 1 ||
+                  (!_is_ignore_copy<std::remove_cvref_t<Ts>> && ...)) {
+      return std::constructible_from<T, Ts...>;
+    } else {
+      return false;
+    }
+  }
 
 public:
   /// Constructs the wrapped type with the provided arguments, forwarding
@@ -35,16 +54,18 @@ public:
   /// \note This constructor is only enabled if `T` is constructible with the
   /// given arguments.
   template <typename... Ts>
-    requires(std::constructible_from<T, Ts...>)
+    requires(_eligible_for_construction<Ts...>())
   constexpr explicit ignore_copy(Ts &&...args) noexcept(
       std::is_nothrow_constructible_v<T, Ts...>)
       : v_(std::forward<Ts>(args)...) {}
 
   constexpr ignore_copy() noexcept(_is_noexcept) = default;
   constexpr ignore_copy(ignore_copy const &) noexcept(_is_noexcept) {}
+  constexpr ignore_copy(ignore_copy &&) noexcept(_is_noexcept) {}
   constexpr ignore_copy &operator=(ignore_copy const &) noexcept {
     return *this;
   }
+  constexpr ignore_copy &operator=(ignore_copy &&) noexcept { return *this; }
 
   /// Provides mutable access to the wrapped value.
   ///

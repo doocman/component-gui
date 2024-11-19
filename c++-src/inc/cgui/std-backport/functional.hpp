@@ -217,7 +217,7 @@ class trivial_function<R(Args...), sz, align> {
 public:
   template <typename T, typename TRaw = std::remove_cvref_t<T>>
     requires(_eligible_for_construction<TRaw>())
-  constexpr explicit trivial_function(T &&t) noexcept
+  constexpr explicit(false) trivial_function(T &&t) noexcept
       : f_([](buffer_t &b, Args... args) {
           return std::invoke(reinterpret_cast<TRaw &>(b),
                              std::forward<Args>(args)...);
@@ -259,6 +259,10 @@ public:
   constexpr void swap(trivial_function &other) noexcept {
     std::ranges::swap(other.data_, data_);
     std::swap(other.f_, f_);
+  }
+
+  constexpr operator bool() const noexcept {
+    return f_ == static_cast<f_type>(terminate_f);
   }
 };
 

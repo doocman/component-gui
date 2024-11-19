@@ -174,4 +174,12 @@ static_assert(!std::constructible_from<bp::trivial_function<void(), 1, 8>,
 static_assert(std::constructible_from<bp::trivial_function<void(), 1, 32>,
                                       heavy_align_functionlike>);
 
+TEST(EtdTrivialFunction, OperatorBool) // NOLINT
+{
+  auto f = bp::trivial_function<void(), 1, 1>();
+  EXPECT_FALSE(f);
+  f = bp::no_op;
+  EXPECT_TRUE(f);
+}
+
 } // namespace cgui::tests

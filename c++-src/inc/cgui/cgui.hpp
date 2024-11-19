@@ -498,7 +498,7 @@ class widget
     : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
   using display_state_callbacks_t = basic_widget_back_propagater<TArea>;
   using widget_ref_t = widget_ref_no_set_area<widget>;
-  using on_destruct_f_t = ignore_copy<std::function<void(widget &&)>,
+  using on_destruct_f_t = ignore_copy<bp::trivial_function<void(widget &&), sizeof(void*) * 3, alignof(void*)>,
                                       bp::return_constant_t<bp::no_op_t>>;
   TArea area_{};
   TDisplay display_;
@@ -648,7 +648,6 @@ public:
   }
 
   constexpr void set_on_destruct(auto &&f) {
-    CGUI_DEBUG_ONLY(CGUI_ASSERT(on_destruct_.value().target_type() == typeid(bp::no_op_t));)
     on_destruct_.value() = std::forward<decltype(f)>(f);
   }
   constexpr void reset_on_destruct() { on_destruct_.value() = bp::no_op; }
