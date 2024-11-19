@@ -261,7 +261,7 @@ public:
     std::swap(other.f_, f_);
   }
 
-  constexpr operator bool() const noexcept {
+  constexpr explicit operator bool() const noexcept {
     return f_ != static_cast<f_type>(terminate_f);
   }
 };
