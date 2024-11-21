@@ -250,20 +250,21 @@ using default_window_resized_event =
 
 enum class interpreted_events {
   primary_click = 1,
-  double_primary_click,
   context_menu_click,
   pointer_drag_start,
   pointer_drag_move,
   pointer_drag_finished,
   pointer_hover,
+  pointer_hold,
+  pointer_enter,
+  pointer_exit,
 };
-enum class early_event_tag { preliminary, confirmed, cancelled };
 
 template <typename T, interpreted_events... ie_vs>
 concept interpreted_event_types = (can_be_event<ie_vs, T>() || ...);
 
 template <interpreted_events> struct interpreted_event_impl;
-template <interpreted_events ie_v, early_event_tag eet, typename TimePoint>
+template <interpreted_events ie_v, typename TimePoint>
 struct interpreted_event : interpreted_event_impl<ie_v> {
   using _base_t = interpreted_event_impl<ie_v>;
   interpreted_event_basic<TimePoint> common_data;
@@ -271,34 +272,31 @@ struct interpreted_event : interpreted_event_impl<ie_v> {
       : _base_t(evt), common_data(evt) {}
   constexpr interpreted_event(_base_t const &impl, TimePoint const &ts)
       : _base_t(impl), common_data(ts) {}
+  template <typename... Ts>
+    requires(std::constructible_from<_base_t, Ts && ...>)
+  constexpr explicit interpreted_event(TimePoint const &ts, Ts &&...args)
+      : _base_t(std::forward<Ts>(args)...), common_data(ts) {}
 };
 
-template <interpreted_events ie_v, early_event_tag et, typename C>
-constexpr bool is_cgui_default_event_v<interpreted_event<ie_v, et, C>> = true;
+template <interpreted_events ie_v, typename C>
+constexpr bool is_cgui_default_event_v<interpreted_event<ie_v, C>> = true;
 
-template <early_event_tag eet, interpreted_events ie_v>
+template <interpreted_events ie_v>
 inline constexpr auto create_interpreted_event_from_tp =
     []<typename TP, typename... Args>(TP const &time_stamp, Args &&...args) {
       using impl_t = interpreted_event_impl<ie_v>;
-      return interpreted_event<ie_v, eet, TP>(
-          impl_t(std::forward<Args>(args)...), time_stamp);
+      return interpreted_event<ie_v, TP>(impl_t(std::forward<Args>(args)...),
+                                         time_stamp);
     };
-template <early_event_tag eet, interpreted_events ie_v>
+template <interpreted_events ie_v>
 inline constexpr auto create_interpreted_event_from_event =
     []<has_time_stamp Evt, typename... Args>(Evt const &trig_event,
                                              Args &&...args) {
-      return create_interpreted_event_from_tp<eet, ie_v>(
+      return create_interpreted_event_from_tp<ie_v>(
           call::time_stamp(trig_event), std::forward<Args>(args)...);
     };
 
 template <> struct interpreted_event_impl<interpreted_events::primary_click> {
-  using position_t = default_point_coordinate;
-  position_t pos{};
-  constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
-      : pos(copy_coordinate<position_t>(p)) {}
-};
-template <>
-struct interpreted_event_impl<interpreted_events::double_primary_click> {
   using position_t = default_point_coordinate;
   position_t pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
@@ -344,6 +342,12 @@ template <> struct interpreted_event_impl<interpreted_events::pointer_hover> {
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
       : pos(copy_coordinate<position_t>(p)) {}
 };
+template <> struct interpreted_event_impl<interpreted_events::pointer_hold> {
+  using position_t = default_point_coordinate;
+  position_t pos{};
+  constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
+      : pos(copy_coordinate<position_t>(p)) {}
+};
 
 struct cgui_mouse_exit_event {
   static constexpr subset_input_events<input_events::mouse_exit>
@@ -371,6 +375,26 @@ _to_state(state_interpreter_pair<Interpreter> *sip) -> decltype(&sip->state) {
   } else {
     return &sip->state;
   }
+}
+
+template <typename WidgetT> struct query_result {
+  WidgetT *w_{};
+
+  constexpr explicit operator bool() const noexcept { return w_ != nullptr; }
+};
+template <typename OnFind, interpreted_events... events>
+struct query_interpreted_events_t {
+  OnFind f_;
+
+  constexpr decltype(auto) operator()(auto &&in) const {
+    return f_(std::forward<decltype(in)>(in));
+  }
+};
+
+template <interpreted_events... events, typename OnFind>
+constexpr query_interpreted_events_t<std::remove_cvref_t<OnFind>, events...>
+query_interpreted_events(OnFind &&f) {
+  return {std::forward<OnFind>(f)};
 }
 
 template <typename TimePoint = typename std::chrono::steady_clock::time_point,
@@ -401,27 +425,18 @@ class event_interpreter
         state_);
   }
 
-  template <typename Interpreter, typename Evt, typename F>
-  constexpr bool interpret(Evt &&e, F &&f) {
+  template <typename Interpreter, typename Evt, typename Q>
+  constexpr bool interpret(Evt &&e, Q &&q) {
     if constexpr (Interpreter::template can_handle<
                       std::remove_cvref_t<Evt>>()) {
       auto *interpreter_state =
           std::get_if<state_interpreter_pair<Interpreter>>(&state_);
-      auto callback = [this, &f,
-                       cancel_current = (interpreter_state ==
-                                         nullptr)]<typename T>(T &&e) mutable {
-        if (cancel_current) {
-          cancel_state(f);
-          cancel_current = false;
-        }
-        f(std::forward<T>(e));
-      };
       auto new_state = Interpreter::handle(
-          std::forward<Evt>(e), callback, interpreter_state,
+          std::forward<Evt>(e), q, interpreter_state,
           std::get<typename Interpreter::settings>(std::as_const(settings_)));
       if (new_state) {
         if (interpreter_state == nullptr) {
-          cancel_state(f);
+          cancel_state(q);
         }
         state_ = state_interpreter_pair<Interpreter>{*new_state};
         return true;
@@ -433,9 +448,9 @@ class event_interpreter
   }
 
 public:
-  template <typename Evt, typename F>
-  constexpr bool handle(Evt const &e, F &&f) {
-    return (interpret<Interpreters<TimePoint>>(e, f) || ...);
+  template <typename Evt, typename ToQuery>
+  constexpr bool handle(Evt const &e, ToQuery &&q) {
+    return (interpret<Interpreters<TimePoint>>(e, q) || ...);
   }
   template <std::convertible_to<time_point_t> TP, typename F>
   constexpr void pass_time(TP &&tp, F &&f) {
@@ -461,7 +476,7 @@ public:
   }
 };
 
-template <input_events evt_val, typename F>
+template <typename EventType, EventType evt_val, typename F>
 class event_case_t : bp::empty_structs_optimiser<F> {
   template <typename Evt, typename... Ts>
   static constexpr bool valid_function =
@@ -469,6 +484,7 @@ class event_case_t : bp::empty_structs_optimiser<F> {
       std::invocable<F>;
 
 public:
+  static constexpr EventType event_enum = evt_val;
   using bp::empty_structs_optimiser<F>::empty_structs_optimiser;
 
   template <typename Evt, typename... Ts>
@@ -496,31 +512,39 @@ public:
   }
 };
 template <input_events evt_v, typename T>
-constexpr event_case_t<evt_v, std::remove_cvref_t<T>> event_case(T &&in) {
-  return event_case_t<evt_v, std::remove_cvref_t<T>>{std::forward<T>(in)};
+constexpr event_case_t<input_events, evt_v, std::remove_cvref_t<T>>
+event_case(T &&in) {
+  return event_case_t<input_events, evt_v, std::remove_cvref_t<T>>{
+      std::forward<T>(in)};
+}
+template <interpreted_events evt_v, typename T>
+constexpr event_case_t<interpreted_events, evt_v, std::remove_cvref_t<T>>
+event_case(T &&in) {
+  return event_case_t<interpreted_events, evt_v, std::remove_cvref_t<T>>{
+      std::forward<T>(in)};
 }
 
 namespace impl {
 template <typename> constexpr bool is_event_case_raw = false;
-template <input_events e, typename T>
-constexpr bool is_event_case_raw<event_case_t<e, T>> = true;
-template <typename T>
-constexpr bool is_event_case = is_event_case_raw<std::remove_cvref_t<T>>;
+template <typename EvtType, EvtType e, typename T>
+constexpr bool is_event_case_raw<event_case_t<EvtType, e, T>> = true;
+template <typename... Ts>
+constexpr bool is_event_case =
+    (is_event_case_raw<std::remove_cvref_t<Ts>> && ...);
 } // namespace impl
 
-template <has_event_type Evt, typename Data, input_events... evt_vs,
-          typename... Fs>
-  requires(bp::is_unique(evt_vs...) && !impl::is_event_case<Data>)
-constexpr bool ui_event_switch(Evt &&e, Data &&d,
-                               event_case_t<evt_vs, Fs> &&...cases) {
+template <has_event_type Evt, typename Data, typename... Cases>
+  requires(bp::is_weakly_unique(std::remove_cvref_t<Cases>::event_enum...) &&
+           !impl::is_event_case<Data> && impl::is_event_case<Cases...>)
+constexpr bool ui_event_switch(Evt &&e, Data &&d, Cases &&...cases) {
   // The forwarding operator is fine to use hre since the cases leaves both e
   // and d untouched if the case does not correspond to the correct event.
   return (cases(std::forward<Evt>(e), std::forward<Data>(d)) || ...);
 }
-template <has_event_type Evt, input_events... evt_vs,
-          bp::invocable_or_invocable_args<Evt>... Fs>
-  requires(bp::is_unique(evt_vs...))
-constexpr bool ui_event_switch(Evt &&e, event_case_t<evt_vs, Fs> &&...cases) {
+template <has_event_type Evt, typename... Cases>
+  requires(bp::is_weakly_unique(std::remove_cvref_t<Cases>::event_enum...) &&
+           impl::is_event_case<Cases...>)
+constexpr bool ui_event_switch(Evt &&e, Cases &&...cases) {
   // The forwarding operator is fine to use hre since the cases leaves both e
   // and d untouched if the case does not correspond to the correct event.
   return (cases(std::forward<Evt>(e)) || ...);
@@ -597,26 +621,31 @@ public:
                 std::forward<decltype(args)>(args)...);
   }
 };
-template <typename Data, input_events... evt_vs, typename... Fs>
+template <typename Data, typename... Cases>
+  requires(bp::is_weakly_unique(std::remove_cvref_t<Cases>::event_enum...) &&
+           impl::is_event_case<Cases...>)
 constexpr ui_event_switch_t<std::unwrap_ref_decay_t<Data>,
-                            event_case_t<evt_vs, Fs>...>
-saved_ui_event_switch(Data &&d, event_case_t<evt_vs, Fs> &&...cases) {
-  return {std::forward<Data>(d), std::move(cases)...};
+                            std::remove_cvref_t<Cases>...>
+saved_ui_event_switch(Data &&d, Cases &&...cases) {
+  return {std::forward<Data>(d), std::forward<Cases>(cases)...};
 }
 
 struct primary_mouse_click_translator_settings {
-  std::chrono::nanoseconds double_click_timeout =
-      std::chrono::milliseconds(500);
   int drag_threshold = 5;
 };
 
-template <typename F, typename C, typename... Args>
-constexpr void _invoke_with_interpreted_event(F &&f, C &&c, Args &&...args) {
-  using event_t = std::invoke_result_t<C, Args...>;
-  if constexpr (std::invocable<F, event_t>) {
-    std::invoke(std::forward<F>(f),
-                std::invoke(std::forward<C>(c), std::forward<Args>(args)...));
-  }
+template <interpreted_events evt_type, typename TP, typename Q,
+          typename... Args>
+constexpr bool _invoke_with_interpreted_event(Q &&q, TP const &tp,
+                                              Args &&...args) {
+  using event_t = interpreted_event<evt_type, TP>;
+  bool called{};
+  q(query_interpreted_events<evt_type>([&]<typename W>(W &&w) {
+    CGUI_ASSERT(!called); // called more than once!
+    called = true;
+    std::invoke(std::forward<W>(w), event_t(tp, std::forward<Args>(args)...));
+  }));
+  return called;
 }
 
 template <input_events... ievs> struct _interpreter_can_handle {
@@ -634,10 +663,6 @@ constexpr std::optional<T> _to_optional(TIn &&in) {
 }
 
 template <typename TimePoint> class primary_mouse_click_translator {
-  struct first_click_t {
-    TimePoint click_time{};
-    default_point_coordinate click_position{};
-  };
   struct first_down_t {
     TimePoint click_time{};
     default_point_coordinate click_position{};
@@ -649,28 +674,16 @@ template <typename TimePoint> class primary_mouse_click_translator {
   struct drag_t {
     default_point_coordinate start_position{};
   };
+  struct hold_no_drag_t {};
 
 public:
-  using state =
-      std::variant<first_down_t, first_click_t,
-                   second_down_t, drag_t>;
+  using state = std::variant<first_down_t, hold_no_drag_t, drag_t>;
 
 private:
   template <typename F>
   static constexpr void
-  _cancel(state const &v, F &&f,
-          primary_mouse_click_translator_settings const &) {
-    std::visit(
-        [&]<typename T>(T const &s) {
-          if constexpr (bp::same_as_any<T, first_click_t,
-                                        second_down_t>) {
-            f(create_interpreted_event_from_tp<
-                early_event_tag::confirmed, interpreted_events::primary_click>(
-                s.click_time, s.click_position));
-          }
-        },
-        v);
-  }
+  _cancel(state const &, F &&,
+          primary_mouse_click_translator_settings const &) {}
   template <typename F>
   static constexpr void
   _cancel(state const *v, F &&f,
@@ -680,105 +693,87 @@ private:
     }
   }
 
-  template <typename E, typename F, typename S = state>
+  template <typename E, typename Q, typename S = state>
   static constexpr std::optional<S>
-  _move(state const *v, E const &e, F &&f,
+  _move(state const *v, E const &e, Q &&q,
         primary_mouse_click_translator_settings const &conf) {
     if (v != nullptr) {
       return std::visit(
           [&]<typename T>(T const &s) -> std::optional<S> {
             if constexpr (std::is_same_v<T, drag_t>) {
-              f(create_interpreted_event_from_event<
-                  early_event_tag::confirmed,
-                  interpreted_events::pointer_drag_move>(e, s.start_position,
-                                                         call::position(e)));
+              _invoke_with_interpreted_event<
+                  interpreted_events::pointer_drag_move>(
+                  q, call::time_stamp(e), s.start_position, call::position(e));
               return _to_optional<S>(s);
-            } else {
+            } else if constexpr (std::same_as<T, first_down_t>) {
               if (distance_sqr(s.click_position.value(),
                                call::position(e).value()) >
                   (conf.drag_threshold * conf.drag_threshold)) {
-                if constexpr (bp::same_as_any<T, first_click_t,
-                                              second_down_t>) {
-                  f(create_interpreted_event_from_tp<
-                      early_event_tag::confirmed,
-                      interpreted_events::primary_click>(s.click_time,
-                                                         call::position(e)));
+                if (_invoke_with_interpreted_event<
+                        interpreted_events::pointer_drag_start>(
+                        q, call::time_stamp(e), call::position(e))) {
+                  return _to_optional<S>(drag_t{s.click_position});
+                } else {
+                  return _to_optional<S>(hold_no_drag_t{});
                 }
-                if constexpr (bp::same_as_any<T, first_down_t,
-                                              second_down_t>) {
-                  f(create_interpreted_event_from_event<
-                      early_event_tag::confirmed,
-                      interpreted_events::pointer_drag_start>(
-                      e, call::position(e)));
-                }
-                return _to_optional<S>(drag_t{s.click_position});
-              } else {
-                return _to_optional<S>(s);
               }
+              return _to_optional<S>(s);
+            } else {
+              return _to_optional<S>(s);
             }
           },
           *v);
     } else {
-      f(create_interpreted_event_from_event<early_event_tag::confirmed,
-                                            interpreted_events::pointer_hover>(
-          e, call::position(e)));
+      _invoke_with_interpreted_event<interpreted_events::pointer_hover>(
+          q, call::time_stamp(e), call::position(e));
       return std::nullopt;
     }
   }
 
-  template <typename E, typename F, typename S = state>
+  template <typename E, typename Q, typename S = state>
   static constexpr std::optional<S>
-  _bdown(state const *v, E const &e, F &&,
+  _bdown(state const *v, E const &e, Q &&q,
          primary_mouse_click_translator_settings const &) {
     if (v == nullptr) {
+      if (call::mouse_button(e) == mouse_buttons::primary) {
+        _invoke_with_interpreted_event<interpreted_events::pointer_hold>(
+            q, call::time_stamp(e), call::position(e));
+      }
       return std::optional<S>(
-          std::in_place,
-          first_down_t{
-              call::time_stamp(e),
-              copy_coordinate<default_point_coordinate>(call::position(e))});
+          std::in_place, first_down_t{call::time_stamp(e),
+                                      copy_coordinate<default_point_coordinate>(
+                                          call::position(e))});
     } else {
       return *v;
     }
   }
 
-  template <typename E, typename F, typename S = state>
+  template <typename E, typename Q, typename S = state>
   static constexpr std::optional<S>
-  _bup(state const *v, E const &e, F &&f,
+  _bup(state const *v, E const &e, Q &&q,
        primary_mouse_click_translator_settings const &conf) {
     if (call::mouse_button(e) == mouse_buttons::secondary) {
-      _cancel(v, f, conf);
-      f(create_interpreted_event_from_event<
-          early_event_tag::confirmed, interpreted_events::context_menu_click>(
-          e, call::position(e)));
+      _cancel(v, q, conf);
+      _invoke_with_interpreted_event<interpreted_events::context_menu_click>(
+          q, call::time_stamp(e), call::position(e));
       return {};
     }
     if (v != nullptr) {
       return std::visit(
           [&]<typename T>(T const &s) -> std::optional<S> {
-            if constexpr (std::is_same_v<T, first_click_t>) {
-              f(create_interpreted_event_from_tp<
-                  early_event_tag::cancelled,
-                  interpreted_events::primary_click>(s.click_time,
-                                                     s.click_position));
-              f(create_interpreted_event_from_event<
-                  early_event_tag::confirmed,
-                  interpreted_events::double_primary_click>(e,
-                                                            call::position(e)));
-              return std::nullopt;
-            } else if constexpr (std::is_same_v<T, drag_t>) {
-              f(create_interpreted_event_from_event<
-                  early_event_tag::confirmed,
+            if constexpr (std::is_same_v<T, drag_t>) {
+              // f(create_interpreted_event_from_event<
+              //     interpreted_events::pointer_drag_finished>(
+              //     e, s.start_position, call::position(e)));
+              _invoke_with_interpreted_event<
                   interpreted_events::pointer_drag_finished>(
-                  e, s.start_position, call::position(e)));
+                  q, call::time_stamp(e), s.start_position, call::position(e));
               return std::nullopt;
-            } else if constexpr (std::is_same_v<T, first_down_t>) {
-              f(create_interpreted_event_from_event<
-                  early_event_tag::preliminary,
-                  interpreted_events::primary_click>(e, call::position(e)));
-              return _to_optional<S>(first_click_t{
-                  call::time_stamp(e),
-                  copy_coordinate<default_point_coordinate>(
-                      call::position(e))});
+            } else if constexpr (bp::same_as_any<T, first_down_t,
+                                                 hold_no_drag_t>) {
+              _invoke_with_interpreted_event<interpreted_events::primary_click>(
+                  q, call::time_stamp(e), call::position(e));
+              return std::nullopt;
             }
             return _to_optional<S>(s);
           },
@@ -786,14 +781,9 @@ private:
     } else {
       // We should never arrive here, doing so would indicate either lost or
       // unordered events.
-      f(create_interpreted_event_from_event<early_event_tag::preliminary,
-                                            interpreted_events::primary_click>(
-          e, call::position(e)));
-      return std::optional<S>{
-          std::in_place,
-          first_click_t{
-              call::time_stamp(e),
-              copy_coordinate<default_point_coordinate>(call::position(e))}};
+      // f(create_interpreted_event_from_event<interpreted_events::primary_click>(
+      //    e, call::position(e)));
+      return std::nullopt;
     }
   }
 
@@ -805,50 +795,42 @@ public:
                               input_events::mouse_button_up,
                               input_events::mouse_move>::op<E>;
 
-  template <typename F>
-  static constexpr auto evt_switch(F &&fi, state const *in,
+  template <typename Q>
+  static constexpr auto evt_switch(Q &&qi, state const *in,
                                    std::optional<state> &out,
                                    settings const &confi) {
     return saved_ui_event_switch(
-        std::tuple<F &&, state const *, std::optional<state> &,
-                   settings const &>(fi, in, out, confi),
+        std::tuple<Q &&, state const *, std::optional<state> &,
+                   settings const &>(qi, in, out, confi),
         event_case<input_events::mouse_button_down>( //
             [](auto const &e, auto &&d) {
-              auto &[f, s_in, s_out, conf] = d;
-              s_out = _bdown(s_in, e, f, conf);
+              auto &[q, s_in, s_out, conf] = d;
+              s_out = _bdown(s_in, e, q, conf);
             }),
         event_case<input_events::mouse_move>( //
             [](auto const &e, auto &&d) {
-              auto &[f, s_in, s_out, conf] = d;
-              s_out = _move(s_in, e, f, conf);
+              auto &[q, s_in, s_out, conf] = d;
+              s_out = _move(s_in, e, q, conf);
             }),
         event_case<input_events::mouse_button_up>( //
             [](auto const &e, auto &&d) {
-              auto &[f, s_in, s_out, conf] = d;
-              s_out = _bup(s_in, e, f, conf);
+              auto &[q, s_in, s_out, conf] = d;
+              s_out = _bup(s_in, e, q, conf);
             }));
   }
-  template <typename Evt, typename F>
-  static constexpr std::optional<state> handle(Evt const &e, F &&f, auto &&s_in,
+  template <typename Evt, typename Q>
+  static constexpr std::optional<state> handle(Evt const &e, Q &&q, auto &&s_in,
                                                settings const &conf) {
     std::optional<state> s_out;
-    evt_switch(f, _to_state(s_in), s_out, conf)(e);
+    evt_switch(q, _to_state(s_in), s_out, conf)(e);
     return s_out;
   }
-  template <typename F>
+  template <typename Q>
   static constexpr std::optional<state>
-  pass_time(TimePoint const &tp, F &&f, state s_in, settings const &conf) {
-    if (auto *s = std::get_if<first_click_t>(&s_in);
-        s != nullptr && tp - s->click_time > conf.double_click_timeout) {
-      f(create_interpreted_event_from_tp<early_event_tag::confirmed,
-                                         interpreted_events::primary_click>(
-          s->click_time, s->click_position));
-      return {};
-    }
+  pass_time(TimePoint const &, Q &&, state s_in, settings const &) {
     return s_in;
   }
   static constexpr void cancel_state(state &s, auto &&f, settings const &conf) {
-
     _cancel(s, f, conf);
   }
 };

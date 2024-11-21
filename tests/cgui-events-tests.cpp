@@ -52,9 +52,9 @@ TEST(UiEventsMatcher, BasicsState) // NOLINT
   my_switch(default_mouse_up_event{});
 }
 
-template <interpreted_events ie_v, early_event_tag eet, typename TimePoint>
+template <interpreted_events ie_v, typename TimePoint>
 constexpr interpreted_events to_interpreted_event_enum(
-    std::type_identity<interpreted_event<ie_v, eet, TimePoint>>) {
+    std::type_identity<interpreted_event<ie_v, TimePoint>>) {
   return ie_v;
 }
 
@@ -63,30 +63,13 @@ constexpr interpreted_events to_interpreted_event_enum() {
   return to_interpreted_event_enum(std::type_identity<Evt>());
 }
 
-template <interpreted_events ie_v, early_event_tag eet, typename TimePoint>
-constexpr early_event_tag early_event_status(
-    std::type_identity<interpreted_event<ie_v, eet, TimePoint>>) {
-  return eet;
-}
-
-template <typename Evt> constexpr early_event_tag early_event_status() {
-  return early_event_status(std::type_identity<Evt>());
-}
-
 struct event_counter {
   std::vector<interpreted_events> event_types;
-  std::vector<early_event_tag> event_ee_tags;
   template <typename Evt> constexpr void operator()(Evt const &e) {
-    // last_event = to_interpreted_event_enum<Evt>();
-    // last_confirmed = early_event_status<Evt>();
     event_types.push_back(to_interpreted_event_enum<Evt>());
-    event_ee_tags.push_back(early_event_status<Evt>());
   }
 
-  void reset() {
-    event_types.clear();
-    event_ee_tags.clear();
-  }
+  void reset() { event_types.clear(); }
 };
 
 using namespace std::chrono;
@@ -94,81 +77,88 @@ class GestureEventsTests : public ::testing::Test {
 public:
   using time_point_t = steady_clock::time_point;
 
+  struct dummy_widget_query {
+    event_counter *counter{};
+    std::vector<interpreted_events> events_to_allow{};
+    template <typename T, interpreted_events... evts>
+    constexpr bool
+    operator()(query_interpreted_events_t<T, evts...> const &q) const {
+      if (std::ranges::any_of(events_to_allow,
+                              [](auto &&e) { return ((e == evts) || ...); })) {
+        CGUI_ASSERT(counter != nullptr);
+        q(*counter);
+        return true;
+      }
+      return false;
+    }
+  };
+
   time_point_t first_ts{};
   event_counter counter{};
+  dummy_widget_query event_query;
 
   auto get_invoke_tt(auto &to_test) {
+    event_query.counter = &counter;
     return [this, &to_test](auto const &input_evt) {
       counter.reset();
-      to_test.handle(input_evt, counter);
+      to_test.handle(input_evt, event_query);
     };
+  }
+
+  void enable_all_events() {
+    using enum interpreted_events;
+    event_query.events_to_allow.assign({
+        primary_click,         //
+        context_menu_click,    //
+        pointer_drag_start,    //
+        pointer_drag_move,     //
+        pointer_drag_finished, //
+        pointer_hover,         //
+        pointer_hold,          //
+        pointer_enter,         //
+        pointer_exit           //
+    });
+  };
+  void enable_all_events_except(std::same_as<interpreted_events> auto... evts) {
+    enable_all_events();
+    auto tot_found = (std::erase(event_query.events_to_allow, evts) + ...);
+    CGUI_ASSERT(tot_found == sizeof...(evts));
   }
 };
 
-TEST_F(GestureEventsTests, MouseClick) // NOLINT
+TEST_F(GestureEventsTests, AllQueriesFail) // NOLINT
 {
-  using time_point_t = steady_clock::time_point;
-  auto first_ts = time_point_t{};
-  interpreted_events last_event{};
-  auto last_confirmed = static_cast<early_event_tag>(-1);
-  int event_calls{};
-  auto to_test =
-      event_interpreter<time_point_t, primary_mouse_click_translator>{};
-  auto reset_values = [&] {
-    last_confirmed = static_cast<early_event_tag>(-1);
-    last_event = {};
-    event_calls = {};
-  };
-  auto test_callback = [&]<any_interpreted_event_c Evt>(Evt const &) {
-    ++event_calls;
-    last_event = to_interpreted_event_enum<Evt>();
-    last_confirmed = early_event_status<Evt>();
-  };
-  auto invoke_tt = [&](auto const &input_evt) {
-    reset_values();
-    to_test.handle(input_evt, test_callback);
-  };
-  invoke_tt(default_mouse_down_event{.common_data{first_ts}});
-  EXPECT_THAT(event_calls, Eq(0));
-  invoke_tt(default_mouse_up_event{.common_data{first_ts}});
-  EXPECT_THAT(last_event, Eq(interpreted_events::primary_click));
-  EXPECT_THAT(last_confirmed, Eq(early_event_tag::preliminary));
-  EXPECT_THAT(event_calls, Eq(1));
-  reset_values();
-  first_ts += 101ms;
-  to_test.pass_time(first_ts, test_callback);
-  EXPECT_THAT(event_calls, Eq(0));
-  first_ts += 400ms;
-  to_test.pass_time(first_ts, test_callback);
-  EXPECT_THAT(last_event, Eq(interpreted_events::primary_click));
-  EXPECT_THAT(last_confirmed, Eq(early_event_tag::confirmed));
-  EXPECT_THAT(event_calls, Eq(1));
-  reset_values();
-  first_ts += 501ms;
-  to_test.pass_time(first_ts, test_callback);
-  EXPECT_THAT(event_calls, Eq(0));
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_mouse_down_event{});
+  EXPECT_THAT(counter.event_types, IsEmpty());
+  invoke_tt(default_mouse_up_event{});
+  EXPECT_THAT(counter.event_types, IsEmpty());
+  invoke_tt(default_mouse_move_event{});
+  EXPECT_THAT(counter.event_types, IsEmpty());
 }
 
-TEST_F(GestureEventsTests, MouseDoubleClick) // NOLINT
+TEST_F(GestureEventsTests, MouseClick) // NOLINT
 {
-  auto to_test =
-      event_interpreter<time_point_t, primary_mouse_click_translator>{};
-
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
+  auto &event_types = counter.event_types;
   invoke_tt(default_mouse_down_event{.common_data{first_ts}});
+  EXPECT_THAT(event_types, ElementsAre(interpreted_events::pointer_hold));
   invoke_tt(default_mouse_up_event{.common_data{first_ts}});
-  invoke_tt(default_mouse_down_event{.common_data{first_ts}});
-  invoke_tt(default_mouse_up_event{.common_data{first_ts}});
-  EXPECT_THAT(counter.event_types,
-              ElementsAre(interpreted_events::primary_click,
-                          interpreted_events::double_primary_click));
-  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::cancelled,
-                                                 early_event_tag::confirmed));
-  first_ts += 5001ms;
+  EXPECT_THAT(event_types, ElementsAre(interpreted_events::primary_click));
   counter.reset();
+  first_ts += 101ms;
   to_test.pass_time(first_ts, counter);
-  EXPECT_THAT(counter.event_ee_tags, IsEmpty());
-  EXPECT_THAT(counter.event_types, IsEmpty());
+  EXPECT_THAT(event_types, IsEmpty());
+  first_ts += 400ms;
+  to_test.pass_time(first_ts, counter);
+  EXPECT_THAT(event_types, IsEmpty());
+  counter.reset();
+  first_ts += 501ms;
+  to_test.pass_time(first_ts, counter);
+  EXPECT_THAT(event_types, IsEmpty());
 }
 
 template <typename> struct dummy_event_interpreter {
@@ -188,69 +178,54 @@ template <typename> struct dummy_event_interpreter {
   static constexpr void cancel_state(auto &&...) {}
 };
 
-TEST_F(GestureEventsTests, MultiInterpretersQuickconfirm) // NOLINT
-{
-  auto to_test = event_interpreter<time_point_t, primary_mouse_click_translator,
-                                   dummy_event_interpreter>{};
-  auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_down_event{.common_data{first_ts}});
-  invoke_tt(default_mouse_up_event{.common_data{first_ts}});
-  invoke_tt(default_event<input_events::system>{});
-  EXPECT_THAT(counter.event_types,
-              ElementsAre(interpreted_events::primary_click));
-  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
-}
-
 TEST_F(GestureEventsTests, ContextMenuMouseClick) // NOLINT
 {
+  enable_all_events();
   auto to_test = default_event_interpreter<time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_mouse_down_event{.button_id = mouse_buttons::secondary,
                                      .common_data{first_ts}});
   EXPECT_THAT(counter.event_types, IsEmpty());
-  EXPECT_THAT(counter.event_ee_tags, IsEmpty());
   invoke_tt(default_mouse_up_event{.button_id = mouse_buttons::secondary,
                                    .common_data{first_ts}});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::context_menu_click));
-  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
 }
 
 TEST_F(GestureEventsTests, MouseDrag) // NOLINT
 {
+  enable_all_events();
   auto to_test = default_event_interpreter<time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_mouse_down_event{});
   invoke_tt(default_mouse_move_event{.pos = {20, 20}});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_drag_start));
-  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
   invoke_tt(default_mouse_up_event{});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_drag_finished));
-  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
 }
-
-TEST_F(GestureEventsTests, MouseNotDragAfterClick) // NOLINT
+TEST_F(GestureEventsTests, MouseNoDrag) // NOLINT
 {
+  enable_all_events_except(interpreted_events::pointer_drag_start);
   auto to_test = default_event_interpreter<time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_mouse_down_event{});
-  invoke_tt(default_mouse_up_event{});
   invoke_tt(default_mouse_move_event{.pos = {20, 20}});
+  EXPECT_THAT(counter.event_types, IsEmpty());
+  invoke_tt(default_mouse_up_event{});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::primary_click));
-  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
 }
 
 TEST_F(GestureEventsTests, MouseHover) // NOLINT
 {
+  enable_all_events();
   auto to_test = default_event_interpreter<time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_mouse_move_event{});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_hover));
-  EXPECT_THAT(counter.event_ee_tags, ElementsAre(early_event_tag::confirmed));
 }
 
 } // namespace cgui::tests

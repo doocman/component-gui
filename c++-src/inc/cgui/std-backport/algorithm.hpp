@@ -8,6 +8,8 @@
 #include <type_traits>
 #include <utility>
 
+#include <cgui/std-backport/concepts.hpp>
+
 namespace cgui::bp {
 
 /// Checks if all values Ts... are sequential.
@@ -77,6 +79,28 @@ constexpr bool is_unique(T &&v1, Ts &&...values) {
     return true;
   } else {
     return ((v1 != values) && ...) && is_unique(std::forward<Ts>(values)...);
+  }
+}
+
+namespace impl {
+template <typename T1, typename T2>
+  requires(std::equality_comparable_with<T1, T2> || !bp::cvref_type<T1, T2>)
+constexpr bool weak_compare(T1 const &l, T2 const &r) {
+  if constexpr (!bp::cvref_type<T1, T2>) {
+    return false;
+  } else {
+    return l == r;
+  }
+}
+} // namespace impl
+
+template <typename T, typename... Ts>
+constexpr bool is_weakly_unique(T const &v1, Ts const &...values) {
+  if constexpr (sizeof...(Ts) == 0) {
+    return true;
+  } else {
+    return (!impl::weak_compare(v1, values) && ...) &&
+           is_weakly_unique(values...);
   }
 }
 
