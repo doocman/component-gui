@@ -348,6 +348,13 @@ template <> struct interpreted_event_impl<interpreted_events::pointer_hold> {
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
       : pos(copy_coordinate<position_t>(p)) {}
 };
+template <> struct interpreted_event_impl<interpreted_events::pointer_enter> {
+  using position_t = default_point_coordinate;
+  position_t pos{};
+  constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
+      : pos(copy_coordinate<position_t>(p)) {}
+};
+template <> struct interpreted_event_impl<interpreted_events::pointer_exit> {};
 
 struct cgui_mouse_exit_event {
   static constexpr subset_input_events<input_events::mouse_exit>
@@ -382,19 +389,37 @@ template <typename WidgetT> struct query_result {
 
   constexpr explicit operator bool() const noexcept { return w_ != nullptr; }
 };
-template <typename OnFind, interpreted_events... events>
+template <typename Pred, typename OnFind, interpreted_events... events>
 struct query_interpreted_events_t {
+  Pred p_;
   OnFind f_;
 
-  constexpr decltype(auto) operator()(auto &&in) const {
-    return f_(std::forward<decltype(in)>(in));
+  constexpr query_interpreted_events_t(Pred p, OnFind f)
+      : p_(std::move(p)), f_(std::move(f)) {}
+
+  constexpr bool operator()(auto &in, auto &&s) const {
+    if (p_(in)) {
+      f_(in, std::forward<decltype(s)>(s));
+      return true;
+    }
+    return false;
   }
 };
 
+template <interpreted_events... events, typename Pred, typename OnFind>
+  requires(std::predicate<Pred, dummy_widget const &>)
+constexpr query_interpreted_events_t<std::remove_cvref_t<Pred>,
+                                     std::remove_cvref_t<OnFind>, events...>
+query_interpreted_events(Pred &&p, OnFind &&f) {
+  return {std::forward<Pred>(p), std::forward<OnFind>(f)};
+}
+
 template <interpreted_events... events, typename OnFind>
-constexpr query_interpreted_events_t<std::remove_cvref_t<OnFind>, events...>
-query_interpreted_events(OnFind &&f) {
-  return {std::forward<OnFind>(f)};
+constexpr auto query_interpreted_events(default_point_coordinate pos,
+                                        OnFind &&f) {
+  return query_interpreted_events<events...>(
+      [pos](auto const &w) { return hit_box(call::area(w), pos); },
+      std::forward<OnFind>(f));
 }
 
 template <typename TimePoint = typename std::chrono::steady_clock::time_point,
@@ -634,18 +659,74 @@ struct primary_mouse_click_translator_settings {
   int drag_threshold = 5;
 };
 
+class interpreter_widget_cache {
+  void const *impl_{};
+
+public:
+  constexpr explicit interpreter_widget_cache(auto &w) : impl_(&w) {}
+  constexpr interpreter_widget_cache() noexcept = default;
+
+  constexpr void reset() noexcept { impl_ = nullptr; }
+  constexpr void reset(auto &w) noexcept { impl_ = &w; }
+
+  constexpr bool refers_to(auto &w) const {
+    return static_cast<void const *>(&w) == impl_;
+  }
+  constexpr explicit operator bool() const { return impl_ != nullptr; }
+};
+
+constexpr auto is_cached_widget(interpreter_widget_cache const &cw) {
+  return [&cw](auto &w) { return cw.refers_to(w); };
+}
+constexpr auto is_cached_widget(interpreter_widget_cache const &&) = delete;
+
 template <interpreted_events evt_type, typename TP, typename Q,
           typename... Args>
-constexpr bool _invoke_with_interpreted_event(Q &&q, TP const &tp,
-                                              Args &&...args) {
+constexpr interpreter_widget_cache
+_invoke_with_interpreted_event(Q &&q, default_point_coordinate pos,
+                               TP const &tp, Args &&...args) {
+  using event_t = interpreted_event<evt_type, TP>;
+  interpreter_widget_cache cached{};
+  q(query_interpreted_events<evt_type>(
+      pos, [&]<typename W, typename S>(W &w, S &&sender) {
+        CGUI_ASSERT(!cached); // called more than once!
+        cached.reset(w);
+        std::forward<S>(sender)(w, // std::forward<W>(w),
+                                event_t(tp, std::forward<Args>(args)...));
+      }));
+  return cached;
+}
+template <interpreted_events... evt_types, typename TP, typename Q>
+constexpr interpreter_widget_cache _invoke_with_interpreted_event(
+    Q &&q, default_point_coordinate pos,
+    interpreted_event<evt_types, TP> const &...events) {
+  interpreter_widget_cache cached{};
+  q(query_interpreted_events<evt_types...>(
+      pos, [&]<typename W, typename S>(W &w, S &&sender) {
+        CGUI_ASSERT(!cached); // called more than once!
+        cached.reset(w);
+        auto invoker = [&w, &sender]<typename E>(E const &e) {
+          if constexpr (std::invocable<S, W &, E>) {
+            sender(w, e);
+          }
+        };
+        bp::run_for_each(invoker, events...);
+      }));
+  return cached;
+}
+template <interpreted_events evt_type, typename Q, typename TP,
+          typename... Args>
+constexpr void send_to_cached_widget(Q &&q, TP tp,
+                                     interpreter_widget_cache const &cw,
+                                     Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
   bool called{};
-  q(query_interpreted_events<evt_type>([&]<typename W>(W &&w) {
-    CGUI_ASSERT(!called); // called more than once!
-    called = true;
-    std::invoke(std::forward<W>(w), event_t(tp, std::forward<Args>(args)...));
-  }));
-  return called;
+  q(query_interpreted_events<evt_type>(
+      is_cached_widget(cw), [&]<typename W, typename S>(W &w, S &&sender) {
+        CGUI_ASSERT(!called); // called more than once!
+        called = true;
+        std::forward<S>(sender)(w, event_t(tp, std::forward<Args>(args)...));
+      }));
 }
 
 template <input_events... ievs> struct _interpreter_can_handle {
@@ -666,18 +747,27 @@ template <typename TimePoint> class primary_mouse_click_translator {
   struct first_down_t {
     TimePoint click_time{};
     default_point_coordinate click_position{};
-  };
-  struct second_down_t {
-    TimePoint click_time{};
-    default_point_coordinate click_position{};
+    interpreter_widget_cache clicked_widget{};
   };
   struct drag_t {
     default_point_coordinate start_position{};
+    interpreter_widget_cache drag_start_widget{};
   };
-  struct hold_no_drag_t {};
+  struct hold_no_drag_t {
+    interpreter_widget_cache clicked_widget{};
+  };
+  struct hover_t {
+    interpreter_widget_cache widget{};
+  };
 
 public:
-  using state = std::variant<first_down_t, hold_no_drag_t, drag_t>;
+  using state = std::variant<first_down_t, hold_no_drag_t, drag_t, hover_t>;
+  /*
+  struct state {
+    using sub_state_t = std::variant<first_down_t, hold_no_drag_t, drag_t>;
+    interpreter_widget_cache last_widget{};
+    sub_state_t sub_state;
+  };*/
 
 private:
   template <typename F>
@@ -693,89 +783,130 @@ private:
     }
   }
 
-  template <typename E, typename Q, typename S = state>
-  static constexpr std::optional<S>
+  template <typename E, typename Q>
+  static constexpr std::optional<state>
   _move(state const *v, E const &e, Q &&q,
         primary_mouse_click_translator_settings const &conf) {
     if (v != nullptr) {
       return std::visit(
-          [&]<typename T>(T const &s) -> std::optional<S> {
+          [&]<typename T>(T const &s) -> std::optional<state> {
             if constexpr (std::is_same_v<T, drag_t>) {
               _invoke_with_interpreted_event<
                   interpreted_events::pointer_drag_move>(
-                  q, call::time_stamp(e), s.start_position, call::position(e));
-              return _to_optional<S>(s);
+                  q, s.start_position, call::time_stamp(e), s.start_position,
+                  call::position(e));
+              return _to_optional<state>(s);
             } else if constexpr (std::same_as<T, first_down_t>) {
               if (distance_sqr(s.click_position.value(),
                                call::position(e).value()) >
                   (conf.drag_threshold * conf.drag_threshold)) {
                 if (_invoke_with_interpreted_event<
                         interpreted_events::pointer_drag_start>(
-                        q, call::time_stamp(e), call::position(e))) {
-                  return _to_optional<S>(drag_t{s.click_position});
+                        q, s.click_position, call::time_stamp(e),
+                        call::position(e))) {
+                  return _to_optional<state>(
+                      drag_t{.start_position = s.click_position,
+                             .drag_start_widget = s.clicked_widget});
                 } else {
-                  return _to_optional<S>(hold_no_drag_t{});
+                  return _to_optional<state>(hold_no_drag_t{s.clicked_widget});
                 }
               }
-              return _to_optional<S>(s);
+              return _to_optional<state>(s);
+            } else if constexpr (std::same_as<T, hover_t>) {
+              hover_t res_state = s;
+              using enum interpreted_events;
+              q(query_interpreted_events<
+                  pointer_enter,
+                  pointer_hover>(call::position(e), [&]<typename W, typename S>(
+                                                        W &w, S &&sender) {
+                if (!res_state.widget.refers_to(w)) {
+                  if (res_state.widget) {
+                    send_to_cached_widget<pointer_exit>(q, call::time_stamp(e),
+                                                        res_state.widget);
+                  }
+                  res_state.widget.reset(w);
+                  if constexpr (std::invocable<S, W &,
+                                               interpreted_event<pointer_enter,
+                                                                 TimePoint>>) {
+                    sender(w, interpreted_event<pointer_enter, TimePoint>(
+                                  call::time_stamp(e), call::position(e)));
+                  }
+                }
+                if constexpr (std::invocable<S, W &,
+                                             interpreted_event<pointer_hover,
+                                                               TimePoint>>) {
+                  sender(w, interpreted_event<pointer_hover, TimePoint>(
+                                call::time_stamp(e), call::position(e)));
+                }
+              }));
+              return _to_optional<state>(res_state);
             } else {
-              return _to_optional<S>(s);
+              return _to_optional<state>(s);
             }
           },
           *v);
     } else {
-      _invoke_with_interpreted_event<interpreted_events::pointer_hover>(
-          q, call::time_stamp(e), call::position(e));
-      return std::nullopt;
+      auto cw = _invoke_with_interpreted_event(
+          q, call::position(e),
+          interpreted_event<interpreted_events::pointer_enter, TimePoint>(
+              call::time_stamp(e), call::position(e)),
+          interpreted_event<interpreted_events::pointer_hover, TimePoint>(
+              call::time_stamp(e), call::position(e)));
+      return _to_optional<state>(hover_t(cw));
     }
   }
 
-  template <typename E, typename Q, typename S = state>
-  static constexpr std::optional<S>
+  template <typename E, typename Q>
+  static constexpr std::optional<state>
   _bdown(state const *v, E const &e, Q &&q,
          primary_mouse_click_translator_settings const &) {
     if (v == nullptr) {
+      interpreter_widget_cache w{};
       if (call::mouse_button(e) == mouse_buttons::primary) {
-        _invoke_with_interpreted_event<interpreted_events::pointer_hold>(
-            q, call::time_stamp(e), call::position(e));
+        w = _invoke_with_interpreted_event<interpreted_events::pointer_hold>(
+            q, call::position(e), call::time_stamp(e), call::position(e));
+        if (w) {
+          return std::optional<state>(
+              std::in_place,
+              first_down_t{.click_time = call::time_stamp(e),
+                           .click_position =
+                               copy_coordinate<default_point_coordinate>(
+                                   call::position(e)),
+                           .clicked_widget = w});
+        }
       }
-      return std::optional<S>(
-          std::in_place, first_down_t{call::time_stamp(e),
-                                      copy_coordinate<default_point_coordinate>(
-                                          call::position(e))});
+      return std::nullopt;
     } else {
       return *v;
     }
   }
 
-  template <typename E, typename Q, typename S = state>
-  static constexpr std::optional<S>
+  template <typename E, typename Q>
+  static constexpr std::optional<state>
   _bup(state const *v, E const &e, Q &&q,
        primary_mouse_click_translator_settings const &conf) {
     if (call::mouse_button(e) == mouse_buttons::secondary) {
       _cancel(v, q, conf);
       _invoke_with_interpreted_event<interpreted_events::context_menu_click>(
-          q, call::time_stamp(e), call::position(e));
+          q, call::position(e), call::time_stamp(e), call::position(e));
       return {};
     }
     if (v != nullptr) {
       return std::visit(
-          [&]<typename T>(T const &s) -> std::optional<S> {
+          [&]<typename T>(T const &s) -> std::optional<state> {
             if constexpr (std::is_same_v<T, drag_t>) {
-              // f(create_interpreted_event_from_event<
-              //     interpreted_events::pointer_drag_finished>(
-              //     e, s.start_position, call::position(e)));
               _invoke_with_interpreted_event<
                   interpreted_events::pointer_drag_finished>(
-                  q, call::time_stamp(e), s.start_position, call::position(e));
+                  q, s.start_position, call::time_stamp(e), s.start_position,
+                  call::position(e));
               return std::nullopt;
             } else if constexpr (bp::same_as_any<T, first_down_t,
                                                  hold_no_drag_t>) {
               _invoke_with_interpreted_event<interpreted_events::primary_click>(
-                  q, call::time_stamp(e), call::position(e));
+                  q, call::position(e), call::time_stamp(e), call::position(e));
               return std::nullopt;
             }
-            return _to_optional<S>(s);
+            return _to_optional<state>(s);
           },
           *v);
     } else {
