@@ -253,7 +253,8 @@ enum class interpreted_events {
   context_menu_click,
   pointer_drag_start,
   pointer_drag_move,
-  pointer_drag_finished,
+  pointer_drag_finished_destination,
+  pointer_drag_finished_source,
   pointer_hover,
   pointer_hold,
   pointer_enter,
@@ -327,7 +328,19 @@ struct interpreted_event_impl<interpreted_events::pointer_drag_move> {
         pos(copy_coordinate<position_t>(cp)) {}
 };
 template <>
-struct interpreted_event_impl<interpreted_events::pointer_drag_finished> {
+struct interpreted_event_impl<
+    interpreted_events::pointer_drag_finished_source> {
+  using position_t = default_point_coordinate;
+  position_t start_pos{};
+  position_t end_pos{};
+  constexpr explicit interpreted_event_impl(point_coordinate auto const &sp,
+                                            point_coordinate auto const &ep)
+      : start_pos(copy_coordinate<position_t>(sp)),
+        end_pos(copy_coordinate<position_t>(ep)) {}
+};
+template <>
+struct interpreted_event_impl<
+    interpreted_events::pointer_drag_finished_destination> {
   using position_t = default_point_coordinate;
   position_t start_pos{};
   position_t end_pos{};
@@ -754,20 +767,85 @@ template <typename TimePoint> class primary_mouse_click_translator {
     interpreter_widget_cache drag_start_widget{};
   };
   struct hold_no_drag_t {
-    interpreter_widget_cache clicked_widget{};
+    interpreter_widget_cache widget{};
+
+    template <typename Q>
+    constexpr hold_no_drag_t(Q &&q, interpreter_widget_cache const &prev_widget,
+                             point_coordinate auto const &pos, TimePoint ts)
+        : widget(prev_widget) {
+      using enum interpreted_events;
+      q(query_interpreted_events<pointer_enter, pointer_hover>(
+          pos, [&]<typename W, typename S>(W &w, S &&sender) {
+            if (!prev_widget.refers_to(w)) {
+              if (prev_widget) {
+                send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
+              }
+              widget.reset(w);
+              if constexpr (std::invocable<
+                                S, W &,
+                                interpreted_event<pointer_enter, TimePoint>>) {
+                sender(w, interpreted_event<pointer_enter, TimePoint>(ts, pos));
+              }
+            }
+            if constexpr (std::invocable<
+                              S, W &,
+                              interpreted_event<pointer_hold, TimePoint>>) {
+              sender(w, interpreted_event<pointer_hold, TimePoint>(ts, pos));
+            }
+          }));
+    }
+
+    template <typename Q>
+    constexpr hold_no_drag_t(Q &&q, point_coordinate auto const &pos,
+                             TimePoint ts)
+        : widget(_invoke_with_interpreted_event(
+              q, pos,
+              interpreted_event<interpreted_events::pointer_enter, TimePoint>(
+                  ts, pos),
+              interpreted_event<interpreted_events::pointer_hold, TimePoint>(
+                  ts, pos))) {}
   };
   struct hover_t {
     interpreter_widget_cache widget{};
+
+    template <typename Q>
+    constexpr hover_t(Q &&q, interpreter_widget_cache const &prev_widget,
+                      point_coordinate auto const &pos, TimePoint ts)
+        : widget(prev_widget) {
+      using enum interpreted_events;
+      q(query_interpreted_events<pointer_enter, pointer_hover>(
+          pos, [&]<typename W, typename S>(W &w, S &&sender) {
+            if (!prev_widget.refers_to(w)) {
+              if (prev_widget) {
+                send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
+              }
+              widget.reset(w);
+              if constexpr (std::invocable<
+                                S, W &,
+                                interpreted_event<pointer_enter, TimePoint>>) {
+                sender(w, interpreted_event<pointer_enter, TimePoint>(ts, pos));
+              }
+            }
+            if constexpr (std::invocable<
+                              S, W &,
+                              interpreted_event<pointer_hover, TimePoint>>) {
+              sender(w, interpreted_event<pointer_hover, TimePoint>(ts, pos));
+            }
+          }));
+    }
+
+    template <typename Q>
+    constexpr hover_t(Q &&q, point_coordinate auto const &pos, TimePoint ts)
+        : widget(_invoke_with_interpreted_event(
+              q, pos,
+              interpreted_event<interpreted_events::pointer_enter, TimePoint>(
+                  ts, pos),
+              interpreted_event<interpreted_events::pointer_hover, TimePoint>(
+                  ts, pos))) {}
   };
 
 public:
   using state = std::variant<first_down_t, hold_no_drag_t, drag_t, hover_t>;
-  /*
-  struct state {
-    using sub_state_t = std::variant<first_down_t, hold_no_drag_t, drag_t>;
-    interpreter_widget_cache last_widget{};
-    sub_state_t sub_state;
-  };*/
 
 private:
   template <typename F>
@@ -800,59 +878,39 @@ private:
               if (distance_sqr(s.click_position.value(),
                                call::position(e).value()) >
                   (conf.drag_threshold * conf.drag_threshold)) {
-                if (_invoke_with_interpreted_event<
-                        interpreted_events::pointer_drag_start>(
-                        q, s.click_position, call::time_stamp(e),
-                        call::position(e))) {
+                if (_invoke_with_interpreted_event(
+                        q, s.click_position,
+                        interpreted_event<
+                            interpreted_events::pointer_drag_start, TimePoint>(
+                            call::time_stamp(e), call::position(e)),
+                        interpreted_event<interpreted_events::pointer_drag_move,
+                                          TimePoint>(call::time_stamp(e),
+                                                     s.click_position,
+                                                     call::position(e)))) {
                   return _to_optional<state>(
                       drag_t{.start_position = s.click_position,
                              .drag_start_widget = s.clicked_widget});
                 } else {
-                  return _to_optional<state>(hold_no_drag_t{s.clicked_widget});
+                  return _to_optional<state>(
+                      hold_no_drag_t(q, s.clicked_widget, call::position(e),
+                                     call::time_stamp(e)));
                 }
               }
               return _to_optional<state>(s);
             } else if constexpr (std::same_as<T, hover_t>) {
-              hover_t res_state = s;
-              using enum interpreted_events;
-              q(query_interpreted_events<
-                  pointer_enter,
-                  pointer_hover>(call::position(e), [&]<typename W, typename S>(
-                                                        W &w, S &&sender) {
-                if (!res_state.widget.refers_to(w)) {
-                  if (res_state.widget) {
-                    send_to_cached_widget<pointer_exit>(q, call::time_stamp(e),
-                                                        res_state.widget);
-                  }
-                  res_state.widget.reset(w);
-                  if constexpr (std::invocable<S, W &,
-                                               interpreted_event<pointer_enter,
-                                                                 TimePoint>>) {
-                    sender(w, interpreted_event<pointer_enter, TimePoint>(
-                                  call::time_stamp(e), call::position(e)));
-                  }
-                }
-                if constexpr (std::invocable<S, W &,
-                                             interpreted_event<pointer_hover,
-                                                               TimePoint>>) {
-                  sender(w, interpreted_event<pointer_hover, TimePoint>(
-                                call::time_stamp(e), call::position(e)));
-                }
-              }));
-              return _to_optional<state>(res_state);
+              return _to_optional<state>(
+                  hover_t(q, s.widget, call::position(e), call::time_stamp(e)));
+            } else if constexpr (std::same_as<T, hold_no_drag_t>) {
+              return _to_optional<state>(hold_no_drag_t(
+                  q, s.widget, call::position(e), call::time_stamp(e)));
             } else {
               return _to_optional<state>(s);
             }
           },
           *v);
     } else {
-      auto cw = _invoke_with_interpreted_event(
-          q, call::position(e),
-          interpreted_event<interpreted_events::pointer_enter, TimePoint>(
-              call::time_stamp(e), call::position(e)),
-          interpreted_event<interpreted_events::pointer_hover, TimePoint>(
-              call::time_stamp(e), call::position(e)));
-      return _to_optional<state>(hover_t(cw));
+      return _to_optional<state>(
+          hover_t(q, call::position(e), call::time_stamp(e)));
     }
   }
 
@@ -895,11 +953,17 @@ private:
       return std::visit(
           [&]<typename T>(T const &s) -> std::optional<state> {
             if constexpr (std::is_same_v<T, drag_t>) {
-              _invoke_with_interpreted_event<
-                  interpreted_events::pointer_drag_finished>(
-                  q, s.start_position, call::time_stamp(e), s.start_position,
+              send_to_cached_widget<
+                  interpreted_events::pointer_drag_finished_source>(
+                  q, call::time_stamp(e), s.drag_start_widget, s.start_position,
                   call::position(e));
-              return std::nullopt;
+              _invoke_with_interpreted_event<
+                  interpreted_events::pointer_drag_finished_destination>(
+                  q, call::position(e), call::time_stamp(e), s.start_position,
+                  call::position(e));
+              return _to_optional<state>(hover_t(q, s.drag_start_widget,
+                                                 call::position(e),
+                                                 call::time_stamp(e)));
             } else if constexpr (bp::same_as_any<T, first_down_t,
                                                  hold_no_drag_t>) {
               _invoke_with_interpreted_event<interpreted_events::primary_click>(
