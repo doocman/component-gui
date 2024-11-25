@@ -91,7 +91,9 @@ inline std::size_t enable_all_events(std::vector<interpreted_events> &vec) {
       pointer_hover,                     //
       pointer_hold,                      //
       pointer_enter,                     //
-      pointer_exit                       //
+      pointer_exit,                      //
+      scroll,                            //
+      zoom                               //
   });
   return size(vec);
 }
@@ -298,6 +300,16 @@ TEST_F(GestureEventsTests, MouseHover) // NOLINT
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_enter,
                           interpreted_events::pointer_hover));
+}
+
+TEST_F(GestureEventsTests, MouseScroll) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_mouse_move_event{});
+  invoke_tt(default_mouse_scroll_event{});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
 }
 
 struct GestureEventsHitTests : public ::testing::Test {

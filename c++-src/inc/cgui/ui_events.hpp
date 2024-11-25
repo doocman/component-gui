@@ -17,6 +17,7 @@ enum class input_events {
   mouse_button_down,
   mouse_button_up,
   mouse_exit,
+  mouse_scroll,
   window_resized,
 };
 
@@ -193,9 +194,17 @@ constexpr subset_input_events<tEvt> event_type(default_event<tEvt> const &) {
 template <> struct default_event<input_events::system> {
   common_event_data common_data{};
 };
-template <> struct default_event<input_events::mouse_exit> {};
+template <> struct default_event<input_events::mouse_exit> {
+  common_event_data common_data{};
+};
 template <> struct default_event<input_events::mouse_move> {
   default_point_coordinate pos{};
+  common_event_data common_data{};
+};
+template <> struct default_event<input_events::mouse_scroll> {
+  default_point_coordinate pos{};
+  float dx{};
+  float dy{};
   common_event_data common_data{};
 };
 template <> struct default_event<input_events::mouse_button_down> {
@@ -240,11 +249,22 @@ template <is_cgui_default_event_c T>
 constexpr auto size_of(T const &t) {
   return t.sz;
 }
+template <is_cgui_default_event_c T>
+  requires(requires(T const &t) { t.dx; })
+constexpr auto delta_x(T const &t) {
+  return t.dx;
+}
+template <is_cgui_default_event_c T>
+  requires(requires(T const &t) { t.dy; })
+constexpr auto delta_y(T const &t) {
+  return t.dy;
+}
 
 using default_mouse_move_event = default_event<input_events::mouse_move>;
 using default_mouse_down_event = default_event<input_events::mouse_button_down>;
 using default_mouse_up_event = default_event<input_events::mouse_button_up>;
 using default_mouse_exit_event = default_event<input_events::mouse_exit>;
+using default_mouse_scroll_event = default_event<input_events::mouse_scroll>;
 using default_window_resized_event =
     default_event<input_events::window_resized>;
 
@@ -259,6 +279,8 @@ enum class interpreted_events {
   pointer_hold,
   pointer_enter,
   pointer_exit,
+  scroll,
+  zoom
 };
 
 template <typename T, interpreted_events... ie_vs>
@@ -368,6 +390,23 @@ template <> struct interpreted_event_impl<interpreted_events::pointer_enter> {
       : pos(copy_coordinate<position_t>(p)) {}
 };
 template <> struct interpreted_event_impl<interpreted_events::pointer_exit> {};
+template <> struct interpreted_event_impl<interpreted_events::scroll> {
+  using position_t = default_point_coordinate;
+  position_t pos{};
+  float dx{};
+  float dy{};
+  constexpr interpreted_event_impl(point_coordinate auto const &p, float dxi, float dyi)
+      : pos(copy_coordinate<position_t>(p)), dx(dxi), dy(dyi) {}
+};
+template <> struct interpreted_event_impl<interpreted_events::zoom> {
+  using position_t = default_point_coordinate;
+  position_t pos{};
+  float scale_x{}; ///> Number above 1. -> zoom in / make things bigger.
+  float scale_y{}; ///> Number above 1. -> zoom in / make things bigger.
+  constexpr interpreted_event_impl(point_coordinate auto const &p, float sx,
+                                   float sy)
+      : pos(copy_coordinate<position_t>(p)), scale_x(sx), scale_y(sy) {}
+};
 
 struct cgui_mouse_exit_event {
   static constexpr subset_input_events<input_events::mouse_exit>
@@ -985,10 +1024,9 @@ private:
 public:
   using settings = primary_mouse_click_translator_settings;
   template <typename E>
-  static constexpr auto can_handle =
-      _interpreter_can_handle<input_events::mouse_button_down,
-                              input_events::mouse_button_up,
-                              input_events::mouse_move>::op<E>;
+  static constexpr auto can_handle = _interpreter_can_handle<
+      input_events::mouse_button_down, input_events::mouse_button_up,
+      input_events::mouse_move, input_events::mouse_scroll>::op<E>;
 
   template <typename Q>
   static constexpr auto evt_switch(Q &&qi, state const *in,
@@ -1011,7 +1049,16 @@ public:
             [](auto const &e, auto &&d) {
               auto &[q, s_in, s_out, conf] = d;
               s_out = _bup(s_in, e, q, conf);
-            }));
+            }),
+        event_case<input_events::mouse_scroll>([](auto const &e, auto &&d) {
+          auto &[q, s_in, s_out, conf] = d;
+          _invoke_with_interpreted_event<interpreted_events::scroll>(
+              q, call::position(e), call::time_stamp(e), call::position(e),
+              call::delta_x(e), call::delta_y(e));
+          if (s_in != nullptr) {
+            s_out = *s_in;
+          }
+        }));
   }
   template <typename Evt, typename Q>
   static constexpr std::optional<state> handle(Evt const &e, Q &&q, auto &&s_in,
