@@ -215,7 +215,8 @@ TEST_F(GestureEventsTests, MouseClick) // NOLINT
   invoke_tt(default_mouse_down_event{.common_data{first_ts}});
   EXPECT_THAT(event_types, ElementsAre(interpreted_events::pointer_hold));
   invoke_tt(default_mouse_up_event{.common_data{first_ts}});
-  EXPECT_THAT(event_types, ElementsAre(interpreted_events::primary_click));
+  EXPECT_THAT(event_types, ElementsAre(interpreted_events::primary_click,
+                                       interpreted_events::pointer_hover));
   counter.reset();
   first_ts += 101ms;
   to_test.pass_time(first_ts, counter);
@@ -288,7 +289,8 @@ TEST_F(GestureEventsTests, MouseNoDrag) // NOLINT
               ElementsAre(interpreted_events::pointer_hold));
   invoke_tt(default_mouse_up_event{});
   EXPECT_THAT(counter.event_types,
-              ElementsAre(interpreted_events::primary_click));
+              ElementsAre(interpreted_events::primary_click,
+                          interpreted_events::pointer_hover));
 }
 
 TEST_F(GestureEventsTests, MouseHover) // NOLINT
@@ -308,6 +310,60 @@ TEST_F(GestureEventsTests, MouseScroll) // NOLINT
   auto to_test = default_event_interpreter<time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_mouse_move_event{});
+  invoke_tt(default_mouse_scroll_event{});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
+}
+
+TEST_F(GestureEventsTests, MouseScrollToZoomLCtrl) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_mouse_move_event{});
+  invoke_tt(default_key_down_event(keycode::lctrl));
+  invoke_tt(default_mouse_scroll_event{});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
+}
+
+TEST_F(GestureEventsTests, MouseScrollToZoomRCtrl) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_mouse_move_event{});
+  invoke_tt(default_key_down_event(keycode::rctrl));
+  invoke_tt(default_mouse_scroll_event{});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
+}
+
+TEST_F(GestureEventsTests, MouseScrollLiftLCtrlScrolls) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_mouse_move_event{});
+  invoke_tt(default_key_down_event(keycode::lctrl));
+  invoke_tt(default_key_up_event(keycode::lctrl));
+  invoke_tt(default_mouse_scroll_event{});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
+}
+
+TEST_F(GestureEventsTests, MouseScrollLiftRLCtrlScrolls) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_mouse_move_event{});
+  invoke_tt(default_key_down_event(keycode::lctrl));
+  invoke_tt(default_key_down_event(keycode::rctrl));
+  invoke_tt(default_key_up_event(keycode::lctrl));
+  invoke_tt(default_mouse_scroll_event{});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
+  invoke_tt(default_key_down_event(keycode::lctrl));
+  invoke_tt(default_mouse_scroll_event{});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
+  invoke_tt(default_key_up_event(keycode::rctrl));
+  invoke_tt(default_key_up_event(keycode::lctrl));
   invoke_tt(default_mouse_scroll_event{});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
 }
@@ -433,7 +489,7 @@ TEST_F(GestureEventsHitTests, MouseDownNoDragEnterExit) // NOLINT
   EXPECT_THAT(cl.event_types, ElementsAre(pointer_exit));
   EXPECT_THAT(cr.event_types, ElementsAre(pointer_enter, pointer_hold));
   invoke_tt(default_mouse_up_event{.pos = {75, 0}});
-  EXPECT_THAT(cr.event_types, ElementsAre(primary_click));
+  EXPECT_THAT(cr.event_types, ElementsAre(primary_click, pointer_hover));
   EXPECT_THAT(cl.event_types, IsEmpty());
 }
 
@@ -458,7 +514,7 @@ TEST_F(GestureEventsHitTests, MouseDownNoDragEnterExitFar) // NOLINT
   EXPECT_THAT(cl.event_types, ElementsAre(pointer_exit));
   EXPECT_THAT(cr.event_types, ElementsAre(pointer_enter, pointer_hold));
   invoke_tt(default_mouse_up_event{.pos = {75, 0}});
-  EXPECT_THAT(cr.event_types, ElementsAre(primary_click));
+  EXPECT_THAT(cr.event_types, ElementsAre(primary_click, pointer_hover));
   EXPECT_THAT(cl.event_types, IsEmpty());
 }
 
