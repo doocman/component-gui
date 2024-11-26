@@ -454,8 +454,8 @@ template <typename Interpreter> struct state_interpreter_pair {
   }
 };
 template <typename Interpreter>
-constexpr auto
-_to_state(state_interpreter_pair<Interpreter> *sip) -> decltype(&sip->state) {
+constexpr auto _to_state(state_interpreter_pair<Interpreter> *sip)
+    -> decltype(&sip->state) {
   if (sip == nullptr) {
     return nullptr;
   } else {
@@ -763,7 +763,7 @@ public:
 constexpr auto is_cached_widget(interpreter_widget_cache const &cw) {
   return [&cw](auto &w) { return cw.refers_to(w); };
 }
-constexpr auto is_cached_widget(interpreter_widget_cache const &&) = delete;
+inline auto is_cached_widget(interpreter_widget_cache const &&) = delete;
 
 template <interpreted_events evt_type, typename TP, typename Q,
           typename... Args>
