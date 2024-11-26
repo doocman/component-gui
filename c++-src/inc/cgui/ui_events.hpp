@@ -510,49 +510,12 @@ class event_interpreter
                    state_interpreter_pair<Interpreters<TimePoint>>...>;
   using time_point_t = TimePoint;
 
-  // fickle_state_t state_{};
-  // std::tuple<typename Interpreters<TimePoint>::settings...> settings_;
-
-  // template <typename Interp> constexpr auto const &get_settings() const {
-  //   return std::get<typename Interp::settings>(settings_);
-  // }
-
-#if 0
-  constexpr void cancel_state(auto &&f) {
-    std::visit(
-        [this, &f]<typename T>(T &t) {
-          if constexpr (!std::is_same_v<T, empty_placeholder_t>) {
-            using interp = typename T::interpreter;
-            interp::cancel_state(t.state, std::forward<decltype(f)>(f),
-                                 get_settings<interp>());
-          }
-        },
-        state_);
-  }
-#endif
-
   template <typename Interpreter, typename Evt, typename Q>
   constexpr bool interpret(Evt &&e, Q &&q) {
     if constexpr (Interpreter::template can_handle<
                       std::remove_cvref_t<Evt>>()) {
       this->get(std::type_identity<Interpreter>())
           .handle(std::forward<Evt>(e), q);
-      /*
-      auto *interpreter_state =
-          std::get_if<state_interpreter_pair<Interpreter>>(&state_);
-      auto new_state = Interpreter::handle(
-          std::forward<Evt>(e), q, interpreter_state,
-          std::get<typename Interpreter::settings>(std::as_const(settings_)));
-      if (new_state) {
-        if (interpreter_state == nullptr) {
-          cancel_state(q);
-        }
-        state_ = state_interpreter_pair<Interpreter>{*new_state};
-        return true;
-      } else if (interpreter_state != nullptr) {
-        state_ = empty_placeholder_t{};
-      }
-       */
     }
     return false;
   }
@@ -565,24 +528,6 @@ public:
   template <std::convertible_to<time_point_t> TP, typename F>
   constexpr void pass_time(TP &&tp, F &&f) {
     unused(tp, f);
-#if 0
-    std::visit(
-        [this, tp = bp::as_forward<TP>(tp),
-         f = bp::as_forward<F>(f)]<typename T>(T &t) {
-          if constexpr (!std::is_same_v<T, empty_placeholder_t>) {
-            using interpreter_t = T::interpreter;
-            if constexpr (requires() {
-                            interpreter_t::pass_time(*tp, *f, t.state,
-                                                     t.get_settings(settings_));
-                          }) {
-              interpreter_t::pass_time(
-                  *tp, *f, t.state, t.get_settings(settings_));
-            }
-          }
-          return {};
-        },
-        state_);
-#endif
   }
 };
 
@@ -776,8 +721,7 @@ _invoke_with_interpreted_event(Q &&q, default_point_coordinate pos,
       pos, [&]<typename W, typename S>(W &w, S &&sender) {
         CGUI_ASSERT(!cached); // called more than once!
         cached.reset(w);
-        std::forward<S>(sender)(w, // std::forward<W>(w),
-                                event_t(tp, std::forward<Args>(args)...));
+        std::forward<S>(sender)(w, event_t(tp, std::forward<Args>(args)...));
       }));
   return cached;
 }
@@ -1122,9 +1066,7 @@ public:
   }
   template <typename Evt, typename Q>
   constexpr void handle(Evt const &e, Q &&q) {
-    // std::optional<state> s_out;
     evt_switch(q, s_, keys_, std::as_const(conf_))(e);
-    // return s_out;
   }
   template <typename Q> constexpr void pass_time(TimePoint const &, Q &&) {}
 };
