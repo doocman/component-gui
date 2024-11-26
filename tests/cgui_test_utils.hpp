@@ -9,6 +9,12 @@
 #include <cgui/cgui.hpp>
 
 namespace cgui::tests {
+template <interpreted_events evt>
+constexpr interpreted_event<evt, std::chrono::steady_clock::time_point>
+create_event(auto &&...args) {
+  return interpreted_event<evt, std::chrono::steady_clock::time_point>(
+      std::chrono::steady_clock::time_point{}, args...);
+}
 inline auto
 expect_colour_eq(cgui::colour auto const &val,
                  cgui::colour auto const &expected,

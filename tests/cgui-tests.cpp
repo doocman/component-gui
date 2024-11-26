@@ -101,7 +101,8 @@ TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
   EXPECT_CALL(button_state, do_on_button_click(Eq(mouse_buttons::primary)));
   EXPECT_CALL(button_state, do_on_button_exit());
   constexpr auto area = point_unit(default_rect{{0, 0}, {4, 4}});
-  trig.handle(area, default_mouse_move_event{{1, 1}});
+  trig.handle(area, create_event<interpreted_events::primary_click>(
+                        default_point_coordinate{1, 1}));
   trig.handle(area, default_mouse_down_event{{1, 1}, mouse_buttons::primary});
   checkpoint.Call();
   trig.handle(area, default_mouse_up_event{{1, 1}, mouse_buttons::primary});

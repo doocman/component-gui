@@ -86,10 +86,8 @@ public:
   {
     return {offset_x_, offset_y_};
   }
-  template <
-      typename TB2 = TB,
-      typename SizeTag = tag_t_of<TB2>,
-      typename ResultT = pixelpoint_unit<SizeTag, default_coordinate>>
+  template <typename TB2 = TB, typename SizeTag = tag_t_of<TB2>,
+            typename ResultT = pixelpoint_unit<SizeTag, default_coordinate>>
     requires(size_tagged<TB>)
   constexpr ResultT offset() const {
     return ResultT(offset_x_, offset_y_);
@@ -314,7 +312,6 @@ struct builder_widget_element_constraint {
   constexpr void operator()(widget_display<TR> auto &&) const {}
 };
 
-
 class widget_event_querant {
 
 public:
@@ -393,25 +390,30 @@ public:
         b.merge_sub(s);
       }
     });
-    interpreter_.handle(evt, [this, &b] <typename Pred, typename OnFind, interpreted_events... events> (
-                                 query_interpreted_events_t<Pred, OnFind, events...> const& q
-                                 ) {
-      auto eacher = [&] <typename W> (W& w) {
-        //if constexpr((has_handle<W, interpreted_event<events, time_point_t>, basic_widget_back_propagater<native_box_t>> || ...)) {
-          auto sb = b.sub(w.area());
-          if(w.query(q, &sb)) {
-            b.merge_sub(sb);
-            return true;
-          }
-        //}
-        return false;
-      };
-      call::apply_to(widgets_, [&eacher] (auto&... ws) {
-        // We are not expecting overlapping widgets here.
-        unused((eacher(ws) || ...));
-      });
-      //
-    });
+    interpreter_.handle(
+        evt, [this,
+              &b]<typename Pred, typename OnFind, interpreted_events... events>(
+                 query_interpreted_events_t<Pred, OnFind, events...> const &q) {
+          auto eacher = [&]<typename W>(W &w) {
+            if constexpr ((has_handle<
+                               W &,
+                               interpreted_event<events, time_point_t> const &,
+                               basic_widget_back_propagater<native_box_t>> ||
+                           ...)) {
+              auto sb = b.sub(w.area());
+              if (w.query(q, &sb)) {
+                b.merge_sub(sb);
+                return true;
+              }
+            }
+            return false;
+          };
+          call::apply_to(widgets_, [&eacher](auto &...ws) {
+            // We are not expecting overlapping widgets here.
+            unused((eacher(ws) || ...));
+          });
+          //
+        });
     return b.result_area();
   }
 
@@ -708,7 +710,22 @@ public:
   }
   constexpr void reset_on_destruct() { on_destruct_.value() = bp::no_op; }
 
-  constexpr void query(auto const&...) {}
+  template <typename TimePoint, typename Pred, typename OnFind,
+            interpreted_events... events, widget_back_propagater BP>
+  constexpr bool
+  query(std::type_identity<TimePoint>,
+        query_interpreted_events_t<Pred, OnFind, events...> const &q, BP *bp) {
+    bool found{};
+    if constexpr (!std::is_empty_v<TSubs>) {
+      call::for_each(subcomponents(), [&found, &q, bp]<typename SW>(SW &&sw) {
+        // if constexpr((has_handle<SW, interpreted_event<events, TimePoint>,
+        // basic_widget_back_propagater<native_box_t>> || ...)) {
+
+        //}
+      });
+    }
+    return false;
+  }
 };
 
 template <renderer TR, typename TStateArgs>
@@ -1311,6 +1328,22 @@ class buttonlike_trigger : bp::empty_structs_optimiser<TState> {
   using hold_event = button_state_events::hold;
   using click_event = button_state_events::click;
 
+  constexpr auto interp_evt_switch() {
+    return saved_ui_event_switch(
+        std::ref(*this),
+        event_case<interpreted_events::primary_click>(
+            [](auto const &, auto &self) { self.state_change(click_event{}); }),
+        event_case<interpreted_events::pointer_hold>(
+            [](auto const &, auto &self) { self.state_change(hold_event{}); }),
+        event_case<interpreted_events::pointer_hover>(
+            [](auto const &, auto &self) { self.state_change(hover_event{}); }),
+        event_case<interpreted_events::pointer_exit>(
+            [](auto const &, auto &self) {
+              self.state_change(exit_event{});
+            }) //
+    );
+  }
+
 public:
   using bp::empty_structs_optimiser<TState>::empty_structs_optimiser;
 
@@ -1320,15 +1353,17 @@ public:
     return call::state(state_impl(*this));
   }
 
-#if 0
-  template <point_rect Area, interpreted_event_types<interpreted_events::pointer_hover> Evt>
-  constexpr void handle(
-      point_rect auto const &area,
-      Evt const& e) {
-    if constexpr(interpreted_event_types<Evt, interpreted_events::pointer_hover>) {
-      auto new_inside = hit_box(area, call::position(e));
-
-    }
+#if 1
+  template <
+      typename Area,
+      interpreted_event_types<
+          interpreted_events::pointer_hover, interpreted_events::pointer_exit,
+          interpreted_events::pointer_hold, interpreted_events::primary_click
+          //
+          >
+          Evt>
+  constexpr void handle(Area const &area, Evt const &e) {
+    interp_evt_switch()(e);
   }
 #else
   /// @brief Handles mouse-based events for button interactions.

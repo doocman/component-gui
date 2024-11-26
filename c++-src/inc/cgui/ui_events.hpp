@@ -34,9 +34,28 @@ enum class input_events {
   window_resized,
 };
 
-template <input_events tEvt> struct input_event_identity {
-  static constexpr input_events value = tEvt;
+enum class interpreted_events {
+  primary_click = 1,
+  context_menu_click,
+  pointer_drag_start,
+  pointer_drag_move,
+  pointer_drag_finished_destination,
+  pointer_drag_finished_source,
+  pointer_hover,
+  pointer_hold,
+  pointer_enter,
+  pointer_exit,
+  scroll,
+  zoom
 };
+
+template <typename EventEnum, EventEnum val> struct event_identity {
+  static constexpr EventEnum value = val;
+};
+template <input_events tEvt>
+using input_event_identity = event_identity<input_events, tEvt>;
+template <interpreted_events tEvt>
+using interpreted_event_identity = event_identity<interpreted_events, tEvt>;
 
 template <input_events> struct input_event_constraints {
   template <typename> static constexpr bool type_passes = true;
@@ -78,19 +97,16 @@ concept input_event_c = input_event_constraints<tEvt>::template type_passes<T>;
 /// what events a backend event *could* be, while using the return value for
 /// what it actually *is*.
 /// \tparam evts CGUI event types that an event could be.
-template <input_events... evts> struct subset_input_events {
+template <typename EventEnum, EventEnum... evts> struct subset_events {
   static_assert(sizeof...(evts) > 0, "You must at least specify 1 event type");
-  input_events val;
-  constexpr explicit(false) subset_input_events(input_events v) noexcept
-      : val(v) {
+  EventEnum val;
+  constexpr explicit(false) subset_events(EventEnum v) noexcept : val(v) {
     CGUI_ASSERT(((v == evts) || ...));
   }
-  constexpr explicit(false) operator input_events() const noexcept {
-    return val;
-  }
+  constexpr explicit(false) operator EventEnum() const noexcept { return val; }
 
-  template <input_events tEvt>
-  static consteval bool can_be_event(input_event_identity<tEvt>) noexcept {
+  template <EventEnum tEvt>
+  static consteval bool can_be_event(event_identity<EventEnum, tEvt>) noexcept {
     return ((tEvt == evts) || ...);
   }
 };
@@ -98,21 +114,33 @@ template <input_events... evts> struct subset_input_events {
 /// Single event optimisation specialisation, that lacks any member field, and
 /// also does not need any input arguments.
 /// \tparam evt Event type that this particular subset is.
-template <input_events evt> struct subset_input_events<evt> {
-  constexpr explicit(false) subset_input_events(input_events v) noexcept {
+template <typename EventEnum, EventEnum evt>
+struct subset_events<EventEnum, evt> {
+  constexpr explicit(false) subset_events(EventEnum v) noexcept {
     assert(v == evt);
     unused(v);
   }
-  constexpr subset_input_events() noexcept = default;
-  constexpr explicit(false) operator input_events() const noexcept {
-    return evt;
-  }
+  constexpr subset_events() noexcept = default;
+  constexpr explicit(false) operator EventEnum() const noexcept { return evt; }
 
-  template <input_events tEvt>
-  static consteval bool can_be_event(input_event_identity<tEvt> = {}) noexcept {
+  template <EventEnum tEvt>
+  static consteval bool
+  can_be_event(event_identity<EventEnum, tEvt> = {}) noexcept {
     return (tEvt == evt);
   }
 };
+
+template <typename T, typename EventType>
+concept has_can_be_event = requires() {
+  std::remove_cvref_t<T>::template can_be_event<EventType{}>();
+  std::remove_cvref_t<T>::can_be_event(
+      event_identity<EventType, EventType{}>());
+};
+
+template <input_events... evts>
+using subset_input_events = subset_events<input_events, evts...>;
+template <interpreted_events... evts>
+using subset_interpreted_events = subset_events<interpreted_events, evts...>;
 
 template <typename T>
 concept subset_input_event_c =
@@ -134,6 +162,14 @@ concept subset_input_event_c =
             input_event_identity<input_events::mouse_button_down>{})
       } -> std::convertible_to<bool>;
     };
+template <typename T>
+concept subset_interpreted_event_c =
+    std::convertible_to<T, interpreted_events> && requires() {
+      {
+        std::remove_cvref_t<T>::can_be_event(
+            interpreted_event_identity<interpreted_events::primary_click>{})
+      } -> std::convertible_to<bool>;
+    };
 
 namespace call {
 namespace impl {
@@ -145,6 +181,13 @@ struct do_event_type {
   constexpr subset_input_event_c auto operator()(T &&t) const {
     return _do_event_type{}(std::forward<T>(t));
   }
+  template <typename T>
+    requires(requires(T &&t) {
+      { _do_event_type{}(std::forward<T>(t)) } -> subset_interpreted_event_c;
+    })
+  constexpr subset_interpreted_event_c auto operator()(T &&t) const {
+    return _do_event_type{}(std::forward<T>(t));
+  }
 };
 } // namespace impl
 inline constexpr impl::do_event_type event_type;
@@ -153,9 +196,14 @@ inline constexpr impl::do_event_type event_type;
 template <typename T>
 concept has_event_type =
     requires(bp::as_forward<T> t) { call::event_type(*t); };
+template <typename T, typename EventType>
+concept has_event_type_of_type =
+    has_event_type<T> && requires(bp::as_forward<T> t) {
+      { call::event_type(*t) } -> has_can_be_event<EventType>;
+    };
 
 template <input_events tEvt, typename T> consteval bool can_be_event() {
-  if constexpr (has_event_type<T>) {
+  if constexpr (has_event_type_of_type<T, input_events>) {
     using subset_t =
         std::remove_cvref_t<decltype(call::event_type(std::declval<T &&>()))>;
     return subset_t::can_be_event(input_event_identity<tEvt>{});
@@ -163,9 +211,27 @@ template <input_events tEvt, typename T> consteval bool can_be_event() {
     return false;
   }
 }
+template <interpreted_events tEvt, typename T> consteval bool can_be_event() {
+  if constexpr (has_event_type_of_type<T, interpreted_events>) {
+    using subset_t =
+        std::remove_cvref_t<decltype(call::event_type(std::declval<T &&>()))>;
+    return subset_t::can_be_event(interpreted_event_identity<tEvt>{});
+  } else {
+    return false;
+  }
+}
 template <input_events tEvt, typename T> constexpr bool is_event(T &&evt) {
   if constexpr (can_be_event<tEvt, T>()) {
     return static_cast<input_events>(call::event_type(evt)) == tEvt;
+  } else {
+    unused(evt);
+    return false;
+  }
+}
+template <interpreted_events tEvt, typename T>
+constexpr bool is_event(T &&evt) {
+  if constexpr (can_be_event<tEvt, T>()) {
+    return static_cast<interpreted_events>(call::event_type(evt)) == tEvt;
   } else {
     unused(evt);
     return false;
@@ -296,26 +362,12 @@ using default_key_up_event = default_event<input_events::key_up>;
 using default_window_resized_event =
     default_event<input_events::window_resized>;
 
-enum class interpreted_events {
-  primary_click = 1,
-  context_menu_click,
-  pointer_drag_start,
-  pointer_drag_move,
-  pointer_drag_finished_destination,
-  pointer_drag_finished_source,
-  pointer_hover,
-  pointer_hold,
-  pointer_enter,
-  pointer_exit,
-  scroll,
-  zoom
-};
-
 template <typename T, interpreted_events... ie_vs>
 concept interpreted_event_types = (can_be_event<ie_vs, T>() || ...);
 
 template <interpreted_events> struct interpreted_event_impl;
-template <interpreted_events ie_v, typename TimePoint>
+template <interpreted_events ie_v,
+          typename TimePoint = std::chrono::steady_clock::time_point>
 struct interpreted_event : interpreted_event_impl<ie_v> {
   using _base_t = interpreted_event_impl<ie_v>;
   interpreted_event_basic<TimePoint> common_data;
@@ -327,7 +379,17 @@ struct interpreted_event : interpreted_event_impl<ie_v> {
     requires(std::constructible_from<_base_t, Ts && ...>)
   constexpr explicit interpreted_event(TimePoint const &ts, Ts &&...args)
       : _base_t(std::forward<Ts>(args)...), common_data(ts) {}
+
+  constexpr subset_interpreted_events<ie_v> event_type() const noexcept {
+    return {};
+  }
 };
+
+template <interpreted_events evt_val, typename TP>
+constexpr subset_interpreted_events<evt_val>
+event_type(interpreted_event<evt_val, TP> const &) {
+  return {};
+}
 
 template <interpreted_events ie_v, typename C>
 constexpr bool is_cgui_default_event_v<interpreted_event<ie_v, C>> = true;
@@ -494,7 +556,7 @@ query_interpreted_events(Pred &&p, OnFind &&f) {
 }
 
 template <interpreted_events... events, typename OnFind>
-constexpr auto query_interpreted_events(point_coordinate auto const& pos,
+constexpr auto query_interpreted_events(point_coordinate auto const &pos,
                                         OnFind &&f) {
   return query_interpreted_events<events...>(
       [pos](auto const &w) { return hit_box(call::area(w), pos); },
@@ -713,7 +775,7 @@ inline auto is_cached_widget(interpreter_widget_cache const &&) = delete;
 template <interpreted_events evt_type, typename TP, typename Q,
           typename... Args>
 constexpr interpreter_widget_cache
-_invoke_with_interpreted_event(Q &&q, point_coordinate auto const& pos,
+_invoke_with_interpreted_event(Q &&q, point_coordinate auto const &pos,
                                TP const &tp, Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
   interpreter_widget_cache cached{};

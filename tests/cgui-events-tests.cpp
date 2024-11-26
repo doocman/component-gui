@@ -11,6 +11,16 @@
 namespace cgui::tests {
 using namespace ::testing;
 
+static_assert(
+    has_event_type_of_type<interpreted_event<interpreted_events::primary_click>,
+                           interpreted_events>);
+static_assert(
+    can_be_event<interpreted_events::primary_click,
+                 interpreted_event<interpreted_events::primary_click>>());
+static_assert(interpreted_event_types<
+              interpreted_event<interpreted_events::primary_click>,
+              interpreted_events::primary_click>);
+
 TEST(UiEventsMatcher, Basics) // NOLINT
 {
   auto f = MockFunction<void(std::string_view)>();
