@@ -494,7 +494,7 @@ query_interpreted_events(Pred &&p, OnFind &&f) {
 }
 
 template <interpreted_events... events, typename OnFind>
-constexpr auto query_interpreted_events(default_point_coordinate pos,
+constexpr auto query_interpreted_events(point_coordinate auto const& pos,
                                         OnFind &&f) {
   return query_interpreted_events<events...>(
       [pos](auto const &w) { return hit_box(call::area(w), pos); },
@@ -713,7 +713,7 @@ inline auto is_cached_widget(interpreter_widget_cache const &&) = delete;
 template <interpreted_events evt_type, typename TP, typename Q,
           typename... Args>
 constexpr interpreter_widget_cache
-_invoke_with_interpreted_event(Q &&q, default_point_coordinate pos,
+_invoke_with_interpreted_event(Q &&q, point_coordinate auto const& pos,
                                TP const &tp, Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
   interpreter_widget_cache cached{};

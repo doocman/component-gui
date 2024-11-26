@@ -87,7 +87,9 @@ public:
     return {offset_x_, offset_y_};
   }
   template <
-      typename ResultT = pixelpoint_unit<tag_t_of<TB>, default_coordinate>>
+      typename TB2 = TB,
+      typename SizeTag = tag_t_of<TB2>,
+      typename ResultT = pixelpoint_unit<SizeTag, default_coordinate>>
     requires(size_tagged<TB>)
   constexpr ResultT offset() const {
     return ResultT(offset_x_, offset_y_);
@@ -312,12 +314,19 @@ struct builder_widget_element_constraint {
   constexpr void operator()(widget_display<TR> auto &&) const {}
 };
 
+
+class widget_event_querant {
+
+public:
+};
+
 template <point_rect TArea, typename TOnResize = bp::no_op_t,
           widget_display_range TWidgets = std::tuple<>>
 class gui_context : bp::empty_structs_optimiser<TOnResize> {
   using _base_t = bp::empty_structs_optimiser<TOnResize>;
   TWidgets widgets_;
-  default_event_interpreter<> interpreter_{};
+  using time_point_t = std::chrono::steady_clock::time_point;
+  default_event_interpreter<time_point_t> interpreter_{};
 
   constexpr void call_on_resize(size_wh auto const &sz) {
     gui_context::get(std::type_identity<TOnResize>{})(sz, widgets_);
@@ -384,13 +393,25 @@ public:
         b.merge_sub(s);
       }
     });
-#if 0
-    interpreter_.handle(evt, [this] <typename Pred, typename OnFind, interpreted_events... events> (
+    interpreter_.handle(evt, [this, &b] <typename Pred, typename OnFind, interpreted_events... events> (
                                  query_interpreted_events_t<Pred, OnFind, events...> const& q
                                  ) {
+      auto eacher = [&] <typename W> (W& w) {
+        //if constexpr((has_handle<W, interpreted_event<events, time_point_t>, basic_widget_back_propagater<native_box_t>> || ...)) {
+          auto sb = b.sub(w.area());
+          if(w.query(q, &sb)) {
+            b.merge_sub(sb);
+            return true;
+          }
+        //}
+        return false;
+      };
+      call::apply_to(widgets_, [&eacher] (auto&... ws) {
+        // We are not expecting overlapping widgets here.
+        unused((eacher(ws) || ...));
+      });
       //
     });
-#endif
     return b.result_area();
   }
 
@@ -686,6 +707,8 @@ public:
     on_destruct_.value() = std::forward<decltype(f)>(f);
   }
   constexpr void reset_on_destruct() { on_destruct_.value() = bp::no_op; }
+
+  constexpr void query(auto const&...) {}
 };
 
 template <renderer TR, typename TStateArgs>

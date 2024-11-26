@@ -520,7 +520,15 @@ T scaled_point(TX x, TY y, auto win_id) {
 }
 } // namespace
 
-template <> struct extend_api<SDL_MouseMotionEvent> {
+struct sdl_event_extend_api {
+  // TODO: SDL should have its own clock with SDL_GetTicks to be correct.
+  using time_point_t = std::chrono::steady_clock::time_point;
+  static constexpr time_point_t time_stamp(auto const& e) requires(requires() { e.timestamp; }) {
+    return time_point_t(std::chrono::nanoseconds(e.timestamp));
+  }
+};
+
+template <> struct extend_api<SDL_MouseMotionEvent> : sdl_event_extend_api {
   static constexpr subset_input_events<input_events::mouse_move>
   event_type(SDL_MouseMotionEvent const &) {
     return {};
@@ -531,7 +539,7 @@ template <> struct extend_api<SDL_MouseMotionEvent> {
                                                                e.windowID);
   }
 };
-template <> struct extend_api<SDL_MouseButtonEvent> {
+template <> struct extend_api<SDL_MouseButtonEvent> : sdl_event_extend_api {
   static constexpr subset_input_events<input_events::mouse_button_up,
                                     input_events::mouse_button_down>
   event_type(SDL_MouseButtonEvent const &e) {
@@ -550,7 +558,7 @@ template <> struct extend_api<SDL_MouseButtonEvent> {
                                                                e.windowID);
   }
 };
-template <> struct extend_api<SDL_WindowEvent> {
+template <> struct extend_api<SDL_WindowEvent> : sdl_event_extend_api {
   static constexpr subset_input_events<input_events::window_resized,
                                     input_events::system>
   event_type(SDL_WindowEvent const &e) {
