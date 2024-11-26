@@ -63,6 +63,14 @@ public:
     }
   }
   constexpr TB relative_area() const { return relative_area_; }
+  template <same_unit_geometry_as<TB> TB2 = TB, pixel_coord C>
+    requires(same_unit_as<C, TB>)
+  constexpr TB2 relative_area(TB2 b, C const &rel_point) const {
+    return box_from_xywh<TB2>(call::l_x(b) + offset_x_ - call::x_of(rel_point),
+                              call::t_y(b) + offset_y_ - call::y_of(rel_point),
+                              call::width(b), call::height(b));
+  }
+
   template <same_unit_geometry_as<TB> TB2 = TB>
   constexpr TB2 move_to_absolute(TB2 const &b) const {
     return box_from_xywh<TB2>(call::l_x(b) + offset_x_,
@@ -71,6 +79,18 @@ public:
   }
   constexpr TB absolute_area() const {
     return move_to_absolute(relative_area_);
+  }
+
+  constexpr default_coordinate offset() const
+    requires(!size_tagged<TB>)
+  {
+    return {offset_x_, offset_y_};
+  }
+  template <
+      typename ResultT = pixelpoint_unit<tag_t_of<TB>, default_coordinate>>
+    requires(size_tagged<TB>)
+  constexpr ResultT offset() const {
+    return ResultT(offset_x_, offset_y_);
   }
 
   constexpr nudger<x_t, y_t> relative_to_absolute_nudger() const noexcept {
@@ -254,6 +274,9 @@ public:
   TArea result_area() const {
     return full_area_.move_to_absolute(to_rerender_);
   }
+  TArea relative_position(point_coordinate auto const &p) const {
+    return full_area_.relative_area(to_rerender_, p);
+  }
   constexpr bool empty_result() const { return empty_box(to_rerender_); }
 
   template <bounding_box TA2 = TArea>
@@ -264,8 +287,9 @@ public:
   template <bounding_box TA2 = TArea>
   constexpr void merge_sub(basic_widget_back_propagater<TA2> const &s) {
     if (!s.empty_result()) {
-      auto sub_area = s.result_area();
+      auto sub_area = s.relative_position(full_area_.offset());
       rerender(sub_area);
+      // rerender(s.relative_area());
     }
   }
 
@@ -293,6 +317,7 @@ template <point_rect TArea, typename TOnResize = bp::no_op_t,
 class gui_context : bp::empty_structs_optimiser<TOnResize> {
   using _base_t = bp::empty_structs_optimiser<TOnResize>;
   TWidgets widgets_;
+  default_event_interpreter<> interpreter_{};
 
   constexpr void call_on_resize(size_wh auto const &sz) {
     gui_context::get(std::type_identity<TOnResize>{})(sz, widgets_);
@@ -359,6 +384,13 @@ public:
         b.merge_sub(s);
       }
     });
+#if 0
+    interpreter_.handle(evt, [this] <typename Pred, typename OnFind, interpreted_events... events> (
+                                 query_interpreted_events_t<Pred, OnFind, events...> const& q
+                                 ) {
+      //
+    });
+#endif
     return b.result_area();
   }
 
@@ -498,10 +530,11 @@ class widget
     : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
   using display_state_callbacks_t = basic_widget_back_propagater<TArea>;
   using widget_ref_t = widget_ref_no_set_area<widget>;
-  using on_destruct_f_t = ignore_copy<
-  bp::trivial_function<void(widget &&), sizeof(void*) * 3, alignof(void*)>, //
-  //std::function<void(widget&&)>,//
-                                      bp::return_constant_t<bp::no_op_t>>;
+  using on_destruct_f_t =
+      ignore_copy<bp::trivial_function<void(widget &&), sizeof(void *) * 3,
+                                       alignof(void *)>, //
+                  // std::function<void(widget&&)>,//
+                  bp::return_constant_t<bp::no_op_t>>;
   TArea area_{};
   TDisplay display_;
   on_destruct_f_t on_destruct_;
@@ -1694,10 +1727,9 @@ public:
 };
 
 template <bounding_box B, typename T>
-basic_button_list_args(B const &, T &&)
-    -> basic_button_list_args<
-        std::unwrap_ref_decay_t<T>,
-        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+basic_button_list_args(B const &, T &&) -> basic_button_list_args<
+    std::unwrap_ref_decay_t<T>,
+    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
 template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;

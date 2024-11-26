@@ -52,18 +52,37 @@ TEST(RecursiveAreaNavigator, Nudger) // NOLINT
   EXPECT_THAT(y, Eq(1));
 }
 
+TEST(BasicWidgetBackProp, MergeSub) // NOLINT
+{
+  auto bp0 = basic_widget_back_propagater<>(
+      box_from_xyxy<default_point_rect>(0, 0, 100, 100));
+  auto bp1 = bp0.sub(box_from_xyxy<default_point_rect>(20, 0, 100, 100));
+  auto bp2 = bp1.sub(box_from_xyxy<default_point_rect>(20, 0, 80, 100));
+  bp2.rerender();
+  bp0.merge_sub(bp2);
+  expect_box_equal(bp0.result_area(),
+                   box_from_xyxy<default_point_rect>(40, 0, 100, 100));
+  bp1.merge_sub(bp2);
+  expect_box_equal(bp1.result_area(),
+                   box_from_xyxy<default_point_rect>(40, 0, 100, 100));
+  bp1.rerender();
+  bp0.merge_sub(bp1);
+  expect_box_equal(bp1.result_area(),
+                   box_from_xyxy<default_point_rect>(20, 0, 100, 100));
+}
+
 TEST(SubRenderer, DrawPixels) // NOLINT
 {
   auto r = test_renderer({{0, 0}, {6, 7}});
   auto sr1 = sub_renderer(r, call::pixel_area(r));
-  sr1.draw_pixels(call::pixel_area(r),
-                  [&](bounding_box auto &&b, auto &&drawer) {
-                    EXPECT_THAT(call::l_x(b).value(), Eq(0));
-                    EXPECT_THAT(call::t_y(b).value(), Eq(0));
-                    EXPECT_THAT(call::width(b), Eq(call::width(call::pixel_area(r))));
-                    EXPECT_THAT(call::height(b), Eq(call::height(call::pixel_area(r))));
-                    drawer(pixel_unit(default_coordinate{}), default_colour_t{1, 1, 1, 1});
-                  });
+  sr1.draw_pixels(
+      call::pixel_area(r), [&](bounding_box auto &&b, auto &&drawer) {
+        EXPECT_THAT(call::l_x(b).value(), Eq(0));
+        EXPECT_THAT(call::t_y(b).value(), Eq(0));
+        EXPECT_THAT(call::width(b), Eq(call::width(call::pixel_area(r))));
+        EXPECT_THAT(call::height(b), Eq(call::height(call::pixel_area(r))));
+        drawer(pixel_unit(default_coordinate{}), default_colour_t{1, 1, 1, 1});
+      });
   EXPECT_THAT(r.failed_calls, ElementsAre());
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
   ASSERT_THAT(ssize(r.drawn_pixels), Eq(6 * 7));
@@ -88,7 +107,8 @@ TEST(SubRenderer, DrawPixels) // NOLINT
                    EXPECT_THAT(call::t_y(b).value(), Eq(0));
                    EXPECT_THAT(call::width(b).value(), Eq(3));
                    EXPECT_THAT(call::height(b).value(), Eq(3));
-                   drawer(pixel_unit_t<default_coordinate>{}, default_colour_t{2, 1, 1, 1});
+                   drawer(pixel_unit_t<default_coordinate>{},
+                          default_colour_t{2, 1, 1, 1});
                  });
   EXPECT_THAT(r.at(0, 0).red, Eq(1));
   EXPECT_THAT(r.at(0, 0).green, Eq(1));
@@ -112,13 +132,14 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
 {
   auto r = test_renderer({{0, 0}, {4, 4}});
   auto s1 = sub_renderer(r, box_from_xyxy<default_pixel_rect>(1, 2, 3, 3));
-  s1.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::l_x(b).value(), Eq(1));
-    EXPECT_THAT(call::t_y(b).value(), Eq(2));
-    EXPECT_THAT(call::r_x(b).value(), Eq(3));
-    EXPECT_THAT(call::b_y(b).value(), Eq(3));
-    drawer(call::top_left(b), default_colour_t{1, 1, 1, 255});
-  });
+  s1.draw_pixels(call::pixel_area(r),
+                 [&r](bounding_box auto &&b, auto &&drawer) {
+                   EXPECT_THAT(call::l_x(b).value(), Eq(1));
+                   EXPECT_THAT(call::t_y(b).value(), Eq(2));
+                   EXPECT_THAT(call::r_x(b).value(), Eq(3));
+                   EXPECT_THAT(call::b_y(b).value(), Eq(3));
+                   drawer(call::top_left(b), default_colour_t{1, 1, 1, 255});
+                 });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
   EXPECT_THAT(r.failed_calls, ElementsAre());
   using namespace std::views;
@@ -149,13 +170,14 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
                             ));
 
   auto s2full = s1.sub(call::pixel_area(r));
-  s2full.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::l_x(b).value(), Eq(1));
-    EXPECT_THAT(call::t_y(b).value(), Eq(2));
-    EXPECT_THAT(call::r_x(b).value(), Eq(3));
-    EXPECT_THAT(call::b_y(b).value(), Eq(3));
-    drawer(call::top_left(b), default_colour_t{2, 0, 0, 255});
-  });
+  s2full.draw_pixels(
+      call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
+        EXPECT_THAT(call::l_x(b).value(), Eq(1));
+        EXPECT_THAT(call::t_y(b).value(), Eq(2));
+        EXPECT_THAT(call::r_x(b).value(), Eq(3));
+        EXPECT_THAT(call::b_y(b).value(), Eq(3));
+        drawer(call::top_left(b), default_colour_t{2, 0, 0, 255});
+      });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
   EXPECT_THAT(r.failed_calls, ElementsAre());
   ic = r.individual_colours();
@@ -167,13 +189,14 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
                           ));
 
   auto s2xid = s2full.sub(box_from_xyxy<default_pixel_rect>(1, 0, 3, 4));
-  s2xid.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::l_x(b).value(), Eq(0));
-    EXPECT_THAT(call::t_y(b).value(), Eq(2));
-    EXPECT_THAT(call::r_x(b).value(), Eq(2));
-    EXPECT_THAT(call::b_y(b).value(), Eq(3));
-    drawer(call::top_left(b), default_colour_t{3, 0, 0, 255});
-  });
+  s2xid.draw_pixels(call::pixel_area(r),
+                    [&r](bounding_box auto &&b, auto &&drawer) {
+                      EXPECT_THAT(call::l_x(b).value(), Eq(0));
+                      EXPECT_THAT(call::t_y(b).value(), Eq(2));
+                      EXPECT_THAT(call::r_x(b).value(), Eq(2));
+                      EXPECT_THAT(call::b_y(b).value(), Eq(3));
+                      drawer(call::top_left(b), default_colour_t{3, 0, 0, 255});
+                    });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
   EXPECT_THAT(r.failed_calls, ElementsAre());
   ic = r.individual_colours();
@@ -185,13 +208,14 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
                           ));
 
   auto s3x = s2xid.sub(box_from_xyxy<default_pixel_rect>(1, 0, 3, 4));
-  s3x.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::l_x(b).value(), Eq(0));
-    EXPECT_THAT(call::t_y(b).value(), Eq(2));
-    EXPECT_THAT(call::r_x(b).value(), Eq(1));
-    EXPECT_THAT(call::b_y(b).value(), Eq(3));
-    drawer(call::top_left(b), default_colour_t{4, 0, 0, 255});
-  });
+  s3x.draw_pixels(call::pixel_area(r),
+                  [&r](bounding_box auto &&b, auto &&drawer) {
+                    EXPECT_THAT(call::l_x(b).value(), Eq(0));
+                    EXPECT_THAT(call::t_y(b).value(), Eq(2));
+                    EXPECT_THAT(call::r_x(b).value(), Eq(1));
+                    EXPECT_THAT(call::b_y(b).value(), Eq(3));
+                    drawer(call::top_left(b), default_colour_t{4, 0, 0, 255});
+                  });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
   EXPECT_THAT(r.failed_calls, ElementsAre());
   ic = r.individual_colours();
@@ -203,13 +227,14 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
                           ));
 
   auto s4 = s2full.sub(box_from_xyxy<default_pixel_rect>(2, 2, 4, 4));
-  s4.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::l_x(b).value(), Eq(0));
-    EXPECT_THAT(call::t_y(b).value(), Eq(0));
-    EXPECT_THAT(call::r_x(b).value(), Eq(1));
-    EXPECT_THAT(call::b_y(b).value(), Eq(1));
-    drawer(call::top_left(b), default_colour_t{5, 0, 0, 255});
-  });
+  s4.draw_pixels(call::pixel_area(r),
+                 [&r](bounding_box auto &&b, auto &&drawer) {
+                   EXPECT_THAT(call::l_x(b).value(), Eq(0));
+                   EXPECT_THAT(call::t_y(b).value(), Eq(0));
+                   EXPECT_THAT(call::r_x(b).value(), Eq(1));
+                   EXPECT_THAT(call::b_y(b).value(), Eq(1));
+                   drawer(call::top_left(b), default_colour_t{5, 0, 0, 255});
+                 });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
   EXPECT_THAT(r.failed_calls, ElementsAre());
   ic = r.individual_colours();
@@ -226,12 +251,13 @@ TEST(SubRender, DrawPixelOutsideCanvas) // NOLINT
   auto r = test_renderer({{0, 0}, {4, 4}});
   auto s_main = sub_renderer(r, call::pixel_area(r));
   auto s1 = s_main.sub(box_from_xyxy<default_pixel_rect>(4, 5, 5, 6));
-  s1.draw_pixels(call::pixel_area(r), [&r](bounding_box auto &&b, auto &&drawer) {
-    EXPECT_THAT(call::width(b).value(), Eq(0));
-    EXPECT_THAT(call::height(b).value(), Eq(0));
-  });
+  s1.draw_pixels(call::pixel_area(r),
+                 [&r](bounding_box auto &&b, auto &&drawer) {
+                   EXPECT_THAT(call::width(b).value(), Eq(0));
+                   EXPECT_THAT(call::height(b).value(), Eq(0));
+                 });
   EXPECT_THAT(r.failed_pixel_draws, ElementsAre());
   EXPECT_THAT(r.failed_calls, ElementsAre());
 }
 
-}
+} // namespace cgui::tests
