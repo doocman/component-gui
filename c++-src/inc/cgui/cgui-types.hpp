@@ -495,6 +495,15 @@ template <typename TRender> struct _widget_display_filter {
 template <typename T, typename TRender = dummy_renderer>
 concept widget_display_range = has_for_each<T, _widget_display_filter<TRender>>;
 
+struct dummy_widget {
+  constexpr default_point_rect area() const noexcept { return {}; }
+};
+
+template <typename T>
+concept widget_like = requires(T const &tc) {
+  { call::area(tc) } -> point_rect;
+};
+
 template <typename T, typename TRender = dummy_renderer,
           typename TArgs = widget_render_args<>>
 concept display_component = has_render<T, TRender, TArgs>;

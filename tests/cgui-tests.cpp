@@ -38,7 +38,7 @@ using namespace ::testing;
 
 static_assert(canvas<dummy_canvas>);
 static_assert(renderer<dummy_renderer>);
-
+static_assert(widget_like<dummy_widget>);
 
 struct reference_stack_tester {
   int my_value{};
