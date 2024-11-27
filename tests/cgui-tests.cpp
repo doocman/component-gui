@@ -75,14 +75,12 @@ TEST(ReferenceStack, BasicBehaviour) {
 struct mock_button_callback {
   MOCK_METHOD(void, do_on_button_hover, ());
   MOCK_METHOD(void, do_on_button_hold, ());
-  MOCK_METHOD(void, do_on_button_click, (mouse_buttons b));
+  MOCK_METHOD(void, do_on_button_click, ());
   MOCK_METHOD(void, do_on_button_exit, ());
 
   void handle(button_state_events::hover) { do_on_button_hover(); }
   void handle(button_state_events::hold) { do_on_button_hold(); }
-  void handle(button_state_events::click const &e) {
-    do_on_button_click(e.button);
-  }
+  void handle(button_state_events::click const &) { do_on_button_click(); }
   void handle(button_state_events::exit) { do_on_button_exit(); }
   void operator()(auto const &e) { handle(e); }
   no_state_t state() const { return {}; }
@@ -98,15 +96,17 @@ TEST(ButtonlikeEventTrigger, MouseHoverAndClick) // NOLINT
   EXPECT_CALL(button_state, do_on_button_hover());
   EXPECT_CALL(button_state, do_on_button_hold());
   EXPECT_CALL(checkpoint, Call());
-  EXPECT_CALL(button_state, do_on_button_click(Eq(mouse_buttons::primary)));
+  EXPECT_CALL(button_state, do_on_button_click());
   EXPECT_CALL(button_state, do_on_button_exit());
   constexpr auto area = point_unit(default_rect{{0, 0}, {4, 4}});
+  trig.handle(area, create_event<interpreted_events::pointer_hover>(
+                        default_point_coordinate{1, 1}));
+  trig.handle(area, create_event<interpreted_events::pointer_hold>(
+                        default_point_coordinate{1, 1}));
+  checkpoint.Call();
   trig.handle(area, create_event<interpreted_events::primary_click>(
                         default_point_coordinate{1, 1}));
-  trig.handle(area, default_mouse_down_event{{1, 1}, mouse_buttons::primary});
-  checkpoint.Call();
-  trig.handle(area, default_mouse_up_event{{1, 1}, mouse_buttons::primary});
-  trig.handle(area, default_mouse_move_event{{-1, 1}});
+  trig.handle(area, create_event<interpreted_events::pointer_exit>());
 }
 
 struct mock_widget_resize {
@@ -180,5 +180,85 @@ TEST(GuiContext, RerenderOutput) // NOLINT
       box_includes_box(rarea, box_from_xyxy<default_point_rect>(0, 0, 1, 1)));
   EXPECT_TRUE(
       box_includes_box(rarea, box_from_xyxy<default_point_rect>(0, 0, 1, 1)));
+}
+TEST(GuiContext, InterpretMouseEvents) // NOLINT
+{
+  int w1_calls{};
+  int w2_calls{};
+  auto ctx = gui_context_builder()
+                 .widgets(widget_builder()
+                              .display(display_per_state(fill_rect()))
+                              .event(buttonlike_trigger(
+                                  momentary_button()
+                                      .click([&w1_calls] { ++w1_calls; })
+                                      .build()))
+                              .area(default_rect{0, 0, 1, 1}),
+                          widget_builder()
+                              .display(display_per_state(fill_rect()))
+                              .event(buttonlike_trigger(
+                                  momentary_button()
+                                      .click([&w2_calls] { ++w2_calls; })
+                                      .build()))
+                              .area(default_rect{1, 0, 2, 1}) //
+                          )
+                 .build({{0, 0}, {2, 1}});
+  {
+    auto &[w1, w2] = ctx.widgets();
+    auto &[f1] = w1.displays();
+    get<momentary_button_states::off>(f1).colour() = {1, 0, 0, 255};
+    get<momentary_button_states::hover>(f1).colour() = {2, 0, 0, 255};
+    get<momentary_button_states::hold>(f1).colour() = {3, 0, 0, 255};
+    auto &[f2] = w2.displays();
+    get<momentary_button_states::off>(f2).colour() = {4, 0, 0, 255};
+    get<momentary_button_states::hover>(f2).colour() = {5, 0, 0, 255};
+    get<momentary_button_states::hold>(f2).colour() = {6, 0, 0, 255};
+  }
+  auto renderer = test_renderer({{0, 0}, {2, 1}});
+  ctx.render(renderer);
+  auto ic = renderer.individual_colours();
+  auto &[r, g, b, a] = ic;
+  EXPECT_THAT(r, ElementsAre(1, 4));
+  auto to_rerender = ctx.handle(default_mouse_move_event{});
+  expect_box_equal(to_rerender.value(), default_rect{{0, 0}, {1, 1}});
+  auto do_rerender = [&] {
+    ctx.render(renderer);
+    ic = renderer.individual_colours();
+  };
+  do_rerender();
+  EXPECT_THAT(r, ElementsAre(2, 4));
+  to_rerender = ctx.handle(default_mouse_move_event{.pos = {1, 0}});
+  expect_box_equal(to_rerender.value(), default_rect{{0, 0}, {2, 1}});
+  do_rerender();
+  EXPECT_THAT(r, ElementsAre(1, 5));
+
+  to_rerender = ctx.handle(default_mouse_down_event{.pos = {1, 0}});
+  expect_box_equal(to_rerender.value(), default_rect{{1, 0}, {2, 1}});
+  do_rerender();
+  EXPECT_THAT(r, ElementsAre(1, 6));
+
+  to_rerender = ctx.handle(default_mouse_up_event{.pos = {1, 0}});
+  expect_box_equal(to_rerender.value(), default_rect{{1, 0}, {2, 1}});
+  do_rerender();
+  EXPECT_THAT(r, ElementsAre(1, 5));
+  EXPECT_THAT(w1_calls, Eq(0));
+  EXPECT_THAT(w2_calls, Eq(1));
+
+  to_rerender = ctx.handle(default_mouse_move_event{.pos = {0, 0}});
+  expect_box_equal(to_rerender.value(), default_rect{{0, 0}, {2, 1}});
+  do_rerender();
+  EXPECT_THAT(r, ElementsAre(2, 4));
+  to_rerender = ctx.handle(default_mouse_down_event{.pos = {0, 0}});
+  expect_box_equal(to_rerender.value(), default_rect{{0, 0}, {1, 1}});
+  do_rerender();
+  EXPECT_THAT(r, ElementsAre(3, 4));
+  EXPECT_THAT(w1_calls, Eq(0));
+  EXPECT_THAT(w2_calls, Eq(1));
+
+  to_rerender = ctx.handle(default_mouse_up_event{.pos = {0, 0}});
+  expect_box_equal(to_rerender.value(), default_rect{{0, 0}, {1, 1}});
+  do_rerender();
+  EXPECT_THAT(r, ElementsAre(2, 4));
+  EXPECT_THAT(w1_calls, Eq(1));
+  EXPECT_THAT(w2_calls, Eq(1));
 }
 } // namespace cgui::tests

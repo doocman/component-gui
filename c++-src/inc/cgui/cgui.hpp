@@ -201,19 +201,22 @@ public:
                       colour auto const &c)
   // requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
   {
-    auto absolute_dest = to_absolute(to_relative_dest(
-        convert_pixelpoint<pixel_size_tag>(dest, pixel_scale())));
-    if (empty_box(absolute_dest)) {
-      return;
-    }
-    // call::fill(*c_, absolute_dest, c);
-    if constexpr (has_native_fill<decltype(*c_), decltype(absolute_dest),
+    auto absolute_dest_maker = [this](auto const &d) {
+      return to_absolute(to_relative_dest(
+          convert_pixelpoint<pixel_size_tag>(d, pixel_scale())));
+    };
+    if constexpr (has_native_fill<decltype(*c_),
+                                  decltype(absolute_dest_maker(dest)),
                                   decltype(c)>) {
+      auto absolute_dest = absolute_dest_maker(dest);
+      if (empty_box(absolute_dest)) {
+        return;
+      }
       call::fill(*c_, absolute_dest, c);
     } else {
       // call::draw_pixels(*this, absolute_dest,
       // fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
-      draw_pixels(absolute_dest,
+      draw_pixels(dest,
                   fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
       //::cgui::fill(*this, absolute_dest, c);
     }
@@ -401,8 +404,7 @@ public:
                                basic_widget_back_propagater<native_box_t>> ||
                            ...)) {
               auto sb = b.sub(w.area());
-              if (w.query(q, &sb)) {
-                b.merge_sub(sb);
+              if (w.query(std::type_identity<time_point_t>{}, q, sb, &b)) {
                 return true;
               }
             }
@@ -711,20 +713,36 @@ public:
   constexpr void reset_on_destruct() { on_destruct_.value() = bp::no_op; }
 
   template <typename TimePoint, typename Pred, typename OnFind,
-            interpreted_events... events, widget_back_propagater BP>
+            interpreted_events... events, widget_back_propagater BP,
+            widget_back_propagater BPMain>
   constexpr bool
-  query(std::type_identity<TimePoint>,
-        query_interpreted_events_t<Pred, OnFind, events...> const &q, BP *bp) {
+  query(std::type_identity<TimePoint> tpi,
+        query_interpreted_events_t<Pred, OnFind, events...> const &q, BP &bp,
+        BPMain *bp_main) {
     bool found{};
     if constexpr (!std::is_empty_v<TSubs>) {
-      call::for_each(subcomponents(), [&found, &q, bp]<typename SW>(SW &&sw) {
-        // if constexpr((has_handle<SW, interpreted_event<events, TimePoint>,
-        // basic_widget_back_propagater<native_box_t>> || ...)) {
-
-        //}
+      call::for_each(subcomponents(), [&found, &q, &bp, tpi,
+                                       bp_main]<typename SW>(SW &&sw) {
+        if constexpr ((has_handle<SW, interpreted_event<events, TimePoint>,
+                                  BP> ||
+                       ...)) {
+          found = found || sw.query(tpi, q, bp.sub(sw.area()), bp_main);
+        }
       });
     }
-    return false;
+    if constexpr ((has_handle<widget &, interpreted_event<events, TimePoint>,
+                              BP> ||
+                   ...)) {
+      if (!found) {
+        found = q(*this, [&bp, bp_main]<typename E>(widget &self, E const &e)
+                    requires has_handle<widget &, E const &, BP &>
+                  {
+                    self.handle(e, bp);
+                    bp_main->merge_sub(bp);
+                  });
+      }
+    }
+    return found;
   }
 };
 
@@ -1281,9 +1299,7 @@ namespace button_state_events {
 struct hover {};
 struct exit {};
 struct hold {};
-struct click {
-  mouse_buttons button;
-};
+struct click {};
 template <typename T>
 concept state_event_handler =
     bp::can_be_operand_for_all<T, decltype(call::handle), hover, exit, hold,
@@ -1362,7 +1378,7 @@ public:
           //
           >
           Evt>
-  constexpr void handle(Area const &area, Evt const &e) {
+  constexpr void handle(Area const &, Evt const &e) {
     interp_evt_switch()(e);
   }
 #else

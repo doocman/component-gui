@@ -286,7 +286,6 @@ TEST(Widget, BasicButton) // NOLINT
   w.render(sr);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
 
-  w.handle(default_mouse_move_event{default_point_coordinate(-1, 0)});
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(0));
   EXPECT_THAT(last_state, Eq(off));
@@ -294,7 +293,8 @@ TEST(Widget, BasicButton) // NOLINT
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
   reset();
 
-  w.handle(default_mouse_move_event{});
+  w.handle(create_event<interpreted_events::pointer_hover>(
+      default_point_coordinate{}));
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_state, Eq(hover));
@@ -302,7 +302,8 @@ TEST(Widget, BasicButton) // NOLINT
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
   reset();
 
-  w.handle(default_mouse_down_event{});
+  w.handle(create_event<interpreted_events::pointer_hold>(
+      default_point_coordinate{}));
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_state, Eq(hold));
@@ -310,7 +311,8 @@ TEST(Widget, BasicButton) // NOLINT
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(2, 0, 0, 255));
   reset();
 
-  w.handle(default_mouse_up_event{});
+  w.handle(create_event<interpreted_events::primary_click>(
+      default_point_coordinate{}));
   EXPECT_THAT(clicked, IsTrue());
   EXPECT_THAT(calls, Eq(2));
   EXPECT_THAT(last_state, Eq(hover));
@@ -318,7 +320,7 @@ TEST(Widget, BasicButton) // NOLINT
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
   reset();
 
-  w.handle(default_mouse_move_event{{0, 2}});
+  w.handle(create_event<interpreted_events::pointer_exit>());
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_state, Eq(off));
@@ -338,7 +340,8 @@ TEST(Widget, ButtonSharedStateCallback) // NOLINT
                                              .build()))
                .build();
   EXPECT_THAT(i, Eq(0));
-  click_widget(w);
+  w.handle(create_event<interpreted_events::primary_click>(
+      default_point_coordinate{}));
   EXPECT_THAT(i, Eq(1));
 }
 
