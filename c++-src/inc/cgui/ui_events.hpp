@@ -106,7 +106,7 @@ template <typename EventEnum, EventEnum... evts> struct subset_events {
   constexpr explicit(false) operator EventEnum() const noexcept { return val; }
 
   template <EventEnum tEvt>
-  static consteval bool can_be_event(event_identity<EventEnum, tEvt>) noexcept {
+  static consteval bool can_be_event(event_identity<EventEnum, tEvt> = {}) noexcept {
     return ((tEvt == evts) || ...);
   }
 };

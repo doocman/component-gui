@@ -146,20 +146,11 @@ int main(int argc, char **argv) {
       if (rerender_all) {
         renderer.clear();
         renderer.render_to(gui);
+        renderer.present();
       } else if (!cgui::empty_box(to_rerender)) {
         renderer.clear();
         renderer.render_to(gui, to_rerender);
-      }
-      auto post_render = steady_clock::now();
-      renderer.present();
-      auto post_present = steady_clock::now();
-      if (print_time_info_counter == fps) {
-        print_time_info_counter = 0;
-        auto event_time = pre_render - start_tp;
-        auto render_time = post_render - pre_render;
-        auto present_time = post_present - post_render;
-        fmt::print("Event time: {}. render time: {}. present time: {}\n",
-                   event_time, render_time, present_time);
+        renderer.present();
       }
       ++print_time_info_counter;
       std::this_thread::sleep_until(next_run);

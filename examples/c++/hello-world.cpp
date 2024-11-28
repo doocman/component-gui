@@ -3,8 +3,6 @@
 #include <iostream>
 #include <thread>
 
-// #include <SDL_main.h>
-
 #include <cgui/cgui.hpp>
 #include <cgui/embedded/cgui_example_font.hpp>
 #include <cgui/ft_fonts.hpp>
@@ -146,8 +144,8 @@ int main(int, char **) {
           renderer.clear();
         }
         renderer.render_to(gui, to_rerender);
+        renderer.present();
       }
-      renderer.present();
       std::this_thread::sleep_until(next_run);
       next_run += run_interval;
     }
