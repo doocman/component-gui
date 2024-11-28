@@ -150,9 +150,9 @@ public:
   struct dummy_widget_query {
     event_counter *counter{};
     std::vector<interpreted_events> events_to_allow{};
-    template <typename P, typename T, interpreted_events... evts>
+    template <typename P, typename T, typename NF, interpreted_events... evts>
     constexpr bool
-    operator()(query_interpreted_events_t<P, T, evts...> const &q) const {
+    operator()(query_interpreted_events_t<P, T, NF, evts...> const &q) const {
       if (std::ranges::any_of(events_to_allow,
                               [](auto &&e) { return ((e == evts) || ...); })) {
         CGUI_ASSERT(counter != nullptr);
@@ -388,9 +388,9 @@ struct GestureEventsHitTests : public ::testing::Test {
   };
   struct widget_query {
     std::vector<mock_widget> widgets;
-    template <typename P, typename T, interpreted_events... evts>
+    template <typename P, typename T, typename NF, interpreted_events... evts>
     constexpr bool
-    operator()(query_interpreted_events_t<P, T, evts...> const &q) {
+    operator()(query_interpreted_events_t<P, T, NF, evts...> const &q) {
       for (auto &w : widgets) {
         if (std::ranges::any_of(
                 w.allowed_events,
@@ -526,6 +526,35 @@ TEST_F(GestureEventsHitTests, MouseDownNoDragEnterExitFar) // NOLINT
   invoke_tt(default_mouse_up_event{.pos = {75, 0}});
   EXPECT_THAT(cr.event_types, ElementsAre(primary_click, pointer_hover));
   EXPECT_THAT(cl.event_types, IsEmpty());
+}
+
+TEST_F(GestureEventsHitTests, MoveMouseOutsideWidgetDrag) // NOLINT
+{
+  add_widget({{0, 0}, {50, 50}});
+  auto &w = query.widgets[0].counter;
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  using enum interpreted_events;
+  invoke_tt(default_mouse_move_event{.pos = {0, 0}});
+  invoke_tt(default_mouse_move_event{.pos = {-1, 0}});
+  EXPECT_THAT(w.event_types, ElementsAre(pointer_exit));
+  invoke_tt(default_mouse_move_event{.pos = {0, 0}});
+  invoke_tt(default_mouse_down_event{.pos = {-1, 0}});
+  // EXPECT_THAT(w.event_types, ElementsAre(pointer_exit));  // DISABLED:
+  // robustness test that we currently hope to not need.
+  // Possible implementation solution to fix this problem if it arise: store the
+  // last position of an event. if a non-move event occurs with a different
+  // position, handle a 'dummy move event' first with the new position and then
+  // run the proper handling.
+  invoke_tt(default_mouse_move_event{.pos = {0, 0}});
+  invoke_tt(default_mouse_up_event{.pos = {-1, 0}});
+  // EXPECT_THAT(w.event_types, ElementsAre(pointer_exit)); // DISABLED:
+  // robustness test that we currently hope to not need.
+  invoke_tt(default_mouse_move_event{.pos = {0, 0}});
+  invoke_tt(default_mouse_down_event{.pos = {0, 0}});
+  invoke_tt(default_mouse_move_event{.pos = {25, 0}});
+  invoke_tt(default_mouse_move_event{.pos = {75, 0}});
+  EXPECT_THAT(w.event_types, ElementsAre(pointer_drag_move));
 }
 
 } // namespace cgui::tests

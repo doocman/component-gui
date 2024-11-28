@@ -394,9 +394,11 @@ public:
       }
     });
     interpreter_.handle(
-        evt, [this,
-              &b]<typename Pred, typename OnFind, interpreted_events... events>(
-                 query_interpreted_events_t<Pred, OnFind, events...> const &q) {
+        evt,
+        [this, &b]<typename Pred, typename OnFind, typename OnNoFind,
+                   interpreted_events... events>(
+            query_interpreted_events_t<Pred, OnFind, OnNoFind, events...> const
+                &q) {
           auto eacher = [&]<typename W>(W &w) {
             if constexpr ((has_handle<
                                W &,
@@ -713,12 +715,12 @@ public:
   constexpr void reset_on_destruct() { on_destruct_.value() = bp::no_op; }
 
   template <typename TimePoint, typename Pred, typename OnFind,
-            interpreted_events... events, widget_back_propagater BP,
-            widget_back_propagater BPMain>
+            typename OnNoFind, interpreted_events... events,
+            widget_back_propagater BP, widget_back_propagater BPMain>
   constexpr bool
   query(std::type_identity<TimePoint> tpi,
-        query_interpreted_events_t<Pred, OnFind, events...> const &q, BP &bp,
-        BPMain *bp_main) {
+        query_interpreted_events_t<Pred, OnFind, OnNoFind, events...> const &q,
+        BP &bp, BPMain *bp_main) {
     bool found{};
     if constexpr (!std::is_empty_v<TSubs>) {
       call::for_each(subcomponents(), [&found, &q, &bp, tpi,
