@@ -1911,14 +1911,13 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   }
 
   template <typename BP, typename Sub, typename SubIndex>
-  constexpr auto intr_event_switch(BP &&bp, Sub &&sub, SubIndex sub_index) {
+  constexpr auto intr_event_switch(BP &bp, Sub &sub, SubIndex &sub_index) {
     using enum interpreted_events;
 
     return saved_ui_event_switch(
         std::forward_as_tuple(*this, bp, sub, sub_index),
         event_case<pointer_exit>([](auto const &, auto &&data) {
           auto &[self, back_prop, sub, sub_index] = data;
-          std::cout << "AND WE HAVE EXIT\n";
           self.reset_hovered(back_prop);
         }),
         event_case<pointer_hover>([](auto const &, auto &&data) {
@@ -1984,9 +1983,9 @@ public:
       if (!call::find_sub_at_location(elements(), call::position(evt),
                                       [this, &back_prop, &evt]<typename Sub>(
                                           Sub &&s, element_id_t index) {
-                                        this->intr_event_switch(
-                                            back_prop, std::forward<Sub>(s),
-                                            index)(std::forward<Evt>(evt));
+                                        this->intr_event_switch(back_prop, s,
+                                                                index)(
+                                            std::forward<Evt>(evt));
                                       })) {
         reset_hovered(back_prop);
         hovered_element_ = highest_possible;
