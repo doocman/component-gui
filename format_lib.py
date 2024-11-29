@@ -52,7 +52,7 @@ def main():
     clang_format_path = args.clang_format
 
     clang_version_res = subprocess.run([clang_format_path, "--version"], check=True, stdout=subprocess.PIPE, text=True)
-    pattern = re.compile("version ([0-9]+)\.")
+    pattern = re.compile("version ([0-9]+)\\.")
     version_match = pattern.search(clang_version_res.stdout)
     if version_match:
         version = int(version_match.group(1))
