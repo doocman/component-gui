@@ -19,6 +19,7 @@ def run_clang_format(clang_format_path, directories):
                     file_list.append(file_path)
                     if not has_printed_root:
                         print(f"Formatting {root}/*")
+                        has_printed_root = True
 
     try:
         subprocess.run(
