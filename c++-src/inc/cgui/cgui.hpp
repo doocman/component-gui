@@ -1742,10 +1742,9 @@ public:
 };
 
 template <bounding_box B, typename T>
-basic_button_list_args(B const &, T &&)
-    -> basic_button_list_args<
-        std::unwrap_ref_decay_t<T>,
-        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+basic_button_list_args(B const &, T &&) -> basic_button_list_args<
+    std::unwrap_ref_decay_t<T>,
+    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
 template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;

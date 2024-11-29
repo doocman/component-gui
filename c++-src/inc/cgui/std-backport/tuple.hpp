@@ -140,22 +140,18 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
 
   // double parenthesis due to clang-format bug.
   constexpr decltype(auto) get_first() &&
-    requires((tIndex == 0))
-  {
-    return _this_t::get(std::move(*this), index_constant<tIndex>{});
-  }
-  constexpr decltype(auto) get_first() const &&
-    requires((tIndex == 0))
+      requires((tIndex == 0)) {
+        return _this_t::get(std::move(*this), index_constant<tIndex>{});
+      } constexpr decltype(auto) get_first() const &&
+        requires((tIndex == 0))
   {
     return _this_t::get(std::move(*this), index_constant<tIndex>{});
   }
   constexpr decltype(auto) get_first() &
-    requires((tIndex == 0))
-  {
-    return _this_t::get(*this, index_constant<tIndex>{});
-  }
-  constexpr decltype(auto) get_first() const &
-    requires((tIndex == 0))
+      requires((tIndex == 0)) {
+        return _this_t::get(*this, index_constant<tIndex>{});
+      } constexpr decltype(auto) get_first() const &
+        requires((tIndex == 0))
   {
     return _this_t::get(*this, index_constant<tIndex>{});
   }
