@@ -63,6 +63,14 @@ public:
     }
   }
   constexpr TB relative_area() const { return relative_area_; }
+  template <same_unit_geometry_as<TB> TB2 = TB, pixel_coord C>
+    requires(same_unit_as<C, TB>)
+  constexpr TB2 relative_area(TB2 b, C const &rel_point) const {
+    return box_from_xywh<TB2>(call::l_x(b) + offset_x_ - call::x_of(rel_point),
+                              call::t_y(b) + offset_y_ - call::y_of(rel_point),
+                              call::width(b), call::height(b));
+  }
+
   template <same_unit_geometry_as<TB> TB2 = TB>
   constexpr TB2 move_to_absolute(TB2 const &b) const {
     return box_from_xywh<TB2>(call::l_x(b) + offset_x_,
@@ -71,6 +79,18 @@ public:
   }
   constexpr TB absolute_area() const {
     return move_to_absolute(relative_area_);
+  }
+
+  constexpr default_coordinate offset() const
+    requires(!size_tagged<TB>)
+  {
+    return {offset_x_, offset_y_};
+  }
+  template <typename TB2 = TB, typename SizeTag = tag_t_of<TB2>,
+            typename ResultT = pixelpoint_unit<SizeTag, default_coordinate>>
+    requires(size_tagged<TB>)
+  constexpr ResultT offset() const {
+    return ResultT(offset_x_, offset_y_);
   }
 
   constexpr nudger<x_t, y_t> relative_to_absolute_nudger() const noexcept {
@@ -181,19 +201,22 @@ public:
                       colour auto const &c)
   // requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
   {
-    auto absolute_dest = to_absolute(to_relative_dest(
-        convert_pixelpoint<pixel_size_tag>(dest, pixel_scale())));
-    if (empty_box(absolute_dest)) {
-      return;
-    }
-    // call::fill(*c_, absolute_dest, c);
-    if constexpr (has_native_fill<decltype(*c_), decltype(absolute_dest),
+    auto absolute_dest_maker = [this](auto const &d) {
+      return to_absolute(to_relative_dest(
+          convert_pixelpoint<pixel_size_tag>(d, pixel_scale())));
+    };
+    if constexpr (has_native_fill<decltype(*c_),
+                                  decltype(absolute_dest_maker(dest)),
                                   decltype(c)>) {
+      auto absolute_dest = absolute_dest_maker(dest);
+      if (empty_box(absolute_dest)) {
+        return;
+      }
       call::fill(*c_, absolute_dest, c);
     } else {
       // call::draw_pixels(*this, absolute_dest,
       // fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
-      draw_pixels(absolute_dest,
+      draw_pixels(dest,
                   fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
       //::cgui::fill(*this, absolute_dest, c);
     }
@@ -254,6 +277,9 @@ public:
   TArea result_area() const {
     return full_area_.move_to_absolute(to_rerender_);
   }
+  TArea relative_position(point_coordinate auto const &p) const {
+    return full_area_.relative_area(to_rerender_, p);
+  }
   constexpr bool empty_result() const { return empty_box(to_rerender_); }
 
   template <bounding_box TA2 = TArea>
@@ -264,8 +290,9 @@ public:
   template <bounding_box TA2 = TArea>
   constexpr void merge_sub(basic_widget_back_propagater<TA2> const &s) {
     if (!s.empty_result()) {
-      auto sub_area = s.result_area();
+      auto sub_area = s.relative_position(full_area_.offset());
       rerender(sub_area);
+      // rerender(s.relative_area());
     }
   }
 
@@ -288,11 +315,18 @@ struct builder_widget_element_constraint {
   constexpr void operator()(widget_display<TR> auto &&) const {}
 };
 
+class widget_event_querant {
+
+public:
+};
+
 template <point_rect TArea, typename TOnResize = bp::no_op_t,
           widget_display_range TWidgets = std::tuple<>>
 class gui_context : bp::empty_structs_optimiser<TOnResize> {
   using _base_t = bp::empty_structs_optimiser<TOnResize>;
   TWidgets widgets_;
+  using time_point_t = std::chrono::steady_clock::time_point;
+  default_event_interpreter<time_point_t> interpreter_{};
 
   constexpr void call_on_resize(size_wh auto const &sz) {
     gui_context::get(std::type_identity<TOnResize>{})(sz, widgets_);
@@ -359,6 +393,31 @@ public:
         b.merge_sub(s);
       }
     });
+    interpreter_.handle(
+        evt,
+        [this, &b]<typename Pred, typename OnFind, typename OnNoFind,
+                   interpreted_events... events>(
+            query_interpreted_events_t<Pred, OnFind, OnNoFind, events...> const
+                &q) {
+          auto eacher = [&]<typename W>(W &w) {
+            if constexpr ((has_handle<
+                               W &,
+                               interpreted_event<events, time_point_t> const &,
+                               basic_widget_back_propagater<native_box_t>> ||
+                           ...)) {
+              auto sb = b.sub(w.area());
+              if (w.query(std::type_identity<time_point_t>{}, q, sb, &b)) {
+                return true;
+              }
+            }
+            return false;
+          };
+          call::apply_to(widgets_, [&eacher](auto &...ws) {
+            // We are not expecting overlapping widgets here.
+            unused((eacher(ws) || ...));
+          });
+          //
+        });
     return b.result_area();
   }
 
@@ -498,10 +557,11 @@ class widget
     : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
   using display_state_callbacks_t = basic_widget_back_propagater<TArea>;
   using widget_ref_t = widget_ref_no_set_area<widget>;
-  using on_destruct_f_t = ignore_copy<
-  bp::trivial_function<void(widget &&), sizeof(void*) * 3, alignof(void*)>, //
-  //std::function<void(widget&&)>,//
-                                      bp::return_constant_t<bp::no_op_t>>;
+  using on_destruct_f_t =
+      ignore_copy<bp::trivial_function<void(widget &&), sizeof(void *) * 3,
+                                       alignof(void *)>, //
+                  // std::function<void(widget&&)>,//
+                  bp::return_constant_t<bp::no_op_t>>;
   TArea area_{};
   TDisplay display_;
   on_destruct_f_t on_destruct_;
@@ -653,6 +713,39 @@ public:
     on_destruct_.value() = std::forward<decltype(f)>(f);
   }
   constexpr void reset_on_destruct() { on_destruct_.value() = bp::no_op; }
+
+  template <typename TimePoint, typename Pred, typename OnFind,
+            typename OnNoFind, interpreted_events... events,
+            widget_back_propagater BP, widget_back_propagater BPMain>
+  constexpr bool
+  query(std::type_identity<TimePoint> tpi,
+        query_interpreted_events_t<Pred, OnFind, OnNoFind, events...> const &q,
+        BP &bp, BPMain *bp_main) {
+    bool found{};
+    if constexpr (!std::is_empty_v<TSubs>) {
+      call::for_each(subcomponents(), [&found, &q, &bp, tpi,
+                                       bp_main]<typename SW>(SW &&sw) {
+        if constexpr ((has_handle<SW, interpreted_event<events, TimePoint>,
+                                  BP> ||
+                       ...)) {
+          found = found || sw.query(tpi, q, bp.sub(sw.area()), bp_main);
+        }
+      });
+    }
+    if constexpr ((has_handle<widget &, interpreted_event<events, TimePoint>,
+                              BP> ||
+                   ...)) {
+      if (!found) {
+        found = q(*this, [&bp, bp_main]<typename E>(widget &self, E const &e)
+                    requires has_handle<widget &, E const &, BP &>
+                  {
+                    self.handle(e, bp);
+                    bp_main->merge_sub(bp);
+                  });
+      }
+    }
+    return found;
+  }
 };
 
 template <renderer TR, typename TStateArgs>
@@ -1208,9 +1301,7 @@ namespace button_state_events {
 struct hover {};
 struct exit {};
 struct hold {};
-struct click {
-  mouse_buttons button;
-};
+struct click {};
 template <typename T>
 concept state_event_handler =
     bp::can_be_operand_for_all<T, decltype(call::handle), hover, exit, hold,
@@ -1234,9 +1325,6 @@ concept button_state =
 /// button. This must satisfy the `button_state` concept requirements.
 template <button_state TState>
 class buttonlike_trigger : bp::empty_structs_optimiser<TState> {
-  bool mouse_inside_{};
-  bool mouse_down_{};
-
   // Perfect forwarding access to the state object for this button.
   // May return a reference or a value depending on the empty_structs_optimiser
   // implementation and wheter TState is empty or not.
@@ -1255,6 +1343,22 @@ class buttonlike_trigger : bp::empty_structs_optimiser<TState> {
   using hold_event = button_state_events::hold;
   using click_event = button_state_events::click;
 
+  constexpr auto interp_evt_switch() {
+    return saved_ui_event_switch(
+        std::ref(*this),
+        event_case<interpreted_events::primary_click>(
+            [](auto const &, auto &self) { self.state_change(click_event{}); }),
+        event_case<interpreted_events::pointer_hold>(
+            [](auto const &, auto &self) { self.state_change(hold_event{}); }),
+        event_case<interpreted_events::pointer_hover>(
+            [](auto const &, auto &self) { self.state_change(hover_event{}); }),
+        event_case<interpreted_events::pointer_exit>(
+            [](auto const &, auto &self) {
+              self.state_change(exit_event{});
+            }) //
+    );
+  }
+
 public:
   using bp::empty_structs_optimiser<TState>::empty_structs_optimiser;
 
@@ -1264,77 +1368,15 @@ public:
     return call::state(state_impl(*this));
   }
 
-#if 0
-  template <point_rect Area, interpreted_event_types<interpreted_events::pointer_hover> Evt>
-  constexpr void handle(
-      point_rect auto const &area,
-      Evt const& e) {
-    if constexpr(interpreted_event_types<Evt, interpreted_events::pointer_hover>) {
-      auto new_inside = hit_box(area, call::position(e));
-
-    }
+  template <
+      typename Area,
+      interpreted_event_types<
+          interpreted_events::pointer_hover, interpreted_events::pointer_exit,
+          interpreted_events::pointer_hold, interpreted_events::primary_click>
+          Evt>
+  constexpr void handle(Area const &, Evt const &e) {
+    interp_evt_switch()(e);
   }
-#else
-  /// @brief Handles mouse-based events for button interactions.
-  ///
-  /// This function processes a variety of user input events and
-  /// modifies the button's state accordingly. For example, when the mouse
-  /// enters the button's bounding box, the hover state is triggered; on button
-  /// down, the hold state is triggered; and on button release, the click state
-  /// is triggered if the mouse is within the button's area.
-  ///
-  /// @param area This event handlers borders.
-  /// @param evt The event to handle, which must be one of `mouse_move`,
-  /// `mouse_button_down`,
-  ///            `mouse_button_up`, or `mouse_exit` from the `ui_events`
-  ///            namespace.
-  void
-  handle(point_rect auto const &area,
-         event_types<input_events::mouse_move, input_events::mouse_button_down,
-                     input_events::mouse_button_up,
-                     input_events::mouse_exit> auto &&evt) {
-    using enum input_events;
-    using evt_t = decltype(evt);
-    if constexpr (can_be_event<mouse_exit, evt_t>()) {
-      if (is_event<mouse_exit>(evt) && mouse_inside_) {
-        state_change(exit_event{});
-        mouse_inside_ = false;
-      }
-    }
-    if constexpr (can_be_event<mouse_move, evt_t>()) {
-      if (is_event<mouse_move>(evt)) {
-        auto is_now_inside = hit_box(area, call::position(evt));
-        if (is_now_inside != mouse_inside_) {
-          if (mouse_inside_) {
-            state_change(exit_event{});
-          } else {
-            state_change(hover_event{});
-          }
-          mouse_inside_ = is_now_inside;
-        }
-        return;
-      }
-    }
-    if constexpr (can_be_event<mouse_button_down, evt_t>()) {
-      if (is_event<mouse_button_down>(evt)) {
-        if (!mouse_down_ && hit_box(area, call::position(evt))) {
-          state_change(hold_event{});
-        }
-        mouse_down_ = true;
-        return;
-      }
-    }
-    if constexpr (can_be_event<mouse_button_up, evt_t>()) {
-      if (is_event<mouse_button_up>(evt)) {
-        if (hit_box(area, call::position(evt))) {
-          state_change(click_event{call::mouse_button(evt)});
-        }
-        mouse_down_ = false;
-        return;
-      }
-    }
-  }
-#endif
 };
 template <typename T>
 buttonlike_trigger(T &&) -> buttonlike_trigger<std::unwrap_ref_decay_t<T>>;
@@ -1539,8 +1581,14 @@ public:
     on_ = !on_;
   }
   constexpr void handle(button_state_events::exit const &) { hover_ = false; }
-  constexpr void handle(button_state_events::hold const &) { hold_ = true; }
-  constexpr void handle(button_state_events::hover const &) { hover_ = true; }
+  constexpr void handle(button_state_events::hold const &) {
+    hover_ = true;
+    hold_ = true;
+  }
+  constexpr void handle(button_state_events::hover const &) {
+    hover_ = true;
+    hold_ = false;
+  }
 };
 
 /// @brief A builder for a widget state to generate a toggle button. Works with
@@ -1694,10 +1742,9 @@ public:
 };
 
 template <bounding_box B, typename T>
-basic_button_list_args(B const &, T &&)
-    -> basic_button_list_args<
-        std::unwrap_ref_decay_t<T>,
-        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+basic_button_list_args(B const &, T &&) -> basic_button_list_args<
+    std::unwrap_ref_decay_t<T>,
+    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
 template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;
@@ -1863,81 +1910,88 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
     }
   }
 
-  template <typename TEvt, subable_widget_back_propagator BackProp,
-            typename Sub>
-  constexpr auto event_switch(TEvt &&evt, BackProp &back_prop, Sub &&sub,
-                              element_id_t sub_index) {
-    using enum input_events;
-    using data_t =
-        decltype(std::forward_as_tuple(*this, back_prop, sub, sub_index));
-    return ui_event_switch(
-        std::forward<TEvt>(evt),
-        std::forward_as_tuple(*this, back_prop, sub, sub_index),
-        event_case<mouse_button_up>([](auto && /*event*/, data_t &&data) {
+  template <typename BP, typename Sub, typename SubIndex>
+  constexpr auto intr_event_switch(BP &bp, Sub &sub, SubIndex &sub_index) {
+    using enum interpreted_events;
+
+    return saved_ui_event_switch(
+        std::forward_as_tuple(*this, bp, sub, sub_index),
+        event_case<pointer_exit>([](auto const &, auto &&data) {
+          auto &[self, back_prop, sub, sub_index] = data;
+          self.reset_hovered(back_prop);
+        }),
+        event_case<pointer_hover>([](auto const &, auto &&data) {
+          auto &[self, back_prop, sub, sub_index] = data;
+          bool is_correct_state = !self.mouse_down_;
+          self.mouse_down_ = false;
+          if (sub_index != self.hovered_element_) {
+            self.reset_hovered(back_prop);
+            self.hover_element(sub, sub_index, back_prop);
+          } else if (!is_correct_state) {
+            do_set_state(combine_toggled_hover_states(false, false, true), sub,
+                         back_prop);
+          }
+        }),
+        event_case<pointer_hold>([](auto const &, auto &&data) {
+          auto &[self, back_prop, sub, sub_index] = data;
+          bool is_correct_state = self.mouse_down_;
+          self.mouse_down_ = true;
+          if (sub_index != self.hovered_element_) {
+            self.reset_hovered(back_prop);
+            self.hover_element(sub, sub_index, back_prop);
+          } else if (!is_correct_state) {
+            do_set_state(combine_toggled_hover_states(false, true, true), sub,
+                         back_prop);
+          }
+        }),
+        event_case<primary_click>([](auto const &, auto &&data) {
           auto &[self, back_prop, sub, sub_index] = data;
           self.reset_active(back_prop, sub_index == self.current_element_);
           if (sub_index != self.current_element_) {
             self.activate_element(std::forward<Sub>(sub), sub_index,
-                                  std::forward<decltype(back_prop)>(back_prop));
+                                  std::forward<BP>(back_prop));
           } else {
             self.reset_active_ = std::nullopt;
             self.current_element_ = highest_possible;
           }
           self.mouse_down_ = false;
-        }), //
-        event_case<mouse_move>([](auto &&, data_t &&data) {
-          auto &[self, back_prop, sub, sub_index] = data;
-          if (sub_index != self.hovered_element_) {
-            self.reset_hovered(back_prop);
-            self.hover_element(sub, sub_index, back_prop);
-          }
-        }), //
-        event_case<mouse_button_down>([](auto &&, data_t &&data) {
-          auto &[self, back_prop, sub, sub_index] = data;
-          bool state_change = !self.mouse_down_;
-          if (sub_index != self.hovered_element_) {
-            self.reset_hovered(back_prop);
-            self.hovered_element_ = sub_index;
-            state_change = true;
-          }
-          if (state_change) {
-            self.mouse_down_ = true;
-            do_set_state(combine_toggled_hover_states(false, true, true), sub,
-                         back_prop);
-          }
-        }));
+        }) //
+    );
   }
 
 public:
   using base_t::base_t;
-  template <bounding_box T,
-            event_types<input_events::mouse_move, input_events::mouse_exit,
-                        input_events::mouse_button_down,
-                        input_events::mouse_button_up>
-                TEvt>
-  constexpr void handle(T const &, TEvt &&evt,
-                        subable_widget_back_propagator auto &&back_prop) {
-    if constexpr (can_be_event<input_events::mouse_exit, TEvt>()) {
-      if (is_event<input_events::mouse_exit>(evt)) {
+  template <
+      typename A,
+      interpreted_event_types<
+          interpreted_events::pointer_exit, interpreted_events::pointer_hover,
+          interpreted_events::pointer_hold, interpreted_events::primary_click>
+          Evt,
+      subable_widget_back_propagator BP>
+  constexpr void handle(A const &, Evt &&evt, BP &&back_prop) {
+    if constexpr (can_be_event<interpreted_events::pointer_exit, Evt>()) {
+      if (is_event<interpreted_events::pointer_exit>(evt)) {
         reset_hovered(back_prop);
         hovered_element_ = highest_possible;
+        return;
       }
     }
-    if constexpr (event_types<TEvt, input_events::mouse_move,
-                              input_events::mouse_button_down,
-                              input_events::mouse_button_up>) {
+    if constexpr (interpreted_event_types<Evt,
+                                          interpreted_events::pointer_hover,
+                                          interpreted_events::pointer_hold,
+                                          interpreted_events::primary_click>) {
       if (!call::find_sub_at_location(elements(), call::position(evt),
                                       [this, &back_prop, &evt]<typename Sub>(
                                           Sub &&s, element_id_t index) {
-                                        this->event_switch(
-                                            std::forward<TEvt>(evt), back_prop,
-                                            std::forward<Sub>(s), index);
+                                        this->intr_event_switch(back_prop, s,
+                                                                index)(
+                                            std::forward<Evt>(evt));
                                       })) {
         reset_hovered(back_prop);
         hovered_element_ = highest_possible;
-        event_case<input_events::mouse_button_up>(
+        event_case<interpreted_events::pointer_hover>(
             [this](auto &&...) { mouse_down_ = false; })(evt);
-        event_case<input_events::mouse_button_down>(
+        event_case<interpreted_events::pointer_hold>(
             [this](auto &&...) { mouse_down_ = true; })(evt);
       }
     }

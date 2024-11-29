@@ -41,55 +41,54 @@
   template <typename T, typename... Ts>                                        \
   concept has_##NAME = member_##NAME<T, Ts...> || static_##NAME<T, Ts...> ||   \
                        extend_##NAME<T, Ts...> || free_##NAME<T, Ts...>;       \
-  struct _do_##NAME{                                                           \
+  struct _do_##NAME {                                                          \
                                                                                \
-      template <typename... Ts, has_##NAME<Ts...> T>                           \
-      static constexpr decltype(auto) call(T && torg, Ts && ...args){          \
-          auto t = bp::as_forward<T>(torg);                                    \
-  if constexpr (member_##NAME<T, Ts...>) {                                     \
-    return (*t).NAME(std::forward<Ts>(args)...);                               \
-  } else if constexpr (static_##NAME<T, Ts...>) {                              \
-    return std::remove_cvref_t<T>::NAME(*t, std::forward<Ts>(args)...);        \
-  } else if constexpr (extend_##NAME<T, Ts...>) {                              \
-    return extend_api_t<T>::NAME(*t, std::forward<Ts>(args)...);               \
-  } else {                                                                     \
-    static_assert(free_##NAME<T, Ts...>);                                      \
-    return NAME(*t, std::forward<Ts>(args)...);                                \
-  }                                                                            \
-  }                                                                            \
-  template <typename... Ts, has_##NAME<Ts...> T>                               \
-  constexpr decltype(auto) operator()(T &&t, Ts &&...args) const {             \
-    return call(std::forward<T>(t), std::forward<Ts>(args)...);                \
-  }                                                                            \
-  }                                                                            \
-  ;
+    template <typename... Ts, has_##NAME<Ts...> T>                             \
+    static constexpr decltype(auto) call(T &&torg, Ts &&...args) {             \
+      auto t = bp::as_forward<T>(torg);                                        \
+      if constexpr (member_##NAME<T, Ts...>) {                                 \
+        return (*t).NAME(std::forward<Ts>(args)...);                           \
+      } else if constexpr (static_##NAME<T, Ts...>) {                          \
+        return std::remove_cvref_t<T>::NAME(*t, std::forward<Ts>(args)...);    \
+      } else if constexpr (extend_##NAME<T, Ts...>) {                          \
+        return extend_api_t<T>::NAME(*t, std::forward<Ts>(args)...);           \
+      } else {                                                                 \
+        static_assert(free_##NAME<T, Ts...>);                                  \
+        return NAME(*t, std::forward<Ts>(args)...);                            \
+      }                                                                        \
+    }                                                                          \
+    template <typename... Ts, has_##NAME<Ts...> T>                             \
+    constexpr decltype(auto) operator()(T &&t, Ts &&...args) const {           \
+      return call(std::forward<T>(t), std::forward<Ts>(args)...);              \
+    }                                                                          \
+  };
 #define CGUI_CALL_CONCEPT_GETSET(NAME)                                         \
   CGUI_CALL_CONCEPT(NAME)                                                      \
   template <typename T, typename TVal>                                         \
   concept has_##NAME##_assignable = has_assignable_get<T, _do_##NAME, TVal>;   \
-  struct _do_set_##NAME{                                                       \
-      template <typename TObj, typename TVal> requires(                        \
-          has_##NAME<TObj &&, TVal &&> ||                                      \
-          has_##NAME##_assignable<TObj, TVal>) static constexpr decltype(auto) \
-          call(TObj && o, TVal && v){auto of = bp::as_forward<TObj>(o);        \
-  auto vf = bp::as_forward<TVal>(v);                                           \
-  if constexpr (has_##NAME<TObj, TVal>) {                                      \
-    return _do_##NAME::call(*of, *vf);                                         \
-  } else {                                                                     \
-    static_assert(has_##NAME##_assignable<TObj, TVal>);                        \
-    return _do_##NAME::call(*of) = *vf;                                        \
-  }                                                                            \
-  }                                                                            \
-  static constexpr decltype(auto) call(has_##NAME auto &&t) {                  \
-    return _do_##NAME::call(std::forward<decltype(t)>(t));                     \
-  }                                                                            \
-  template <typename... Ts>                                                    \
-    requires(requires(Ts &&...ts) { call(std::forward<Ts>(ts)...); })          \
-  constexpr decltype(auto) operator()(Ts &&...ts) const {                      \
-    return call(std::forward<Ts>(ts)...);                                      \
-  }                                                                            \
-  }                                                                            \
-  ;
+  struct _do_set_##NAME {                                                      \
+    template <typename TObj, typename TVal>                                    \
+      requires(has_##NAME<TObj &&, TVal &&> ||                                 \
+               has_##NAME##_assignable<TObj, TVal>)                            \
+    static constexpr decltype(auto) call(TObj &&o, TVal &&v) {                 \
+      auto of = bp::as_forward<TObj>(o);                                       \
+      auto vf = bp::as_forward<TVal>(v);                                       \
+      if constexpr (has_##NAME<TObj, TVal>) {                                  \
+        return _do_##NAME::call(*of, *vf);                                     \
+      } else {                                                                 \
+        static_assert(has_##NAME##_assignable<TObj, TVal>);                    \
+        return _do_##NAME::call(*of) = *vf;                                    \
+      }                                                                        \
+    }                                                                          \
+    static constexpr decltype(auto) call(has_##NAME auto &&t) {                \
+      return _do_##NAME::call(std::forward<decltype(t)>(t));                   \
+    }                                                                          \
+    template <typename... Ts>                                                  \
+      requires(requires(Ts &&...ts) { call(std::forward<Ts>(ts)...); })        \
+    constexpr decltype(auto) operator()(Ts &&...ts) const {                    \
+      return call(std::forward<Ts>(ts)...);                                    \
+    }                                                                          \
+  };
 
 #define CGUI_CALL_BBOX_MEMBER(NAME, CONCEPT, MUTCONCEPT)                       \
   static constexpr decltype(auto) _fallback(auto const &b);                    \

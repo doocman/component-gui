@@ -6,15 +6,18 @@
 namespace cgui::tests {
 static_assert(point_scalar<point_unit_t<int>>);
 static_assert(pixel_scalar<pixel_unit_t<int>>);
-static_assert(pixel_or_point_rect<autoconverting_pixelpoint_unit<pixel_size_tag, default_rect>>);
+static_assert(pixel_or_point_rect<
+              autoconverting_pixelpoint_unit<pixel_size_tag, default_rect>>);
 static_assert(bounding_box<default_rect>);
 static_assert(impl::has_bbox_init<default_rect, int>);
-static_assert(std::is_same_v<
-              pixelpoint_unit<pixel_size_tag, default_rect>,
-              decltype(extend_api_t<pixelpoint_unit<pixel_size_tag, default_rect>>::from_xyxy(
-                  0, 0, 0, 0))>);
-static_assert(mutable_bounding_box<pixelpoint_unit<pixel_size_tag, default_rect>, pixelpoint_unit<pixel_size_tag, int>>);
-
+static_assert(
+    std::is_same_v<
+        pixelpoint_unit<pixel_size_tag, default_rect>,
+        decltype(extend_api_t<pixelpoint_unit<pixel_size_tag, default_rect>>::
+                     from_xyxy(0, 0, 0, 0))>);
+static_assert(
+    mutable_bounding_box<pixelpoint_unit<pixel_size_tag, default_rect>,
+                         pixelpoint_unit<pixel_size_tag, int>>);
 
 using namespace ::testing;
 
@@ -811,7 +814,8 @@ TYPED_TEST(BoxApiFixture, ConstructXYWH) // NOLINT
 TYPED_TEST(BoxApiFixture, ConstructTLBR) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
-  auto v = box_from_tlbr<box_t>(default_coordinate{1, 2}, default_coordinate{3, 4});
+  auto v =
+      box_from_tlbr<box_t>(default_coordinate{1, 2}, default_coordinate{3, 4});
   EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
   EXPECT_THAT(call::l_x(v), Eq(1));
   EXPECT_THAT(call::t_y(v), Eq(2));
@@ -1018,5 +1022,4 @@ TYPED_TEST(BoxApiFixture, MoveTlTo) // NOLINT
 
 } // namespace apitests
 
-
-}
+} // namespace cgui::tests

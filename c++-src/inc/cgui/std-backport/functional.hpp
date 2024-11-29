@@ -202,7 +202,7 @@ class trivial_function<R(Args...), sz, align> {
       return alignof(TRaw) <= actual_align() && sizeof(TRaw) <= actual_size() &&
              std::is_trivially_copy_constructible_v<TRaw> &&
              std::is_trivially_destructible_v<TRaw> &&
-             std::invocable<TRaw&, Args&&...>;
+             std::invocable<TRaw &, Args &&...>;
     } else {
       return false;
     }

@@ -9,6 +9,12 @@
 #include <cgui/cgui.hpp>
 
 namespace cgui::tests {
+template <interpreted_events evt>
+constexpr interpreted_event<evt, std::chrono::steady_clock::time_point>
+create_event(auto &&...args) {
+  return interpreted_event<evt, std::chrono::steady_clock::time_point>(
+      std::chrono::steady_clock::time_point{}, args...);
+}
 inline auto
 expect_colour_eq(cgui::colour auto const &val,
                  cgui::colour auto const &expected,
@@ -165,8 +171,18 @@ struct mock_widget {
 
 constexpr void click_widget(auto &w, default_point_coordinate const &pos = {},
                             auto &&...args) {
-  w.handle(default_mouse_down_event{.pos = pos, .button_id = {}}, args...);
-  w.handle(default_mouse_up_event{.pos = pos, .button_id = {}}, args...);
+  if constexpr (has_handle<decltype(w), default_mouse_down_event,
+                           decltype(args)...>) {
+    w.handle(default_mouse_down_event{.pos = pos, .button_id = {}}, args...);
+    w.handle(default_mouse_up_event{.pos = pos, .button_id = {}}, args...);
+  } else {
+    w.handle(interpreted_event<interpreted_events::primary_click>(
+                 std::chrono::steady_clock::time_point{}, pos),
+             args...);
+    w.handle(interpreted_event<interpreted_events::pointer_hover>(
+                 std::chrono::steady_clock::time_point{}, pos),
+             args...);
+  }
 }
 
 } // namespace cgui::tests

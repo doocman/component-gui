@@ -434,10 +434,9 @@ widget_render_args(TW, TH, TState &&)
 template <typename TW, typename TH>
 widget_render_args(TW, TH) -> widget_render_args<std::common_type_t<TW, TH>>;
 template <bounding_box B, typename TState>
-widget_render_args(B const &, TState &&)
-    -> widget_render_args<
-        std::remove_cvref_t<decltype(call::width(std::declval<B>()))>,
-        std::remove_cvref_t<TState>>;
+widget_render_args(B const &, TState &&) -> widget_render_args<
+    std::remove_cvref_t<decltype(call::width(std::declval<B>()))>,
+    std::remove_cvref_t<TState>>;
 
 template <typename T>
 concept canvas = requires(T const &tc) {

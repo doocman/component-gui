@@ -34,9 +34,28 @@ enum class input_events {
   window_resized,
 };
 
-template <input_events tEvt> struct input_event_identity {
-  static constexpr input_events value = tEvt;
+enum class interpreted_events {
+  primary_click = 1,
+  context_menu_click,
+  pointer_drag_start,
+  pointer_drag_move,
+  pointer_drag_finished_destination,
+  pointer_drag_finished_source,
+  pointer_hover,
+  pointer_hold,
+  pointer_enter,
+  pointer_exit,
+  scroll,
+  zoom
 };
+
+template <typename EventEnum, EventEnum val> struct event_identity {
+  static constexpr EventEnum value = val;
+};
+template <input_events tEvt>
+using input_event_identity = event_identity<input_events, tEvt>;
+template <interpreted_events tEvt>
+using interpreted_event_identity = event_identity<interpreted_events, tEvt>;
 
 template <input_events> struct input_event_constraints {
   template <typename> static constexpr bool type_passes = true;
@@ -78,19 +97,17 @@ concept input_event_c = input_event_constraints<tEvt>::template type_passes<T>;
 /// what events a backend event *could* be, while using the return value for
 /// what it actually *is*.
 /// \tparam evts CGUI event types that an event could be.
-template <input_events... evts> struct subset_input_events {
+template <typename EventEnum, EventEnum... evts> struct subset_events {
   static_assert(sizeof...(evts) > 0, "You must at least specify 1 event type");
-  input_events val;
-  constexpr explicit(false) subset_input_events(input_events v) noexcept
-      : val(v) {
+  EventEnum val;
+  constexpr explicit(false) subset_events(EventEnum v) noexcept : val(v) {
     CGUI_ASSERT(((v == evts) || ...));
   }
-  constexpr explicit(false) operator input_events() const noexcept {
-    return val;
-  }
+  constexpr explicit(false) operator EventEnum() const noexcept { return val; }
 
-  template <input_events tEvt>
-  static consteval bool can_be_event(input_event_identity<tEvt>) noexcept {
+  template <EventEnum tEvt>
+  static consteval bool
+  can_be_event(event_identity<EventEnum, tEvt> = {}) noexcept {
     return ((tEvt == evts) || ...);
   }
 };
@@ -98,21 +115,33 @@ template <input_events... evts> struct subset_input_events {
 /// Single event optimisation specialisation, that lacks any member field, and
 /// also does not need any input arguments.
 /// \tparam evt Event type that this particular subset is.
-template <input_events evt> struct subset_input_events<evt> {
-  constexpr explicit(false) subset_input_events(input_events v) noexcept {
+template <typename EventEnum, EventEnum evt>
+struct subset_events<EventEnum, evt> {
+  constexpr explicit(false) subset_events(EventEnum v) noexcept {
     assert(v == evt);
     unused(v);
   }
-  constexpr subset_input_events() noexcept = default;
-  constexpr explicit(false) operator input_events() const noexcept {
-    return evt;
-  }
+  constexpr subset_events() noexcept = default;
+  constexpr explicit(false) operator EventEnum() const noexcept { return evt; }
 
-  template <input_events tEvt>
-  static consteval bool can_be_event(input_event_identity<tEvt> = {}) noexcept {
+  template <EventEnum tEvt>
+  static consteval bool
+  can_be_event(event_identity<EventEnum, tEvt> = {}) noexcept {
     return (tEvt == evt);
   }
 };
+
+template <typename T, typename EventType>
+concept has_can_be_event = requires() {
+  std::remove_cvref_t<T>::template can_be_event<EventType{}>();
+  std::remove_cvref_t<T>::can_be_event(
+      event_identity<EventType, EventType{}>());
+};
+
+template <input_events... evts>
+using subset_input_events = subset_events<input_events, evts...>;
+template <interpreted_events... evts>
+using subset_interpreted_events = subset_events<interpreted_events, evts...>;
 
 template <typename T>
 concept subset_input_event_c =
@@ -134,6 +163,14 @@ concept subset_input_event_c =
             input_event_identity<input_events::mouse_button_down>{})
       } -> std::convertible_to<bool>;
     };
+template <typename T>
+concept subset_interpreted_event_c =
+    std::convertible_to<T, interpreted_events> && requires() {
+      {
+        std::remove_cvref_t<T>::can_be_event(
+            interpreted_event_identity<interpreted_events::primary_click>{})
+      } -> std::convertible_to<bool>;
+    };
 
 namespace call {
 namespace impl {
@@ -145,6 +182,13 @@ struct do_event_type {
   constexpr subset_input_event_c auto operator()(T &&t) const {
     return _do_event_type{}(std::forward<T>(t));
   }
+  template <typename T>
+    requires(requires(T &&t) {
+      { _do_event_type{}(std::forward<T>(t)) } -> subset_interpreted_event_c;
+    })
+  constexpr subset_interpreted_event_c auto operator()(T &&t) const {
+    return _do_event_type{}(std::forward<T>(t));
+  }
 };
 } // namespace impl
 inline constexpr impl::do_event_type event_type;
@@ -153,9 +197,14 @@ inline constexpr impl::do_event_type event_type;
 template <typename T>
 concept has_event_type =
     requires(bp::as_forward<T> t) { call::event_type(*t); };
+template <typename T, typename EventType>
+concept has_event_type_of_type =
+    has_event_type<T> && requires(bp::as_forward<T> t) {
+      { call::event_type(*t) } -> has_can_be_event<EventType>;
+    };
 
 template <input_events tEvt, typename T> consteval bool can_be_event() {
-  if constexpr (has_event_type<T>) {
+  if constexpr (has_event_type_of_type<T, input_events>) {
     using subset_t =
         std::remove_cvref_t<decltype(call::event_type(std::declval<T &&>()))>;
     return subset_t::can_be_event(input_event_identity<tEvt>{});
@@ -163,9 +212,27 @@ template <input_events tEvt, typename T> consteval bool can_be_event() {
     return false;
   }
 }
+template <interpreted_events tEvt, typename T> consteval bool can_be_event() {
+  if constexpr (has_event_type_of_type<T, interpreted_events>) {
+    using subset_t =
+        std::remove_cvref_t<decltype(call::event_type(std::declval<T &&>()))>;
+    return subset_t::can_be_event(interpreted_event_identity<tEvt>{});
+  } else {
+    return false;
+  }
+}
 template <input_events tEvt, typename T> constexpr bool is_event(T &&evt) {
   if constexpr (can_be_event<tEvt, T>()) {
     return static_cast<input_events>(call::event_type(evt)) == tEvt;
+  } else {
+    unused(evt);
+    return false;
+  }
+}
+template <interpreted_events tEvt, typename T>
+constexpr bool is_event(T &&evt) {
+  if constexpr (can_be_event<tEvt, T>()) {
+    return static_cast<interpreted_events>(call::event_type(evt)) == tEvt;
   } else {
     unused(evt);
     return false;
@@ -296,26 +363,12 @@ using default_key_up_event = default_event<input_events::key_up>;
 using default_window_resized_event =
     default_event<input_events::window_resized>;
 
-enum class interpreted_events {
-  primary_click = 1,
-  context_menu_click,
-  pointer_drag_start,
-  pointer_drag_move,
-  pointer_drag_finished_destination,
-  pointer_drag_finished_source,
-  pointer_hover,
-  pointer_hold,
-  pointer_enter,
-  pointer_exit,
-  scroll,
-  zoom
-};
-
 template <typename T, interpreted_events... ie_vs>
 concept interpreted_event_types = (can_be_event<ie_vs, T>() || ...);
 
 template <interpreted_events> struct interpreted_event_impl;
-template <interpreted_events ie_v, typename TimePoint>
+template <interpreted_events ie_v,
+          typename TimePoint = std::chrono::steady_clock::time_point>
 struct interpreted_event : interpreted_event_impl<ie_v> {
   using _base_t = interpreted_event_impl<ie_v>;
   interpreted_event_basic<TimePoint> common_data;
@@ -327,7 +380,17 @@ struct interpreted_event : interpreted_event_impl<ie_v> {
     requires(std::constructible_from<_base_t, Ts && ...>)
   constexpr explicit interpreted_event(TimePoint const &ts, Ts &&...args)
       : _base_t(std::forward<Ts>(args)...), common_data(ts) {}
+
+  constexpr subset_interpreted_events<ie_v> event_type() const noexcept {
+    return {};
+  }
 };
+
+template <interpreted_events evt_val, typename TP>
+constexpr subset_interpreted_events<evt_val>
+event_type(interpreted_event<evt_val, TP> const &) {
+  return {};
+}
 
 template <interpreted_events ie_v, typename C>
 constexpr bool is_cgui_default_event_v<interpreted_event<ie_v, C>> = true;
@@ -468,37 +531,53 @@ template <typename WidgetT> struct query_result {
 
   constexpr explicit operator bool() const noexcept { return w_ != nullptr; }
 };
-template <typename Pred, typename OnFind, interpreted_events... events>
+template <typename Pred, typename OnFind, typename OnNoFind,
+          interpreted_events... events>
 struct query_interpreted_events_t {
   Pred p_;
   OnFind f_;
+  OnNoFind no_f_;
+  static_assert(
+      noexcept(std::declval<OnNoFind>()()),
+      "The OnNoFind should be noexcept as it is called from a destructor!");
+  mutable bool any_found_{};
 
-  constexpr query_interpreted_events_t(Pred p, OnFind f)
-      : p_(std::move(p)), f_(std::move(f)) {}
+  constexpr query_interpreted_events_t(Pred p, OnFind f, OnNoFind no_f)
+      : p_(std::move(p)), f_(std::move(f)), no_f_(std::move(no_f)) {}
 
   constexpr bool operator()(auto &in, auto &&s) const {
     if (p_(in)) {
       f_(in, std::forward<decltype(s)>(s));
+      any_found_ = true;
       return true;
     }
     return false;
   }
+  constexpr ~query_interpreted_events_t() {
+    if (!any_found_) {
+      no_f_();
+    }
+  }
 };
 
-template <interpreted_events... events, typename Pred, typename OnFind>
+template <interpreted_events... events, typename Pred, typename OnFind,
+          typename OnNoFind = bp::no_op_t>
   requires(std::predicate<Pred, dummy_widget const &>)
 constexpr query_interpreted_events_t<std::remove_cvref_t<Pred>,
-                                     std::remove_cvref_t<OnFind>, events...>
-query_interpreted_events(Pred &&p, OnFind &&f) {
-  return {std::forward<Pred>(p), std::forward<OnFind>(f)};
+                                     std::remove_cvref_t<OnFind>,
+                                     std::remove_cvref_t<OnNoFind>, events...>
+query_interpreted_events(Pred &&p, OnFind &&f, OnNoFind &&nf = {}) {
+  return {std::forward<Pred>(p), std::forward<OnFind>(f),
+          std::forward<OnNoFind>(nf)};
 }
 
-template <interpreted_events... events, typename OnFind>
-constexpr auto query_interpreted_events(default_point_coordinate pos,
-                                        OnFind &&f) {
+template <interpreted_events... events, typename OnFind,
+          typename OnNoFind = bp::no_op_t>
+constexpr auto query_interpreted_events(point_coordinate auto const &pos,
+                                        OnFind &&f, OnNoFind &&nf = {}) {
   return query_interpreted_events<events...>(
       [pos](auto const &w) { return hit_box(call::area(w), pos); },
-      std::forward<OnFind>(f));
+      std::forward<OnFind>(f), std::forward<OnNoFind>(nf));
 }
 
 template <typename TimePoint = typename std::chrono::steady_clock::time_point,
@@ -627,7 +706,7 @@ public:
     auto sf = bp::as_forward<decltype(self)>(self);
     auto ef = bp::as_forward<evt_t>(evt);
     if constexpr (sizeof...(args) == 0) {
-      return call::apply_to(to_base(*sf), [ef](auto &&data, auto &&...cases) {
+      return call::apply_to(to_base(*sf), [&ef](auto &&data, auto &&...cases) {
         return ui_event_switch(*ef, std::forward<decltype(data)>(data),
                                std::forward<decltype(cases)>(cases)...);
       });
@@ -660,20 +739,22 @@ public:
   }
 
   constexpr bool operator()(auto &&evt, auto &&...args) & {
-    return call(*this, std::forward<decltype(evt)>(evt),
-                std::forward<decltype(args)>(args)...);
+    return ui_event_switch_t::call(*this, std::forward<decltype(evt)>(evt),
+                                   std::forward<decltype(args)>(args)...);
   }
   constexpr bool operator()(auto &&evt, auto &&...args) const & {
-    return call(*this, std::forward<decltype(evt)>(evt),
-                std::forward<decltype(args)>(args)...);
+    return ui_event_switch_t::call(*this, std::forward<decltype(evt)>(evt),
+                                   std::forward<decltype(args)>(args)...);
   }
   constexpr bool operator()(auto &&evt, auto &&...args) && {
-    return call(std::move(*this), std::forward<decltype(evt)>(evt),
-                std::forward<decltype(args)>(args)...);
+    return ui_event_switch_t::call(std::move(*this),
+                                   std::forward<decltype(evt)>(evt),
+                                   std::forward<decltype(args)>(args)...);
   }
   constexpr bool operator()(auto &&evt, auto &&...args) const && {
-    return call(std::move(*this), std::forward<decltype(evt)>(evt),
-                std::forward<decltype(args)>(args)...);
+    return ui_event_switch_t::call(std::move(*this),
+                                   std::forward<decltype(evt)>(evt),
+                                   std::forward<decltype(args)>(args)...);
   }
 };
 template <typename Data, typename... Cases>
@@ -691,18 +772,24 @@ struct primary_mouse_click_translator_settings {
 
 class interpreter_widget_cache {
   void const *impl_{};
+  default_point_rect area_{};
 
 public:
-  constexpr explicit interpreter_widget_cache(auto &w) : impl_(&w) {}
+  constexpr explicit interpreter_widget_cache(auto &w)
+      : impl_(&w), area_(copy_box<default_point_rect>(call::area(w))) {}
   constexpr interpreter_widget_cache() noexcept = default;
 
   constexpr void reset() noexcept { impl_ = nullptr; }
-  constexpr void reset(auto &w) noexcept { impl_ = &w; }
+  constexpr void reset(auto &w) noexcept {
+    impl_ = &w;
+    area_ = copy_box<default_point_rect>(call::area(w));
+  }
 
   constexpr bool refers_to(auto &w) const {
     return static_cast<void const *>(&w) == impl_;
   }
   constexpr explicit operator bool() const { return impl_ != nullptr; }
+  constexpr default_point_rect const &area() const noexcept { return area_; }
 };
 
 constexpr auto is_cached_widget(interpreter_widget_cache const &cw) {
@@ -713,7 +800,7 @@ inline auto is_cached_widget(interpreter_widget_cache const &&) = delete;
 template <interpreted_events evt_type, typename TP, typename Q,
           typename... Args>
 constexpr interpreter_widget_cache
-_invoke_with_interpreted_event(Q &&q, default_point_coordinate pos,
+_invoke_with_interpreted_event(Q &&q, point_coordinate auto const &pos,
                                TP const &tp, Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
   interpreter_widget_cache cached{};
@@ -789,6 +876,15 @@ struct _primary_mouse_click_translator_base {
     constexpr void set_down(keycode c) noexcept { set_from_keycode<true>(c); }
     constexpr void set_up(keycode c) noexcept { set_from_keycode<false>(c); }
   };
+
+  static constexpr void
+  do_exit_widget_if_outside(auto &&q, interpreter_widget_cache const &w,
+                            auto const &e) {
+    if (!hit_box(w.area(), call::position(e))) {
+      send_to_cached_widget<interpreted_events::pointer_exit>(
+          q, call::time_stamp(e), w);
+    }
+  }
 };
 
 template <typename TimePoint>
@@ -796,10 +892,12 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
   struct first_down_t {
     default_point_coordinate click_position{};
     interpreter_widget_cache clicked_widget{};
+    constexpr void exit_current_widget(auto &&...) const {}
   };
   struct drag_t {
     default_point_coordinate start_position{};
     interpreter_widget_cache drag_start_widget{};
+    constexpr void exit_current_widget(auto &&...) const {}
   };
   struct hold_no_drag_t {
     interpreter_widget_cache widget{};
@@ -810,7 +908,8 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
         : widget(prev_widget) {
       using enum interpreted_events;
       q(query_interpreted_events<pointer_enter, pointer_hover>(
-          pos, [&]<typename W, typename S>(W &w, S &&sender) {
+          pos,
+          [&]<typename W, typename S>(W &w, S &&sender) {
             if (!prev_widget.refers_to(w)) {
               if (prev_widget) {
                 send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
@@ -827,6 +926,12 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
                               interpreted_event<pointer_hold, TimePoint>>) {
               sender(w, interpreted_event<pointer_hold, TimePoint>(ts, pos));
             }
+          },
+          [this, &q, ts]() noexcept {
+            if (widget) {
+              send_to_cached_widget<pointer_exit>(q, ts, widget);
+            }
+            widget.reset();
           }));
     }
 
@@ -839,6 +944,7 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
                   ts, pos),
               interpreted_event<interpreted_events::pointer_hold, TimePoint>(
                   ts, pos))) {}
+    constexpr void exit_current_widget(auto &&...) const {}
   };
   struct hover_t {
     interpreter_widget_cache widget{};
@@ -851,7 +957,8 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
         : widget(prev_widget) {
       using enum interpreted_events;
       q(query_interpreted_events<pointer_enter, pointer_hover>(
-          pos, [&]<typename W, typename S>(W &w, S &&sender) {
+          pos,
+          [&]<typename W, typename S>(W &w, S &&sender) {
             if (!prev_widget.refers_to(w)) {
               if (prev_widget) {
                 send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
@@ -868,6 +975,12 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
                               interpreted_event<pointer_hover, TimePoint>>) {
               sender(w, interpreted_event<pointer_hover, TimePoint>(ts, pos));
             }
+          },
+          [this, &q, ts]() noexcept {
+            if (widget) {
+              send_to_cached_widget<pointer_exit>(q, ts, widget);
+            }
+            widget.reset();
           }));
     }
 
@@ -879,9 +992,24 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
                   ts, pos),
               interpreted_event<interpreted_events::pointer_hover, TimePoint>(
                   ts, pos))) {}
+
+    constexpr void exit_current_widget(auto &&q, auto const &e) const {
+      // interpreter_widget_cache const& w, auto const& e, auto&& q
+      do_exit_widget_if_outside(q, widget, e);
+    }
   };
 
   using state = std::variant<hover_t, first_down_t, hold_no_drag_t, drag_t>;
+
+  static constexpr state pointer_visit(auto &&cb, auto &&q, auto const &e,
+                                       auto &&s_in) {
+    return std::visit(
+        [&](auto &s) -> state {
+          // s.exit_current_widget(q, e);
+          return cb(s, q, e);
+        },
+        s_in);
+  }
 
 public:
   using settings = primary_mouse_click_translator_settings;

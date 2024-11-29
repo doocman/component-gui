@@ -127,10 +127,8 @@ int main(int argc, char **argv) {
     constexpr auto run_interval = duration_cast<nanoseconds>(1s) / fps;
 
     auto next_run = steady_clock::now() + run_interval;
-    int print_time_info_counter = 0;
     while (!do_exit) {
       cgui::point_unit_t<SDL_Rect> to_rerender{};
-      auto start_tp = steady_clock::now();
       while (cgui::poll_event(sdl_context, [&]<typename T>(T e) {
                if constexpr (std::is_same_v<T, cgui::sdl_quit_event>) {
                  do_exit = true;
@@ -142,26 +140,15 @@ int main(int argc, char **argv) {
              }) != 0) {
       }
       // TODO: This first branch should be removed.
-      auto pre_render = steady_clock::now();
       if (rerender_all) {
         renderer.clear();
         renderer.render_to(gui);
+        renderer.present();
       } else if (!cgui::empty_box(to_rerender)) {
         renderer.clear();
         renderer.render_to(gui, to_rerender);
+        renderer.present();
       }
-      auto post_render = steady_clock::now();
-      renderer.present();
-      auto post_present = steady_clock::now();
-      if (print_time_info_counter == fps) {
-        print_time_info_counter = 0;
-        auto event_time = pre_render - start_tp;
-        auto render_time = post_render - pre_render;
-        auto present_time = post_present - post_render;
-        fmt::print("Event time: {}. render time: {}. present time: {}\n",
-                   event_time, render_time, present_time);
-      }
-      ++print_time_info_counter;
       std::this_thread::sleep_until(next_run);
       next_run += run_interval;
     }
