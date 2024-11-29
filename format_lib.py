@@ -6,6 +6,7 @@ import subprocess
 import re
 from pathlib import Path
 
+
 def run_clang_format(clang_format_path, directories):
     """Runs clang-format on all .hpp and .cpp files in the given directories recursively."""
     file_list = []
