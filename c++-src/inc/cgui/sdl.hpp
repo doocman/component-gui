@@ -523,7 +523,9 @@ T scaled_point(TX x, TY y, auto win_id) {
 struct sdl_event_extend_api {
   // TODO: SDL should have its own clock with SDL_GetTicks to be correct.
   using time_point_t = std::chrono::steady_clock::time_point;
-  static constexpr time_point_t time_stamp(auto const& e) requires(requires() { e.timestamp; }) {
+  static constexpr time_point_t time_stamp(auto const &e)
+    requires(requires() { e.timestamp; })
+  {
     return time_point_t(std::chrono::nanoseconds(e.timestamp));
   }
 };
@@ -541,12 +543,13 @@ template <> struct extend_api<SDL_MouseMotionEvent> : sdl_event_extend_api {
 };
 template <> struct extend_api<SDL_MouseButtonEvent> : sdl_event_extend_api {
   static constexpr subset_input_events<input_events::mouse_button_up,
-                                    input_events::mouse_button_down>
+                                       input_events::mouse_button_down>
   event_type(SDL_MouseButtonEvent const &e) {
     CGUI_ASSERT(e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
                 e.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
-    return {e.type == SDL_EVENT_MOUSE_BUTTON_UP ? input_events::mouse_button_up
-                                                : input_events::mouse_button_down};
+    return {e.type == SDL_EVENT_MOUSE_BUTTON_UP
+                ? input_events::mouse_button_up
+                : input_events::mouse_button_down};
   }
 
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
@@ -560,7 +563,7 @@ template <> struct extend_api<SDL_MouseButtonEvent> : sdl_event_extend_api {
 };
 template <> struct extend_api<SDL_WindowEvent> : sdl_event_extend_api {
   static constexpr subset_input_events<input_events::window_resized,
-                                    input_events::system>
+                                       input_events::system>
   event_type(SDL_WindowEvent const &e) {
     return e.type == SDL_EVENT_WINDOW_RESIZED ? input_events::window_resized
                                               : input_events::system;

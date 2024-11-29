@@ -740,19 +740,21 @@ public:
 
   constexpr bool operator()(auto &&evt, auto &&...args) & {
     return ui_event_switch_t::call(*this, std::forward<decltype(evt)>(evt),
-                std::forward<decltype(args)>(args)...);
+                                   std::forward<decltype(args)>(args)...);
   }
   constexpr bool operator()(auto &&evt, auto &&...args) const & {
     return ui_event_switch_t::call(*this, std::forward<decltype(evt)>(evt),
-                std::forward<decltype(args)>(args)...);
+                                   std::forward<decltype(args)>(args)...);
   }
   constexpr bool operator()(auto &&evt, auto &&...args) && {
-    return ui_event_switch_t::call(std::move(*this), std::forward<decltype(evt)>(evt),
-                std::forward<decltype(args)>(args)...);
+    return ui_event_switch_t::call(std::move(*this),
+                                   std::forward<decltype(evt)>(evt),
+                                   std::forward<decltype(args)>(args)...);
   }
   constexpr bool operator()(auto &&evt, auto &&...args) const && {
-    return ui_event_switch_t::call(std::move(*this), std::forward<decltype(evt)>(evt),
-                std::forward<decltype(args)>(args)...);
+    return ui_event_switch_t::call(std::move(*this),
+                                   std::forward<decltype(evt)>(evt),
+                                   std::forward<decltype(args)>(args)...);
   }
 };
 template <typename Data, typename... Cases>

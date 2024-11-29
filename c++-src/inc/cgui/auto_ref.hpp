@@ -151,8 +151,8 @@ constexpr std::size_t size(reference_stack<Ts...> const &) noexcept {
 
 template <typename T> reference_stack(T &) -> reference_stack<T>;
 template <typename... Ts, typename T>
-reference_stack(reference_stack<Ts...> const &,
-                T &) -> reference_stack<T, Ts...>;
+reference_stack(reference_stack<Ts...> const &, T &)
+    -> reference_stack<T, Ts...>;
 
 } // namespace cgui
 

@@ -1916,12 +1916,12 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
 
     return saved_ui_event_switch(
         std::forward_as_tuple(*this, bp, sub, sub_index),
-        event_case<pointer_exit>([](auto const &, auto && data) {
+        event_case<pointer_exit>([](auto const &, auto &&data) {
           auto &[self, back_prop, sub, sub_index] = data;
           std::cout << "AND WE HAVE EXIT\n";
           self.reset_hovered(back_prop);
         }),
-        event_case<pointer_hover>([](auto const &, auto && data) {
+        event_case<pointer_hover>([](auto const &, auto &&data) {
           auto &[self, back_prop, sub, sub_index] = data;
           bool is_correct_state = !self.mouse_down_;
           self.mouse_down_ = false;
@@ -1933,15 +1933,14 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
                          back_prop);
           }
         }),
-        event_case<pointer_hold>([](auto const &, auto && data) {
+        event_case<pointer_hold>([](auto const &, auto &&data) {
           auto &[self, back_prop, sub, sub_index] = data;
           bool is_correct_state = self.mouse_down_;
           self.mouse_down_ = true;
           if (sub_index != self.hovered_element_) {
             self.reset_hovered(back_prop);
             self.hover_element(sub, sub_index, back_prop);
-          }
-          else if (!is_correct_state) {
+          } else if (!is_correct_state) {
             do_set_state(combine_toggled_hover_states(false, true, true), sub,
                          back_prop);
           }
@@ -1963,7 +1962,6 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
 
 public:
   using base_t::base_t;
-#if 1
   template <
       typename A,
       interpreted_event_types<
@@ -1971,7 +1969,7 @@ public:
           interpreted_events::pointer_hold, interpreted_events::primary_click>
           Evt,
       subable_widget_back_propagator BP>
-  constexpr void handle(A const &, Evt && evt, BP &&back_prop) {
+  constexpr void handle(A const &, Evt &&evt, BP &&back_prop) {
     if constexpr (can_be_event<interpreted_events::pointer_exit, Evt>()) {
       if (is_event<interpreted_events::pointer_exit>(evt)) {
         reset_hovered(back_prop);
@@ -1999,41 +1997,6 @@ public:
       }
     }
   }
-
-#else
-  template <bounding_box T,
-            event_types<input_events::mouse_move, input_events::mouse_exit,
-                        input_events::mouse_button_down,
-                        input_events::mouse_button_up>
-                TEvt>
-  constexpr void handle(T const &, TEvt &&evt,
-                        subable_widget_back_propagator auto &&back_prop) {
-    if constexpr (can_be_event<input_events::mouse_exit, TEvt>()) {
-      if (is_event<input_events::mouse_exit>(evt)) {
-        reset_hovered(back_prop);
-        hovered_element_ = highest_possible;
-      }
-    }
-    if constexpr (event_types<TEvt, input_events::mouse_move,
-                              input_events::mouse_button_down,
-                              input_events::mouse_button_up>) {
-      if (!call::find_sub_at_location(elements(), call::position(evt),
-                                      [this, &back_prop, &evt]<typename Sub>(
-                                          Sub &&s, element_id_t index) {
-                                        this->event_switch(
-                                            std::forward<TEvt>(evt), back_prop,
-                                            std::forward<Sub>(s), index);
-                                      })) {
-        reset_hovered(back_prop);
-        hovered_element_ = highest_possible;
-        event_case<input_events::mouse_button_up>(
-            [this](auto &&...) { mouse_down_ = false; })(evt);
-        event_case<input_events::mouse_button_down>(
-            [this](auto &&...) { mouse_down_ = true; })(evt);
-      }
-    }
-  }
-#endif
 
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
     auto bargs = basic_button_list_args(
