@@ -584,7 +584,6 @@ TEST_F(GestureEventsHitTests, MouseHoldMultipleWidgets) // NOLINT
   add_widget({{0, 0}, {50, 50}}, [](auto &v) {
     enable_all_events_except({pointer_drag_start, pointer_drag_move}, v);
   });
-  using enum interpreted_events;
   add_widget({{50, 0}, {100, 50}}, [](auto &v) {
     enable_all_events_except({pointer_drag_start, pointer_drag_move}, v);
   });
