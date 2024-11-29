@@ -555,6 +555,56 @@ TEST_F(GestureEventsHitTests, MoveMouseOutsideWidgetDrag) // NOLINT
   invoke_tt(default_mouse_move_event{.pos = {25, 0}});
   invoke_tt(default_mouse_move_event{.pos = {75, 0}});
   EXPECT_THAT(w.event_types, ElementsAre(pointer_drag_move));
+  invoke_tt(default_mouse_up_event{.pos = {75, 0}});
+  EXPECT_THAT(w.event_types,
+              ElementsAre(pointer_drag_finished_source, pointer_exit));
+}
+
+TEST_F(GestureEventsHitTests, MoveMouseOutsideWidgetNoDrag) // NOLINT
+{
+  using enum interpreted_events;
+  add_widget({{0, 0}, {50, 50}}, [](auto &v) {
+    enable_all_events_except({pointer_drag_start, pointer_drag_move}, v);
+  });
+  auto &w = query.widgets[0].counter;
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_mouse_move_event{.pos = {0, 0}});
+  invoke_tt(default_mouse_down_event{.pos = {0, 0}});
+  invoke_tt(default_mouse_move_event{.pos = {25, 0}});
+  invoke_tt(default_mouse_move_event{.pos = {75, 0}});
+  EXPECT_THAT(w.event_types, ElementsAre(pointer_exit));
+  invoke_tt(default_mouse_up_event{.pos = {75, 0}});
+  EXPECT_THAT(w.event_types, IsEmpty());
+}
+
+TEST_F(GestureEventsHitTests, MouseHoldMultipleWidgets) // NOLINT
+{
+  using enum interpreted_events;
+  add_widget({{0, 0}, {50, 50}}, [](auto &v) {
+    enable_all_events_except({pointer_drag_start, pointer_drag_move}, v);
+  });
+  using enum interpreted_events;
+  add_widget({{50, 0}, {100, 50}}, [](auto &v) {
+    enable_all_events_except({pointer_drag_start, pointer_drag_move}, v);
+  });
+
+  auto &cl = query.widgets[0].counter;
+  auto &cr = query.widgets[1].counter;
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_mouse_down_event{.pos = {0, 0}});
+  invoke_tt(default_mouse_move_event{.pos = {75, 0}});
+  EXPECT_THAT(cl.event_types, ElementsAre(pointer_exit));
+  EXPECT_THAT(cr.event_types, ElementsAre(pointer_enter, pointer_hold));
+  invoke_tt(default_mouse_move_event{.pos = {75, 75}});
+  EXPECT_THAT(cl.event_types, ElementsAre());
+  EXPECT_THAT(cr.event_types, ElementsAre(pointer_exit));
+  invoke_tt(default_mouse_up_event{.pos = {75, 75}});
+  EXPECT_THAT(cl.event_types, ElementsAre());
+  EXPECT_THAT(cr.event_types, ElementsAre());
+  invoke_tt(default_mouse_move_event{.pos = {75, 0}});
+  EXPECT_THAT(cr.event_types, ElementsAre(pointer_enter, pointer_hover));
 }
 
 } // namespace cgui::tests

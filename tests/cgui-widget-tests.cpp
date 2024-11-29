@@ -487,7 +487,8 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(r, AllOf(SizeIs(3), Each(red(state2colour(relaxed_off)))));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 
-  auto re_area = call::handle(list, default_mouse_move_event{{0, 0}});
+  using enum interpreted_events;
+  auto re_area = call::handle(list, create_event<pointer_hover>(default_point_coordinate{{0, 0}}));
   EXPECT_THAT(state_changes, ElementsAre(Pair(hover_off, 0)));
   exp_states[0] = hover_off;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
@@ -498,7 +499,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   expect_box_equal(re_area, box_from_xyxy<default_point_rect>(0, 0, 1, 1));
 
   state_changes.clear();
-  re_area = call::handle(list, default_mouse_move_event{{1, 0}});
+  re_area = call::handle(list, create_event<pointer_hover>(default_point_coordinate{{1, 0}}));
   EXPECT_THAT(state_changes,
               UnorderedElementsAre(Pair(relaxed_off, 0), Pair(hover_off, 1)));
   exp_states[0] = relaxed_off;
@@ -511,7 +512,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   expect_box_equal(re_area, box_from_xyxy<default_point_rect>(0, 0, 2, 1));
 
   state_changes.clear();
-  re_area = call::handle(list, default_mouse_down_event{{1, 0}});
+  re_area = call::handle(list, create_event<pointer_hold>(default_point_coordinate{{1, 0}}));
   EXPECT_THAT(state_changes, UnorderedElementsAre(Pair(hold_off, 1)));
   exp_states[0] = relaxed_off;
   exp_states[1] = hold_off;
@@ -523,7 +524,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   expect_box_equal(re_area, box_from_xyxy<default_point_rect>(1, 0, 2, 1));
 
   state_changes.clear();
-  re_area = call::handle(list, default_mouse_up_event{{1, 0}});
+  re_area = call::handle(list, create_event<primary_click>(default_point_coordinate{{1, 0}}));
   exp_states[0] = relaxed_off;
   exp_states[1] = hover_on;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
@@ -542,7 +543,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 
-  re_area = call::handle(list, default_mouse_exit_event{});
+  re_area = call::handle(list, create_event<pointer_exit>());
   exp_states[0] = relaxed_on;
   exp_states[1] = relaxed_off;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
@@ -553,10 +554,9 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 
   exp_states[0] = hover_on;
-  call::handle(list, default_mouse_down_event{});
-  call::handle(list, default_mouse_move_event{{-1, 0}});
-  call::handle(list, default_mouse_up_event{{-1, 0}});
-  call::handle(list, default_mouse_move_event{});
+  re_area = call::handle(list, create_event<pointer_hold>(default_point_coordinate{{0, 0}}));
+  re_area = call::handle(list, create_event<pointer_exit>());
+  re_area = call::handle(list, create_event<pointer_hover>(default_point_coordinate{{0, 0}}));
   EXPECT_THAT(states, ElementsAreArray(exp_states));
   do_render();
   EXPECT_THAT(r, ElementsAre(state2bright(hover_on), state2bright(relaxed_off),

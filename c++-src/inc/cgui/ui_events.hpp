@@ -706,7 +706,7 @@ public:
     auto sf = bp::as_forward<decltype(self)>(self);
     auto ef = bp::as_forward<evt_t>(evt);
     if constexpr (sizeof...(args) == 0) {
-      return call::apply_to(to_base(*sf), [ef](auto &&data, auto &&...cases) {
+      return call::apply_to(to_base(*sf), [&ef](auto &&data, auto &&...cases) {
         return ui_event_switch(*ef, std::forward<decltype(data)>(data),
                                std::forward<decltype(cases)>(cases)...);
       });
@@ -739,19 +739,19 @@ public:
   }
 
   constexpr bool operator()(auto &&evt, auto &&...args) & {
-    return call(*this, std::forward<decltype(evt)>(evt),
+    return ui_event_switch_t::call(*this, std::forward<decltype(evt)>(evt),
                 std::forward<decltype(args)>(args)...);
   }
   constexpr bool operator()(auto &&evt, auto &&...args) const & {
-    return call(*this, std::forward<decltype(evt)>(evt),
+    return ui_event_switch_t::call(*this, std::forward<decltype(evt)>(evt),
                 std::forward<decltype(args)>(args)...);
   }
   constexpr bool operator()(auto &&evt, auto &&...args) && {
-    return call(std::move(*this), std::forward<decltype(evt)>(evt),
+    return ui_event_switch_t::call(std::move(*this), std::forward<decltype(evt)>(evt),
                 std::forward<decltype(args)>(args)...);
   }
   constexpr bool operator()(auto &&evt, auto &&...args) const && {
-    return call(std::move(*this), std::forward<decltype(evt)>(evt),
+    return ui_event_switch_t::call(std::move(*this), std::forward<decltype(evt)>(evt),
                 std::forward<decltype(args)>(args)...);
   }
 };
@@ -906,7 +906,8 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
         : widget(prev_widget) {
       using enum interpreted_events;
       q(query_interpreted_events<pointer_enter, pointer_hover>(
-          pos, [&]<typename W, typename S>(W &w, S &&sender) {
+          pos,
+          [&]<typename W, typename S>(W &w, S &&sender) {
             if (!prev_widget.refers_to(w)) {
               if (prev_widget) {
                 send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
@@ -923,6 +924,12 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
                               interpreted_event<pointer_hold, TimePoint>>) {
               sender(w, interpreted_event<pointer_hold, TimePoint>(ts, pos));
             }
+          },
+          [this, &q, ts]() noexcept {
+            if (widget) {
+              send_to_cached_widget<pointer_exit>(q, ts, widget);
+            }
+            widget.reset();
           }));
     }
 
