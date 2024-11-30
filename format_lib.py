@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 
-def run_clang_format(clang_format_path, directories):
+def run_clang_format(clang_format_path, directories, cwd):
     """Runs clang-format on all .hpp and .cpp files in the given directories recursively."""
     file_list = []
     for directory in directories:
@@ -24,7 +24,7 @@ def run_clang_format(clang_format_path, directories):
     try:
         subprocess.run(
             [clang_format_path, "-i", "--style=file"] + file_list,
-            check=True,
+            check=True, cwd=cwd,
         )
     except subprocess.CalledProcessError as e:
         print(f"Error formatting {file_list}: {e}")
@@ -69,7 +69,7 @@ def main():
             print(f"Error: {directory} is not a valid directory.")
             return
 
-    run_clang_format(clang_format_path, directories)
+    run_clang_format(clang_format_path, directories, file_path)
 
 
 if __name__ == "__main__":

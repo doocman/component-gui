@@ -298,6 +298,7 @@ CGUI_CALL_CONCEPT(time_stamp)
 CGUI_CALL_CONCEPT(delta_x)
 CGUI_CALL_CONCEPT(delta_y)
 CGUI_CALL_CONCEPT(raw_key)
+CGUI_CALL_CONCEPT(finger_index)
 CGUI_CALL_CONCEPT(handle)
 CGUI_CALL_CONCEPT(set_state)
 CGUI_CALL_CONCEPT(state)
@@ -694,6 +695,7 @@ using time_stamp_t = decltype(time_stamp);
 inline constexpr impl::_do_delta_x delta_x;
 inline constexpr impl::_do_delta_y delta_y;
 inline constexpr impl::_do_raw_key raw_key;
+inline constexpr impl::_do_finger_index finger_index;
 
 /// Calls fill or fall backs to calling draw_pixels to fill the area in
 /// software.

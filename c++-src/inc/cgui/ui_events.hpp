@@ -24,6 +24,7 @@ enum class keycode {
 
 enum class input_events {
   system,
+  window_resized,
   mouse_move,
   mouse_button_down,
   mouse_button_up,
@@ -31,7 +32,9 @@ enum class input_events {
   mouse_scroll,
   key_down,
   key_up,
-  window_resized,
+  touch_down,
+  touch_up,
+  touch_move,
 };
 
 enum class interpreted_events {
@@ -80,10 +83,43 @@ template <> struct input_event_constraints<input_events::mouse_move> {
     { call::position(t) } -> point_coordinate;
   };
 };
+template <> struct input_event_constraints<input_events::key_down> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::raw_key(t) } -> std::convertible_to<keycode>;
+  };
+};
+template <> struct input_event_constraints<input_events::key_up> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::raw_key(t) } -> std::convertible_to<keycode>;
+  };
+};
 template <> struct input_event_constraints<input_events::window_resized> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
     { call::size_of(t) } -> point_size_wh;
+  };
+};
+template <> struct input_event_constraints<input_events::touch_down> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::position(t) } -> point_coordinate;
+    { call::finger_index(t) } -> std::convertible_to<int>;
+  };
+};
+template <> struct input_event_constraints<input_events::touch_up> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::position(t) } -> point_coordinate;
+    { call::finger_index(t) } -> std::convertible_to<int>;
+  };
+};
+template <> struct input_event_constraints<input_events::touch_move> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::position(t) } -> point_coordinate;
+    { call::finger_index(t) } -> std::convertible_to<int>;
   };
 };
 
@@ -308,6 +344,21 @@ template <> struct default_event<input_events::key_up> {
   keycode rawkey{};
   common_event_data common_data{};
 };
+template <> struct default_event<input_events::touch_down> {
+  default_point_coordinate pos{};
+  int finger_index{};
+  common_event_data common_data{};
+};
+template <> struct default_event<input_events::touch_up> {
+  default_point_coordinate pos{};
+  int finger_index{};
+  common_event_data common_data{};
+};
+template <> struct default_event<input_events::touch_move> {
+  default_point_coordinate pos{};
+  int finger_index{};
+  common_event_data common_data{};
+};
 template <> struct default_event<input_events::window_resized> {
   default_point_size_wh sz{};
   common_event_data common_data{};
@@ -324,6 +375,11 @@ template <is_cgui_default_event_c T>
   requires(requires(T const &t) { t.pos; })
 constexpr auto position(T const &t) {
   return t.pos;
+}
+template <is_cgui_default_event_c T>
+  requires(requires(T const &t) { t.finger_index; })
+constexpr auto finger_index(T const &t) {
+  return t.finger_index;
 }
 
 template <is_cgui_default_event_c T> constexpr auto time_stamp(T const &t) {
@@ -363,6 +419,9 @@ using default_mouse_exit_event = default_event<input_events::mouse_exit>;
 using default_mouse_scroll_event = default_event<input_events::mouse_scroll>;
 using default_key_down_event = default_event<input_events::key_down>;
 using default_key_up_event = default_event<input_events::key_up>;
+using default_touch_down_event = default_event<input_events::touch_down>;
+using default_touch_up_event = default_event<input_events::touch_up>;
+using default_touch_move_event = default_event<input_events::touch_move>;
 using default_window_resized_event =
     default_event<input_events::window_resized>;
 
@@ -1137,14 +1196,6 @@ private:
         },
         v);
   }
-
-public:
-  template <typename E>
-  static constexpr auto can_handle = _interpreter_can_handle<
-      input_events::mouse_button_down, input_events::mouse_button_up,
-      input_events::mouse_move, input_events::mouse_scroll,
-      input_events::key_down, input_events::key_up>::op<E>;
-
   template <typename Q>
   static constexpr auto evt_switch(Q &&qi, state &s_in, keymod_state &k_in,
                                    settings const &confi) {
@@ -1184,17 +1235,21 @@ public:
         event_case<input_events::key_down>([](auto const &e, auto &&d) {
           auto &ks = std::get<keymod_state &>(d);
           ks.set_down(call::raw_key(e));
-        }
-
-                                           ),
+        }),
         event_case<input_events::key_up>([](auto const &e, auto &&d) {
           auto &ks = std::get<keymod_state &>(d);
           ks.set_up(call::raw_key(e));
-        }
-
-                                         ) //
+        }) //
     );
   }
+
+public:
+  template <typename E>
+  static constexpr auto can_handle = _interpreter_can_handle<
+      input_events::mouse_button_down, input_events::mouse_button_up,
+      input_events::mouse_move, input_events::mouse_scroll,
+      input_events::key_down, input_events::key_up>::op<E>;
+
   template <typename Evt, typename Q>
   constexpr void handle(Evt const &e, Q &&q) {
     evt_switch(q, s_, keys_, std::as_const(conf_))(e);
@@ -1202,9 +1257,146 @@ public:
   template <typename Q> constexpr void pass_time(TimePoint const &, Q &&) {}
 };
 
+struct _touch_translator_base {
+  struct settings {
+    std::chrono::milliseconds context_menu_hold{500};
+    int drag_threshold = 5;
+  };
+
+  struct no_fingers_t {};
+  struct first_down_t {
+    interpreter_widget_cache held_widget{};
+    default_point_coordinate down_position{};
+  };
+  struct drag_t {
+    interpreter_widget_cache held_widget{};
+    default_point_coordinate start_position{};
+  };
+  using state_var = std::variant<no_fingers_t, first_down_t, drag_t>;
+};
+
+template <typename TimePoint> class touch_translator : _touch_translator_base {
+
+  struct state_t {
+    state_var state;
+    int finger_index{};
+    constexpr state_t() noexcept = default;
+    template <typename T>
+      requires(std::constructible_from<state_var, T>)
+    constexpr state_t(T &&s_in, int fi) noexcept
+        : state(std::forward<T>(s_in)), finger_index(fi) {}
+    constexpr void reset() { state = no_fingers_t{}; }
+  };
+
+  state_t s_;
+  settings conf_;
+
+  template <typename Q>
+  static constexpr auto evt_switch(Q &&qi, state_t &s_in,
+                                   settings const &confi) {
+    return saved_ui_event_switch(
+        std::forward_as_tuple(qi, s_in, confi),
+        // ---------------------
+        event_case<input_events::touch_down>([](auto const &e, auto &&d) {
+          auto &[q, s, conf] = d;
+          auto const pos = call::position(e);
+          s = {first_down_t(_invoke_with_interpreted_event<
+                                interpreted_events::pointer_hold>(
+                                q, pos, call::time_stamp(e), pos),
+                            pos),
+               call::finger_index(e)};
+        }),
+        // ---------------------
+        event_case<input_events::touch_up>([](auto const &e, auto &&d) {
+          auto &[q, s, conf] = d;
+          if (call::finger_index(e) != s.finger_index) {
+            return;
+          }
+          std::visit(
+              [&]<typename S>(S &sv) {
+                if constexpr (std::is_same_v<S, first_down_t>) {
+                  _invoke_with_interpreted_event<
+                      interpreted_events::primary_click>(q, call::position(e),
+                                                         call::time_stamp(e),
+                                                         call::position(e));
+                  send_to_cached_widget<interpreted_events::pointer_exit>(
+                      q, call::time_stamp(e), sv.held_widget);
+                } else if constexpr (std::is_same_v<S, drag_t>) {
+                  send_to_cached_widget<
+                      interpreted_events::pointer_drag_finished_source>(
+                      q, call::time_stamp(e), sv.held_widget, sv.start_position,
+                      call::position(e));
+                  send_to_cached_widget<interpreted_events::pointer_exit>(
+                      q, call::time_stamp(e), sv.held_widget);
+                  _invoke_with_interpreted_event<
+                      interpreted_events::pointer_drag_finished_destination>(
+                      q, call::position(e), call::time_stamp(e),
+                      sv.start_position, call::position(e));
+                }
+              },
+              s.state);
+          s.reset();
+        }),
+        // ---------------------
+        event_case<input_events::touch_move>([](auto const &e, auto &&d) {
+          auto &[q, s, conf] = d;
+          std::visit(
+              [&]<typename S>(S &sv) {
+                // ===
+                if constexpr (std::is_same_v<S, first_down_t>) {
+                  if (distance_sqr(sv.down_position.value(),
+                                   call::position(e).value()) >
+                      (conf.drag_threshold * conf.drag_threshold)) {
+                    s = {drag_t{_invoke_with_interpreted_event(
+                                    q, sv.down_position,
+                                    interpreted_event<
+                                        interpreted_events::pointer_drag_start,
+                                        TimePoint>(call::time_stamp(e),
+                                                   call::position(e)),
+                                    interpreted_event<
+                                        interpreted_events::pointer_drag_move,
+                                        TimePoint>(call::time_stamp(e),
+                                                   sv.down_position,
+                                                   call::position(e))),
+                                sv.down_position},
+                         s.finger_index};
+                  } else {
+                    _invoke_with_interpreted_event<
+                        interpreted_events::pointer_hold, TimePoint>(
+                        q, sv.down_position, call::time_stamp(e),
+                        call::position(e));
+                  }
+                }
+                // ===
+                else if constexpr (std::is_same_v<S, drag_t>) {
+                  send_to_cached_widget<interpreted_events::pointer_drag_move>(
+                      q, call::time_stamp(e), sv.held_widget, sv.start_position,
+                      call::position(e));
+                }
+                // ===
+              },
+              s.state);
+        })
+        // ---------------------
+    );
+  }
+
+public:
+  template <typename E>
+  static constexpr auto can_handle =
+      _interpreter_can_handle<input_events::touch_down, input_events::touch_up,
+                              input_events::touch_move>::op<E>;
+
+  template <typename Evt, typename Q>
+  constexpr void handle(Evt const &e, Q &&q) {
+    evt_switch(q, s_, std::as_const(conf_))(e);
+  }
+};
+
 template <typename TimePoint = std::chrono::steady_clock>
 using default_event_interpreter =
-    event_interpreter<TimePoint, primary_mouse_click_translator>;
+    event_interpreter<TimePoint, primary_mouse_click_translator,
+                      touch_translator>;
 } // namespace cgui
 
 #endif
