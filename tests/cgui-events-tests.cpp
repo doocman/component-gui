@@ -392,6 +392,24 @@ TEST_F(GestureEventsTests, TouchClick) // NOLINT
                           interpreted_events::pointer_exit));
 }
 
+TEST_F(GestureEventsTests, TouchZoom) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {8, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {22, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {6, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {24, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {4, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {26, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {2, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {28, 0}, .finger_index = 1});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
+}
+
 struct GestureEventsHitTests : public ::testing::Test {
   using time_point_t = steady_clock::time_point;
   struct mock_widget {
