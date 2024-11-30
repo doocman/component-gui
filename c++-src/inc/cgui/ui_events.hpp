@@ -7,6 +7,7 @@
 #include <tuple>
 #include <variant>
 
+#include "cgui-call.hpp"
 #include <cgui/cgui-types.hpp>
 #include <cgui/std-backport/utility.hpp>
 
@@ -434,7 +435,10 @@ template <interpreted_events ie_v,
 struct interpreted_event : interpreted_event_impl<ie_v> {
   using _base_t = interpreted_event_impl<ie_v>;
   interpreted_event_basic<TimePoint> common_data;
-  constexpr explicit interpreted_event(auto const &evt)
+  template <typename Evt>
+    requires(std::constructible_from<_base_t, Evt> &&
+             std::constructible_from<interpreted_event_basic<TimePoint>, Evt>)
+  constexpr explicit interpreted_event(Evt const &evt)
       : _base_t(evt), common_data(evt) {}
   constexpr interpreted_event(_base_t const &impl, TimePoint const &ts)
       : _base_t(impl), common_data(ts) {}
@@ -1272,7 +1276,11 @@ struct _touch_translator_base {
     interpreter_widget_cache held_widget{};
     default_point_coordinate start_position{};
   };
-  using state_var = std::variant<no_fingers_t, first_down_t, drag_t>;
+  struct hold_no_drag_t {
+    interpreter_widget_cache held_widget{};
+  };
+  using state_var =
+      std::variant<no_fingers_t, first_down_t, drag_t, hold_no_drag_t>;
 };
 
 template <typename TimePoint> class touch_translator : _touch_translator_base {
@@ -1290,6 +1298,45 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
 
   state_t s_;
   settings conf_;
+
+  static constexpr interpreter_widget_cache
+  move_no_drag(auto &&q, auto const &e, interpreter_widget_cache org_w) {
+    auto constexpr exit_widget = [](interpreter_widget_cache const &w,
+                                    TimePoint const &tp, auto &&qin) {
+      send_to_cached_widget<interpreted_events::pointer_exit>(qin, tp, w);
+    };
+    q(query_interpreted_events<interpreted_events::pointer_enter,
+                               interpreted_events::pointer_hold>(
+        call::position(e),
+        [&]<typename W, typename S>(W &w, S &&sender) {
+          auto tp = call::time_stamp(e);
+          if (!org_w.refers_to(w)) {
+            exit_widget(org_w, tp, q);
+            org_w.reset(w);
+            if constexpr (std::invocable<S &&, W &,
+                                         interpreted_event<
+                                             interpreted_events::pointer_enter,
+                                             TimePoint>>) {
+              sender(w, interpreted_event<interpreted_events::pointer_enter,
+                                          TimePoint>(tp, call::position(e)));
+            }
+          }
+          if constexpr (std::invocable<
+                            S &&, W &,
+                            interpreted_event<interpreted_events::pointer_hold,
+                                              TimePoint>>) {
+            sender(
+                w,
+                interpreted_event<interpreted_events::pointer_hold, TimePoint>(
+                    tp, call::position(e)));
+          }
+        },
+        [&]() noexcept {
+          exit_widget(org_w, call::time_stamp(e), q);
+          org_w.reset();
+        }));
+    return org_w;
+  }
 
   template <typename Q>
   static constexpr auto evt_switch(Q &&qi, state_t &s_in,
@@ -1314,7 +1361,8 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
           }
           std::visit(
               [&]<typename S>(S &sv) {
-                if constexpr (std::is_same_v<S, first_down_t>) {
+                if constexpr (bp::same_as_any<S, first_down_t,
+                                              hold_no_drag_t>) {
                   _invoke_with_interpreted_event<
                       interpreted_events::primary_click>(q, call::position(e),
                                                          call::time_stamp(e),
@@ -1347,25 +1395,31 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                   if (distance_sqr(sv.down_position.value(),
                                    call::position(e).value()) >
                       (conf.drag_threshold * conf.drag_threshold)) {
-                    s = {drag_t{_invoke_with_interpreted_event(
-                                    q, sv.down_position,
-                                    interpreted_event<
-                                        interpreted_events::pointer_drag_start,
-                                        TimePoint>(call::time_stamp(e),
-                                                   call::position(e)),
-                                    interpreted_event<
-                                        interpreted_events::pointer_drag_move,
-                                        TimePoint>(call::time_stamp(e),
-                                                   sv.down_position,
-                                                   call::position(e))),
-                                sv.down_position},
-                         s.finger_index};
+                    auto drag_widget = _invoke_with_interpreted_event(
+                        q, sv.down_position,
+                        interpreted_event<
+                            interpreted_events::pointer_drag_start, TimePoint>(
+                            call::time_stamp(e), call::position(e)),
+                        interpreted_event<interpreted_events::pointer_drag_move,
+                                          TimePoint>(call::time_stamp(e),
+                                                     sv.down_position,
+                                                     call::position(e)));
+                    if (drag_widget) {
+                      s = {drag_t{drag_widget, sv.down_position},
+                           s.finger_index};
+                    } else {
+                      s = {hold_no_drag_t{
+                               move_no_drag(q, e, std::move(sv.held_widget))},
+                           s.finger_index};
+                    }
                   } else {
-                    _invoke_with_interpreted_event<
-                        interpreted_events::pointer_hold, TimePoint>(
-                        q, sv.down_position, call::time_stamp(e),
+                    send_to_cached_widget<interpreted_events::pointer_hold>(
+                        q, call::time_stamp(e), sv.held_widget,
                         call::position(e));
                   }
+                } else if constexpr (bp::same_as_any<S, hold_no_drag_t>) {
+                  sv.held_widget =
+                      move_no_drag(q, e, std::move(sv.held_widget));
                 }
                 // ===
                 else if constexpr (std::is_same_v<S, drag_t>) {
@@ -1374,6 +1428,12 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                       call::position(e));
                 }
                 // ===
+                else if constexpr (std::is_same_v<S, hold_no_drag_t>) {
+                  _invoke_with_interpreted_event<
+                      interpreted_events::pointer_hold, TimePoint>(
+                      q, call::position(e), call::time_stamp(e),
+                      call::position(e));
+                }
               },
               s.state);
         })

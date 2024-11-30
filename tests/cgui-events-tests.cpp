@@ -654,6 +654,39 @@ TEST_F(GestureEventsHitTests, TouchDrag) // NOLINT
                           interpreted_events::pointer_exit));
 }
 
+TEST_F(GestureEventsHitTests, TouchMoveNoDrag) // NOLINT
+{
+  auto constexpr event_setter = [](auto &v) {
+    enable_all_events_except({interpreted_events::pointer_drag_start,
+                              interpreted_events ::pointer_drag_move},
+                             v);
+  };
+  add_widget({{0, 0}, {50, 50}}, event_setter);
+  add_widget({{50, 0}, {100, 50}}, event_setter);
+
+  auto &cl = query.widgets[0].counter;
+  auto &cr = query.widgets[1].counter;
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_touch_down_event());
+  invoke_tt(default_touch_move_event{.pos = {2, 0}});
+  EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_hold));
+  invoke_tt(default_touch_move_event{.pos = {20, 0}});
+  EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_hold));
+  EXPECT_THAT(cr.event_types, IsEmpty());
+  invoke_tt(default_touch_move_event{.pos = {40, 0}});
+  EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_hold));
+  EXPECT_THAT(cr.event_types, IsEmpty());
+  invoke_tt(default_touch_move_event{.pos = {60, 0}});
+  EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_exit));
+  EXPECT_THAT(cr.event_types, ElementsAre(interpreted_events::pointer_enter,
+                                          interpreted_events::pointer_hold));
+  invoke_tt(default_touch_up_event{.pos = {60, 0}});
+  EXPECT_THAT(cr.event_types, ElementsAre(interpreted_events::primary_click,
+                                          interpreted_events::pointer_exit));
+  EXPECT_THAT(cl.event_types, IsEmpty());
+}
+
 // TEST_F(GestureEventsHitTests, Touch)
 
 } // namespace cgui::tests
