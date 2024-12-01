@@ -410,6 +410,56 @@ TEST_F(GestureEventsTests, TouchZoom) // NOLINT
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
 }
 
+TEST_F(GestureEventsTests, TouchPan) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {12, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {22, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {14, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {24, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {16, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {26, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {18, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {28, 0}, .finger_index = 1});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
+}
+
+TEST_F(GestureEventsTests, TouchPanAndZoom) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  auto invoke_tt = get_invoke_tt(to_test);
+  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {11, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {23, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {12, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {26, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {13, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {29, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {14, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {32, 0}, .finger_index = 1});
+  EXPECT_THAT(counter.event_types,
+              UnorderedElementsAre(interpreted_events::scroll,
+                                   interpreted_events::zoom));
+}
+
+TEST_F(GestureEventsTests, TouchPanLevels) {
+  FAIL() << "Not yet implemented.";
+  // Must incorporate touch up and touch down again and check for any
+  // exponential 'exploding' behaviours.
+}
+
+// TODO:
+// TouchZoomLevels
+// NoDragAfterPan
+// NoDragAfterZoom
+// NoDragAfterPanAndZoom
+
 struct GestureEventsHitTests : public ::testing::Test {
   using time_point_t = steady_clock::time_point;
   struct mock_widget {

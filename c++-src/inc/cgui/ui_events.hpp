@@ -865,6 +865,8 @@ inline auto is_cached_widget(interpreter_widget_cache const &&) = delete;
 
 template <interpreted_events evt_type, typename TP, typename Q,
           typename... Args>
+  requires(
+      std::constructible_from<interpreted_event<evt_type, TP>, TP, Args...>)
 constexpr interpreter_widget_cache
 _invoke_with_interpreted_event(Q &&q, point_coordinate auto const &pos,
                                TP const &tp, Args &&...args) {
@@ -1265,25 +1267,32 @@ struct _touch_translator_base {
   struct settings {
     std::chrono::milliseconds context_menu_hold{500};
     int drag_threshold = 5;
+    int zoom_threshold = 5;
+    int scroll_threshold = 5;
   };
 
   struct no_fingers_t {};
   struct first_down_t {
     interpreter_widget_cache held_widget{};
     default_point_coordinate down_position{};
+    default_point_coordinate last_position{};
   };
   struct drag_t {
     interpreter_widget_cache held_widget{};
-    default_point_coordinate start_position{};
+    default_point_coordinate down_position{};
   };
   struct hold_no_drag_t {
     interpreter_widget_cache held_widget{};
+    default_point_coordinate down_position{};
+    default_point_coordinate last_position{};
   };
   using state_var =
       std::variant<no_fingers_t, first_down_t, drag_t, hold_no_drag_t>;
 };
 
 template <typename TimePoint> class touch_translator : _touch_translator_base {
+
+  static constexpr int max_fingers = 5;
 
   struct state_t {
     state_var state;
@@ -1296,8 +1305,84 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
     constexpr void reset() { state = no_fingers_t{}; }
   };
 
-  state_t s_;
+  std::array<state_t, max_fingers> states_;
   settings conf_;
+  int active_fingers_{};
+
+  template <typename... AllowedTypes>
+  constexpr bool get_combo_state(int finger_to_avoid, TimePoint,
+                                 auto &&callback) {
+    if (active_fingers_ < 2) {
+      return false;
+    }
+    for (auto &s : states_) {
+      if (s.finger_index != finger_to_avoid) {
+        if (std::visit(
+                [&callback]<typename S>(S &s) {
+                  if constexpr (bp::same_as_any<S, AllowedTypes...>) {
+                    callback(s);
+                    return true;
+                  } else {
+                    return false;
+                  }
+                },
+                s.state)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  constexpr state_var *state_from_finger(int index) noexcept {
+    state_t *first_unused{};
+    for (auto &s : states_) {
+      if (s.finger_index == index) {
+        return &s.state;
+      }
+      if (first_unused == nullptr &&
+          std::holds_alternative<no_fingers_t>(s.state)) {
+        first_unused = &s;
+      }
+    }
+    if (first_unused != nullptr) {
+      first_unused->finger_index = index;
+      return &first_unused->state;
+    }
+    return nullptr;
+  }
+
+  static constexpr std::optional<float> get_opt_zoom_value(
+      point_coordinate auto const &p1_org, point_coordinate auto const &p1_new,
+      point_coordinate auto const &p2_org, point_coordinate auto const &p2_new,
+      settings const &conf) {
+    auto old_dist = distance_sqr(p1_org, p2_org);
+    auto new_dist = distance_sqr(p1_new, p2_new);
+    if (std::abs(old_dist - new_dist) >=
+        (conf.zoom_threshold * conf.zoom_threshold)) {
+      return float{};
+    }
+    return {};
+  }
+  static constexpr std::optional<std::pair<float, float>>
+  get_opt_scroll_value(point_coordinate auto const &p1_org,
+                       point_coordinate auto const &p1_new,
+                       point_coordinate auto const &p2_org,
+                       point_coordinate auto const &p2_new, settings const &s) {
+    auto old_center = divide(add(p1_org, p2_org), 2);
+    auto new_center = divide(add(p1_new, p2_new), 2);
+    auto dist_sqr = distance_sqr(new_center, old_center);
+    if (dist_sqr > (s.scroll_threshold * s.scroll_threshold)) {
+      return std::pair<float, float>{};
+    }
+    return {};
+  }
+
+  constexpr void reset_state(state_var &s) {
+    CGUI_ASSERT((!std::holds_alternative<no_fingers_t>(s)));
+    s = no_fingers_t{};
+    --active_fingers_;
+  }
 
   static constexpr interpreter_widget_cache
   move_no_drag(auto &&q, auto const &e, interpreter_widget_cache org_w) {
@@ -1339,26 +1424,27 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
   }
 
   template <typename Q>
-  static constexpr auto evt_switch(Q &&qi, state_t &s_in,
-                                   settings const &confi) {
+  constexpr auto evt_switch(Q &&qi, state_var &s_in, settings const &confi) {
     return saved_ui_event_switch(
-        std::forward_as_tuple(qi, s_in, confi),
+        std::forward_as_tuple(qi, s_in, confi, *this),
         // ---------------------
         event_case<input_events::touch_down>([](auto const &e, auto &&d) {
-          auto &[q, s, conf] = d;
+          auto &[q, s, conf, self] = d;
           auto const pos = call::position(e);
-          s = {first_down_t(_invoke_with_interpreted_event<
-                                interpreted_events::pointer_hold>(
-                                q, pos, call::time_stamp(e), pos),
-                            pos),
-               call::finger_index(e)};
+          if (std::holds_alternative<no_fingers_t>(s)) {
+            ++self.active_fingers_;
+          } else {
+            // Something is terribly wrong if we hit this.
+            CGUI_ASSERT(false);
+          }
+          s = first_down_t(
+              _invoke_with_interpreted_event<interpreted_events::pointer_hold>(
+                  q, pos, call::time_stamp(e), pos),
+              pos);
         }),
         // ---------------------
         event_case<input_events::touch_up>([](auto const &e, auto &&d) {
-          auto &[q, s, conf] = d;
-          if (call::finger_index(e) != s.finger_index) {
-            return;
-          }
+          auto &[q, s, conf, self] = d;
           std::visit(
               [&]<typename S>(S &sv) {
                 if constexpr (bp::same_as_any<S, first_down_t,
@@ -1372,29 +1458,67 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                 } else if constexpr (std::is_same_v<S, drag_t>) {
                   send_to_cached_widget<
                       interpreted_events::pointer_drag_finished_source>(
-                      q, call::time_stamp(e), sv.held_widget, sv.start_position,
+                      q, call::time_stamp(e), sv.held_widget, sv.down_position,
                       call::position(e));
                   send_to_cached_widget<interpreted_events::pointer_exit>(
                       q, call::time_stamp(e), sv.held_widget);
                   _invoke_with_interpreted_event<
                       interpreted_events::pointer_drag_finished_destination>(
                       q, call::position(e), call::time_stamp(e),
-                      sv.start_position, call::position(e));
+                      sv.down_position, call::position(e));
                 }
               },
-              s.state);
-          s.reset();
+              s);
+          self.reset_state(s);
         }),
         // ---------------------
         event_case<input_events::touch_move>([](auto const &e, auto &&d) {
-          auto &[q, s, conf] = d;
+          auto &[q, s, conf, self] = d;
           std::visit(
               [&]<typename S>(S &sv) {
                 // ===
+                if constexpr (requires() { sv.last_position; }) {
+                  sv.last_position = call::position(e);
+                }
                 if constexpr (std::is_same_v<S, first_down_t>) {
-                  if (distance_sqr(sv.down_position.value(),
-                                   call::position(e).value()) >
-                      (conf.drag_threshold * conf.drag_threshold)) {
+                  if (bool zs_made{};
+                      self.template get_combo_state<first_down_t,
+                                                    hold_no_drag_t>(
+                          call::finger_index(e), call::time_stamp(e),
+                          [&](auto &s2) {
+                            auto combo_dist_sqr =
+                                distance_sqr(s2.down_position.value(),
+                                             call::position(e).value());
+
+                            auto zoom_value = get_opt_zoom_value(
+                                s2.down_position, s2.last_position,
+                                sv.down_position, call::position(e), conf);
+                            auto scroll_value = get_opt_scroll_value(
+                                s2.down_position, s2.last_position,
+                                sv.down_position, call::position(e), conf);
+                            zs_made = zoom_value || scroll_value;
+                            if (zoom_value) {
+                              _invoke_with_interpreted_event<
+                                  interpreted_events::zoom, TimePoint>(
+                                  q, call::position(e), call::time_stamp(e),
+                                  call::position(e), *zoom_value);
+                            }
+                            if (scroll_value) {
+                              auto [scx, scy] = *scroll_value;
+                              _invoke_with_interpreted_event<
+                                  interpreted_events::scroll, TimePoint>(
+                                  q, call::position(e), call::time_stamp(e),
+                                  call::position(e), scx, scy);
+                            }
+                          }) &&
+                      zs_made) {
+                    return;
+                  }
+
+                  auto dist_sqr = distance_sqr(sv.down_position.value(),
+                                               call::position(e).value());
+
+                  if (dist_sqr > (conf.drag_threshold * conf.drag_threshold)) {
                     auto drag_widget = _invoke_with_interpreted_event(
                         q, sv.down_position,
                         interpreted_event<
@@ -1405,12 +1529,11 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                                                      sv.down_position,
                                                      call::position(e)));
                     if (drag_widget) {
-                      s = {drag_t{drag_widget, sv.down_position},
-                           s.finger_index};
+                      s = drag_t{drag_widget, sv.down_position};
                     } else {
-                      s = {hold_no_drag_t{
-                               move_no_drag(q, e, std::move(sv.held_widget))},
-                           s.finger_index};
+                      s = hold_no_drag_t{
+                          move_no_drag(q, e, std::move(sv.held_widget)),
+                          sv.down_position, call::position(e)};
                     }
                   } else {
                     send_to_cached_widget<interpreted_events::pointer_hold>(
@@ -1424,7 +1547,7 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                 // ===
                 else if constexpr (std::is_same_v<S, drag_t>) {
                   send_to_cached_widget<interpreted_events::pointer_drag_move>(
-                      q, call::time_stamp(e), sv.held_widget, sv.start_position,
+                      q, call::time_stamp(e), sv.held_widget, sv.down_position,
                       call::position(e));
                 }
                 // ===
@@ -1435,7 +1558,7 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                       call::position(e));
                 }
               },
-              s.state);
+              s);
         })
         // ---------------------
     );
@@ -1449,7 +1572,9 @@ public:
 
   template <typename Evt, typename Q>
   constexpr void handle(Evt const &e, Q &&q) {
-    evt_switch(q, s_, std::as_const(conf_))(e);
+    if (auto s = state_from_finger(call::finger_index(e)); s != nullptr) {
+      evt_switch(q, *s, std::as_const(conf_))(e);
+    }
   }
 };
 

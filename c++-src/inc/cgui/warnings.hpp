@@ -18,7 +18,7 @@ constexpr void unused(auto &&...) {}
 constexpr void
 cgui_assert(auto &&val, std::string_view text = {},
             std::source_location const &loc = std::source_location::current()) {
-  if (!val) {
+  if (!val) [[unlikely]] {
     std::cerr << loc.file_name() << ':' << loc.line() << ": Assertion failed\n";
     if (!empty(text)) {
       std::cerr << '\t' << text;
