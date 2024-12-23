@@ -559,9 +559,11 @@ template <> struct interpreted_event_impl<interpreted_events::scroll> {
 template <> struct interpreted_event_impl<interpreted_events::zoom> {
   using position_t = default_point_coordinate;
   position_t pos{};
-  float scale{}; ///> Number above 1. -> zoom in / make things bigger.
-  constexpr interpreted_event_impl(point_coordinate auto const &p, float sc)
-      : pos(copy_coordinate<position_t>(p)), scale(sc) {}
+  float scale_x{}; ///> Number above 1. -> zoom in / make things bigger.
+  float scale_y{}; ///> Number above 1. -> zoom in / make things bigger.
+  constexpr interpreted_event_impl(point_coordinate auto const &p, float scx,
+                                   float scy)
+      : pos(copy_coordinate<position_t>(p)), scale_x(scx), scale_y(scy) {}
 };
 
 struct cgui_mouse_exit_event {
@@ -1230,7 +1232,7 @@ private:
             auto scale = std::pow(base_scale, call::delta_y(e));
             _invoke_with_interpreted_event<interpreted_events::zoom>(
                 q, call::position(e), call::time_stamp(e), call::position(e),
-                scale);
+                scale, scale);
           } else {
             _invoke_with_interpreted_event<interpreted_events::scroll>(
                 q, call::position(e), call::time_stamp(e), call::position(e),
@@ -1276,6 +1278,10 @@ struct _touch_translator_base {
     interpreter_widget_cache held_widget{};
     default_point_coordinate down_position{};
     default_point_coordinate last_position{};
+
+    constexpr first_down_t(auto &&hw, default_point_coordinate pos)
+        : held_widget(std::forward<decltype(hw)>(hw)), down_position(pos),
+          last_position(pos) {}
   };
   struct drag_t {
     interpreter_widget_cache held_widget{};
@@ -1286,8 +1292,105 @@ struct _touch_translator_base {
     default_point_coordinate down_position{};
     default_point_coordinate last_position{};
   };
+  struct _scroll_zoom_base {
+    interpreter_widget_cache widget;
+    default_point_coordinate last_position;
+    int combo_state_index{};
+    constexpr _scroll_zoom_base(auto &&w, default_point_coordinate lp,
+                                int csi) noexcept
+        : widget(w), last_position(lp), combo_state_index(csi) {}
+  };
+
+  struct scroll_t : _scroll_zoom_base {
+    using _scroll_zoom_base::_scroll_zoom_base;
+  };
+  struct zoom_t : _scroll_zoom_base {
+    using _scroll_zoom_base::_scroll_zoom_base;
+  };
+  struct scroll_zoom_t : _scroll_zoom_base {
+    using _scroll_zoom_base::_scroll_zoom_base;
+  };
+  template <typename T>
+  static constexpr bool is_scroller =
+      bp::same_as_any<T, scroll_t, scroll_zoom_t>;
+  template <typename T>
+  static constexpr bool is_zoomer = bp::same_as_any<T, zoom_t, scroll_zoom_t>;
+
   using state_var =
-      std::variant<no_fingers_t, first_down_t, drag_t, hold_no_drag_t>;
+      std::variant<no_fingers_t, first_down_t, drag_t, hold_no_drag_t, scroll_t,
+                   zoom_t, scroll_zoom_t>;
+
+  template <typename T>
+    requires(bp::same_as_any<T, scroll_t, zoom_t, scroll_zoom_t>)
+  static constexpr void
+  enter(auto &&q, auto const &e, default_point_coordinate position,
+        std::pair<state_var *, int> result1,
+        std::pair<state_var *, int> result2,
+        default_point_coordinate r2_position, auto const &scroll_or_zoom_val,
+        auto const &...opt_zoom_value) {
+    using time_point_t = std::remove_cvref_t<decltype(call::time_stamp(e))>;
+    using scroll_event_t =
+        interpreted_event<interpreted_events::scroll, time_point_t>;
+    using zoom_event_t =
+        interpreted_event<interpreted_events::zoom, time_point_t>;
+    auto get_zoom = [&]() {
+      if constexpr (std::same_as<T, scroll_zoom_t>) {
+        static_assert(sizeof...(opt_zoom_value) == 1, "Missing zoom-value");
+        return bp::first_of(opt_zoom_value...);
+      } else {
+        static_assert(sizeof...(opt_zoom_value) == 0, "Too many arguments");
+        return scroll_or_zoom_val;
+      }
+    };
+    // We had to set this in a separate function to work-around a bug in clang
+    // that caused it to try to decompose scroll_or_zoom_val when it was a
+    // simple float-value (in the pure zoom-case).
+    auto do_send_scroll = [&](auto &w, auto &&s) {
+      if constexpr (is_scroller<T>) {
+        auto [scx, scy] = scroll_or_zoom_val;
+        s(w, scroll_event_t(call::time_stamp(e), position, scx, scy));
+      } else {
+        unused(w, s);
+      }
+    };
+    // We had to set this in a separate function to work-around a bug in clang
+    // that caused it to try to use the pair in scroll_or_zoom_val when it was
+    // in the pure scroll case..
+    auto do_send_zoom = [&](auto &w, auto &&s) {
+      if constexpr (is_zoomer<T>) {
+        auto [scx, scy] = get_zoom();
+        s(w, zoom_event_t(call::time_stamp(e), position, scx, scy));
+      } else {
+        unused(w, s);
+      }
+    };
+    q(query_interpreted_events<interpreted_events::scroll,
+                               interpreted_events::zoom>(
+        position, [&]<typename W, typename S>(W &w, S &&sender) {
+          constexpr bool should_scroll =
+              is_scroller<T>; // std::invocable<S, W&, scroll_event_t> &&
+                              // is_scroller<T>;
+          constexpr bool should_zoom =
+              std::invocable<S, W &, zoom_event_t> && is_zoomer<T>;
+          if constexpr (should_scroll) {
+            do_send_scroll(w, sender);
+          }
+          if constexpr (should_zoom) {
+            do_send_zoom(w, sender);
+          }
+          if constexpr (should_scroll && should_zoom) {
+            *result1.first =
+                scroll_zoom_t(w, call::position(e), result2.second);
+            *result2.first = scroll_zoom_t(w, r2_position, result1.second);
+          } else if constexpr (should_scroll) {
+            *result1.first = scroll_t(w, call::position(e), result2.second);
+            *result2.first = scroll_t(w, r2_position, result1.second);
+          } else if constexpr (should_zoom) {
+            *result1.first = zoom_t(w, call::position(e), result2.second);
+            *result2.first = zoom_t(w, r2_position, result1.second);
+          }
+        }));
+  }
 };
 
 template <typename TimePoint> class touch_translator : _touch_translator_base {
@@ -1302,7 +1405,10 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
       requires(std::constructible_from<state_var, T>)
     constexpr state_t(T &&s_in, int fi) noexcept
         : state(std::forward<T>(s_in)), finger_index(fi) {}
-    constexpr void reset() { state = no_fingers_t{}; }
+    constexpr void reset() {
+      std::cout << "ASDAD RESETTING\n";
+      state = no_fingers_t{};
+    }
   };
 
   std::array<state_t, max_fingers> states_;
@@ -1315,54 +1421,89 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
     if (active_fingers_ < 2) {
       return false;
     }
-    for (auto &s : states_) {
-      if (s.finger_index != finger_to_avoid) {
+    for (int i{}; auto &s_fi : states_) {
+      if (s_fi.finger_index != finger_to_avoid) {
         if (std::visit(
-                [&callback]<typename S>(S &s) {
+                [&callback, i]<typename S>(S &s) {
                   if constexpr (bp::same_as_any<S, AllowedTypes...>) {
-                    callback(s);
+                    callback(s, i);
                     return true;
                   } else {
                     return false;
                   }
                 },
-                s.state)) {
+                s_fi.state)) {
           return true;
         }
       }
+      ++i;
     }
     return false;
   }
 
-  constexpr state_var *state_from_finger(int index) noexcept {
+  // Search for a state that can be associated with index.
+  constexpr std::pair<state_var *, int> state_for_finger(int index) noexcept {
     state_t *first_unused{};
-    for (auto &s : states_) {
+    int first_unused_index{};
+    for (int i = 0; auto &s : states_) {
       if (s.finger_index == index) {
-        return &s.state;
+        return {&s.state, i};
       }
       if (first_unused == nullptr &&
           std::holds_alternative<no_fingers_t>(s.state)) {
         first_unused = &s;
+        first_unused_index = i;
       }
+      ++i;
     }
     if (first_unused != nullptr) {
       first_unused->finger_index = index;
-      return &first_unused->state;
+      return {&first_unused->state, first_unused_index};
     }
-    return nullptr;
+    return {nullptr, -1};
   }
 
-  static constexpr std::optional<float> get_opt_zoom_value(
+  static constexpr std::pair<float, float>
+  zoom_from_distances(float const &old_distance,
+                      point_coordinate auto const &new_distances) {
+    auto get_scale = [&](auto xy_of) {
+      return std::clamp(
+          std::abs(static_cast<float>(xy_of(new_distances.value()))) /
+                  old_distance +
+              0.0001f,
+          1.f / 128.f, 128.f);
+    };
+    return {get_scale(call::x_of), get_scale(call::y_of)};
+  }
+
+  static constexpr std::pair<float, float>
+  get_zoom_value(point_coordinate auto const &p1_org,
+                 point_coordinate auto const &p1_new,
+                 point_coordinate auto const &p2_org,
+                 point_coordinate auto const &p2_new) {
+    auto old_distances = sub(p2_org, p1_org);
+    auto old_dist = length(old_distances.value());
+    auto new_distances = sub(p2_new, p1_new);
+    return zoom_from_distances(old_dist, new_distances);
+  }
+
+  static constexpr std::optional<std::pair<float, float>> get_opt_zoom_value(
       point_coordinate auto const &p1_org, point_coordinate auto const &p1_new,
       point_coordinate auto const &p2_org, point_coordinate auto const &p2_new,
       settings const &conf) {
-    auto old_dist = distance_sqr(p1_org, p2_org);
-    auto new_dist = distance_sqr(p1_new, p2_new);
-    if (std::abs(old_dist - new_dist) >=
-        (conf.zoom_threshold * conf.zoom_threshold)) {
-      return float{};
+    auto old_distances = sub(p2_org, p1_org);
+    auto new_distances = sub(p2_new, p1_new);
+    auto old_dist = length(old_distances.value());
+    auto new_dist = length(new_distances.value());
+    if (std::abs(old_dist - new_dist) >= conf.zoom_threshold) {
+      return zoom_from_distances(old_dist, new_distances);
     }
     return {};
+  }
+  static constexpr std::pair<float, float>
+  get_scroll_value(auto const &old_center, auto const &new_center) {
+    auto center_diff = sub(new_center, old_center).value();
+    return {call::x_of(center_diff), call::y_of(center_diff)};
   }
   static constexpr std::optional<std::pair<float, float>>
   get_opt_scroll_value(point_coordinate auto const &p1_org,
@@ -1371,15 +1512,51 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                        point_coordinate auto const &p2_new, settings const &s) {
     auto old_center = divide(add(p1_org, p2_org), 2);
     auto new_center = divide(add(p1_new, p2_new), 2);
-    auto dist_sqr = distance_sqr(new_center, old_center);
+    auto pot_value = get_scroll_value(old_center, new_center);
+    auto [x, y] = pot_value;
+    auto dist_sqr = square_value(x) + square_value(y);
     if (dist_sqr > (s.scroll_threshold * s.scroll_threshold)) {
-      return std::pair<float, float>{};
+      return pot_value;
     }
     return {};
   }
 
+  template <typename S, typename Q, typename Event>
+    requires(is_scroller<S> || is_zoomer<S>)
+  constexpr void move_in_state(S &s, Q &&q, Event const &e) {
+    CGUI_ASSERT(s.combo_state_index >= 0);
+    CGUI_ASSERT(s.combo_state_index < max_fingers);
+    auto &cs_holder = states_[s.combo_state_index];
+    CGUI_ASSERT(std::holds_alternative<S>(cs_holder.state));
+    auto &cs = std::get<S>(cs_holder.state);
+    CGUI_ASSERT(cs.combo_state_index != s.combo_state_index);
+    auto new_pos = center_between(call::position(e), cs.last_position);
+    auto old_pos = center_between(s.last_position, cs.last_position);
+    if constexpr (is_scroller<S>) {
+      // send scroll
+      auto [scx, scy] = get_scroll_value(old_pos, new_pos);
+      send_to_cached_widget<interpreted_events::scroll>(
+          q, call::time_stamp(e), s.widget, new_pos, scx, scy);
+    }
+    if constexpr (is_zoomer<S>) {
+      auto [dx, dy] = get_zoom_value(s.last_position, call::position(e),
+                                     cs.last_position, cs.last_position);
+      send_to_cached_widget<interpreted_events::zoom>(
+          q, call::time_stamp(e), s.widget, new_pos, dx, dy);
+      // send zoom
+    }
+    if constexpr (!is_scroller<S>) {
+      // check if scroll should be enabled, then enable it and change the
+      // states.
+    } else if constexpr (!is_zoomer<S>) {
+      // check if zoom should be enabled, then enable it and change the states.
+    }
+    s.last_position = call::position(e);
+  }
+
   constexpr void reset_state(state_var &s) {
     CGUI_ASSERT((!std::holds_alternative<no_fingers_t>(s)));
+    std::cout << "WE DO PROPER RESETTING\n";
     s = no_fingers_t{};
     --active_fingers_;
   }
@@ -1424,12 +1601,13 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
   }
 
   template <typename Q>
-  constexpr auto evt_switch(Q &&qi, state_var &s_in, settings const &confi) {
+  constexpr auto evt_switch(Q &&qi, state_var &s_in, int const &state_index,
+                            settings const &confi) {
     return saved_ui_event_switch(
-        std::forward_as_tuple(qi, s_in, confi, *this),
+        std::forward_as_tuple(qi, s_in, confi, state_index, *this),
         // ---------------------
         event_case<input_events::touch_down>([](auto const &e, auto &&d) {
-          auto &[q, s, conf, self] = d;
+          auto &[q, s, conf, si, self] = d;
           auto const pos = call::position(e);
           if (std::holds_alternative<no_fingers_t>(s)) {
             ++self.active_fingers_;
@@ -1444,7 +1622,7 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
         }),
         // ---------------------
         event_case<input_events::touch_up>([](auto const &e, auto &&d) {
-          auto &[q, s, conf, self] = d;
+          auto &[q, s, conf, si, self] = d;
           std::visit(
               [&]<typename S>(S &sv) {
                 if constexpr (bp::same_as_any<S, first_down_t,
@@ -1473,22 +1651,26 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
         }),
         // ---------------------
         event_case<input_events::touch_move>([](auto const &e, auto &&d) {
-          auto &[q, s, conf, self] = d;
+          auto &[q, s, conf, si, self] = d;
           std::visit(
               [&]<typename S>(S &sv) {
                 // ===
-                if constexpr (requires() { sv.last_position; }) {
+                if constexpr (bp::same_as_any<S, first_down_t,
+                                              hold_no_drag_t>) {
                   sv.last_position = call::position(e);
                 }
-                if constexpr (std::is_same_v<S, first_down_t>) {
-                  if (bool zs_made{};
-                      self.template get_combo_state<first_down_t,
+                if constexpr (is_scroller<S> || is_zoomer<S>) {
+                  self.move_in_state(sv, q, e);
+                } else if constexpr (std::is_same_v<S, first_down_t>) {
+                  if (self.template get_combo_state<first_down_t,
                                                     hold_no_drag_t>(
                           call::finger_index(e), call::time_stamp(e),
-                          [&](auto &s2) {
+                          [&](auto &s2, int si2) {
                             auto combo_dist_sqr =
                                 distance_sqr(s2.down_position.value(),
                                              call::position(e).value());
+                            auto org_center = center_between(s2.down_position,
+                                                             sv.down_position);
 
                             auto zoom_value = get_opt_zoom_value(
                                 s2.down_position, s2.last_position,
@@ -1496,22 +1678,24 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                             auto scroll_value = get_opt_scroll_value(
                                 s2.down_position, s2.last_position,
                                 sv.down_position, call::position(e), conf);
-                            zs_made = zoom_value || scroll_value;
-                            if (zoom_value) {
-                              _invoke_with_interpreted_event<
-                                  interpreted_events::zoom, TimePoint>(
-                                  q, call::position(e), call::time_stamp(e),
-                                  call::position(e), *zoom_value);
+                            CGUI_ASSERT(si2 < max_fingers);
+                            auto &s2_vfi = self.states_[si2];
+                            auto s2_pos = s2.last_position;
+                            if (zoom_value && scroll_value) {
+                              touch_translator::enter<scroll_zoom_t>(
+                                  q, e, org_center, {&s, si},
+                                  {&s2_vfi.state, si2}, s2_pos, *scroll_value,
+                                  *zoom_value);
+                            } else if (zoom_value) {
+                              touch_translator::enter<zoom_t>(
+                                  q, e, org_center, {&s, si},
+                                  {&s2_vfi.state, si2}, s2_pos, *zoom_value);
+                            } else if (scroll_value) {
+                              touch_translator::enter<scroll_t>(
+                                  q, e, org_center, {&s, si},
+                                  {&s2_vfi.state, si2}, s2_pos, *scroll_value);
                             }
-                            if (scroll_value) {
-                              auto [scx, scy] = *scroll_value;
-                              _invoke_with_interpreted_event<
-                                  interpreted_events::scroll, TimePoint>(
-                                  q, call::position(e), call::time_stamp(e),
-                                  call::position(e), scx, scy);
-                            }
-                          }) &&
-                      zs_made) {
+                          })) {
                     return;
                   }
 
@@ -1572,8 +1756,9 @@ public:
 
   template <typename Evt, typename Q>
   constexpr void handle(Evt const &e, Q &&q) {
-    if (auto s = state_from_finger(call::finger_index(e)); s != nullptr) {
-      evt_switch(q, *s, std::as_const(conf_))(e);
+    if (auto [s, index] = state_for_finger(call::finger_index(e));
+        s != nullptr) {
+      evt_switch(q, *s, index, std::as_const(conf_))(e);
     }
   }
 };
