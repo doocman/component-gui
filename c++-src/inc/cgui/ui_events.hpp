@@ -851,7 +851,8 @@ class interpreter_widget_cache {
   default_point_rect area_{};
 
 public:
-  constexpr explicit interpreter_widget_cache(auto &w) requires(!bp::cvref_type<decltype(w), interpreter_widget_cache>)
+  constexpr explicit interpreter_widget_cache(auto &w)
+    requires(!bp::cvref_type<decltype(w), interpreter_widget_cache>)
       : impl_(&w), area_(copy_box<default_point_rect>(call::area(w))) {}
   constexpr interpreter_widget_cache() noexcept = default;
 
@@ -1307,9 +1308,10 @@ struct _touch_translator_base {
     default_point_coordinate down_position{};
     default_point_coordinate last_position;
     int combo_state_index{};
-    constexpr _scroll_zoom_base(auto &&w, default_point_coordinate dp, default_point_coordinate lp,
-                                int csi) noexcept
-        : widget(w), down_position(dp), last_position(lp), combo_state_index(csi) {}
+    constexpr _scroll_zoom_base(auto &&w, default_point_coordinate dp,
+                                default_point_coordinate lp, int csi) noexcept
+        : widget(w), down_position(dp), last_position(lp),
+          combo_state_index(csi) {}
   };
 
   struct scroll_t : _scroll_zoom_base {
@@ -1336,7 +1338,8 @@ struct _touch_translator_base {
     requires(bp::same_as_any<T, scroll_t, zoom_t, scroll_zoom_t>)
   static constexpr void
   enter(auto &&q, auto const &e, default_point_coordinate position,
-        std::pair<default_point_coordinate, default_point_coordinate> const& down_positions,
+        std::pair<default_point_coordinate, default_point_coordinate> const
+            &down_positions,
         std::pair<state_var *, int> result1,
         std::pair<state_var *, int> result2,
         default_point_coordinate r2_position, auto const &scroll_or_zoom_val,
@@ -1392,15 +1395,20 @@ struct _touch_translator_base {
             do_send_zoom(w, sender);
           }
           if constexpr (should_scroll && should_zoom) {
-            *result1.first =
-                scroll_zoom_t(w, down_positions.first, call::position(e), result2.second);
-            *result2.first = scroll_zoom_t(w, down_positions.second, r2_position, result1.second);
+            *result1.first = scroll_zoom_t(w, down_positions.first,
+                                           call::position(e), result2.second);
+            *result2.first = scroll_zoom_t(w, down_positions.second,
+                                           r2_position, result1.second);
           } else if constexpr (should_scroll) {
-            *result1.first = scroll_t(w, down_positions.first, call::position(e), result2.second);
-            *result2.first = scroll_t(w, down_positions.second, r2_position, result1.second);
+            *result1.first = scroll_t(w, down_positions.first,
+                                      call::position(e), result2.second);
+            *result2.first =
+                scroll_t(w, down_positions.second, r2_position, result1.second);
           } else if constexpr (should_zoom) {
-            *result1.first = zoom_t(w, down_positions.first, call::position(e), result2.second);
-            *result2.first = zoom_t(w, down_positions.second, r2_position, result1.second);
+            *result1.first = zoom_t(w, down_positions.first, call::position(e),
+                                    result2.second);
+            *result2.first =
+                zoom_t(w, down_positions.second, r2_position, result1.second);
           }
         }));
   }
@@ -1536,7 +1544,8 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
 
   template <typename S, typename Q, typename Event>
     requires(is_scroller<S> || is_zoomer<S>)
-  constexpr void move_in_state(S &s, Q &&q, Event const &e, state_var& main_state) {
+  constexpr void move_in_state(S &s, Q &&q, Event const &e,
+                               state_var &main_state) {
     CGUI_ASSERT(s.combo_state_index >= 0);
     CGUI_ASSERT(s.combo_state_index < max_fingers);
     auto &cs_holder = states_[s.combo_state_index];
@@ -1564,13 +1573,18 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
       // states.
     } else if constexpr (!is_zoomer<S>) {
       // check if zoom should be enabled, then enable it and change the states.
-      if(auto zl = get_opt_zoom_value(cs.down_position, cs.last_position, s.down_position, call::position(e), conf_)) {
+      if (auto zl =
+              get_opt_zoom_value(cs.down_position, cs.last_position,
+                                 s.down_position, call::position(e), conf_)) {
         auto [dx, dy] = *zl;
         send_to_cached_widget<interpreted_events::zoom>(
             q, call::time_stamp(e), s.widget, new_pos, dx, dy);
-        auto new_state1 = scroll_zoom_t(std::move(s).widget, s.down_position, s.last_position, s.combo_state_index);
-        main_state = scroll_zoom_t(std::move(s).widget, s.down_position, s.last_position, s.combo_state_index);
-        cs_holder.state = scroll_zoom_t(std::move(s).widget, cs.down_position, cs.last_position, cs.combo_state_index);
+        auto new_state1 = scroll_zoom_t(std::move(s).widget, s.down_position,
+                                        s.last_position, s.combo_state_index);
+        main_state = scroll_zoom_t(std::move(s).widget, s.down_position,
+                                   s.last_position, s.combo_state_index);
+        cs_holder.state = scroll_zoom_t(std::move(s).widget, cs.down_position,
+                                        cs.last_position, cs.combo_state_index);
       }
     }
   }
@@ -1716,17 +1730,22 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                             auto s2_pos = s2.last_position;
                             if (zoom_value && scroll_value) {
                               touch_translator::enter<scroll_zoom_t>(
-                                  q, e, org_center, {sv.down_position, s2.down_position}, {&s, si},
-                                  {&s2_vfi.state, si2}, s2_pos, *scroll_value,
-                                  *zoom_value);
+                                  q, e, org_center,
+                                  {sv.down_position, s2.down_position},
+                                  {&s, si}, {&s2_vfi.state, si2}, s2_pos,
+                                  *scroll_value, *zoom_value);
                             } else if (zoom_value) {
                               touch_translator::enter<zoom_t>(
-                                  q, e, org_center, {sv.down_position, s2.down_position}, {&s, si},
-                                  {&s2_vfi.state, si2}, s2_pos, *zoom_value);
+                                  q, e, org_center,
+                                  {sv.down_position, s2.down_position},
+                                  {&s, si}, {&s2_vfi.state, si2}, s2_pos,
+                                  *zoom_value);
                             } else if (scroll_value) {
                               touch_translator::enter<scroll_t>(
-                                  q, e, org_center, {sv.down_position, s2.down_position}, {&s, si},
-                                  {&s2_vfi.state, si2}, s2_pos, *scroll_value);
+                                  q, e, org_center,
+                                  {sv.down_position, s2.down_position},
+                                  {&s, si}, {&s2_vfi.state, si2}, s2_pos,
+                                  *scroll_value);
                             }
                           })) {
                     return;
