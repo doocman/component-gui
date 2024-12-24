@@ -676,6 +676,14 @@ public:
   constexpr void pass_time(TP &&tp, F &&f) {
     unused(tp, f);
   }
+
+  template <template <typename> typename Interpreter>
+    requires(
+        (std::is_same_v<Interpreter<TimePoint>, Interpreters<TimePoint>>) ||
+        ...)
+  friend constexpr auto &settings(event_interpreter &ei) {
+    return ei.get(std::type_identity<Interpreter<TimePoint>>{}).get_settings();
+  }
 };
 
 template <typename EventType, EventType evt_val, typename F>
@@ -1263,6 +1271,8 @@ public:
     evt_switch(q, s_, keys_, std::as_const(conf_))(e);
   }
   template <typename Q> constexpr void pass_time(TimePoint const &, Q &&) {}
+
+  constexpr settings &get_settings() noexcept { return conf_; }
 };
 
 struct _touch_translator_base {
@@ -1310,6 +1320,7 @@ struct _touch_translator_base {
   struct scroll_zoom_t : _scroll_zoom_base {
     using _scroll_zoom_base::_scroll_zoom_base;
   };
+  struct gesture_finished_t {};
   template <typename T>
   static constexpr bool is_scroller =
       bp::same_as_any<T, scroll_t, scroll_zoom_t>;
@@ -1318,7 +1329,7 @@ struct _touch_translator_base {
 
   using state_var =
       std::variant<no_fingers_t, first_down_t, drag_t, hold_no_drag_t, scroll_t,
-                   zoom_t, scroll_zoom_t>;
+                   zoom_t, scroll_zoom_t, gesture_finished_t>;
 
   template <typename T>
     requires(bp::same_as_any<T, scroll_t, zoom_t, scroll_zoom_t>)
@@ -1556,7 +1567,6 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
 
   constexpr void reset_state(state_var &s) {
     CGUI_ASSERT((!std::holds_alternative<no_fingers_t>(s)));
-    std::cout << "WE DO PROPER RESETTING\n";
     s = no_fingers_t{};
     --active_fingers_;
   }
@@ -1616,8 +1626,12 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
             CGUI_ASSERT(false);
           }
           s = first_down_t(
-              _invoke_with_interpreted_event<interpreted_events::pointer_hold>(
-                  q, pos, call::time_stamp(e), pos),
+              _invoke_with_interpreted_event(
+                  q, pos,
+                  interpreted_event<interpreted_events::pointer_enter>(
+                      call::time_stamp(e), pos),
+                  interpreted_event<interpreted_events::pointer_hold>(
+                      call::time_stamp(e), pos)),
               pos);
         }),
         // ---------------------
@@ -1644,6 +1658,15 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                       interpreted_events::pointer_drag_finished_destination>(
                       q, call::position(e), call::time_stamp(e),
                       sv.down_position, call::position(e));
+                } else if constexpr (bp::same_as_any<S, zoom_t, scroll_t,
+                                                     scroll_zoom_t>) {
+                  CGUI_ASSERT(
+                      (sv.combo_state_index < std::ssize(self.states_) &&
+                       sv.combo_state_index >= 0));
+                  auto &s2 = self.states_[sv.combo_state_index];
+                  s2.state = gesture_finished_t{};
+                  send_to_cached_widget<interpreted_events::pointer_exit>(
+                      q, call::time_stamp(e), sv.widget);
                 }
               },
               s);
@@ -1761,6 +1784,8 @@ public:
       evt_switch(q, *s, index, std::as_const(conf_))(e);
     }
   }
+
+  constexpr settings &get_settings() noexcept { return conf_; }
 };
 
 template <typename TimePoint = std::chrono::steady_clock>

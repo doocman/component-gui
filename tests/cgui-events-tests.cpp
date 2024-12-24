@@ -412,7 +412,8 @@ TEST_F(GestureEventsTests, TouchClick) // NOLINT
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_touch_down_event());
   EXPECT_THAT(counter.event_types,
-              ElementsAre(interpreted_events::pointer_hold));
+              ElementsAre(interpreted_events::pointer_enter,
+                          interpreted_events::pointer_hold));
   invoke_tt(default_touch_up_event());
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::primary_click,
@@ -442,11 +443,15 @@ TEST_F(GestureEventsTests, TouchPan) // NOLINT
   enable_all_events();
   auto to_test = default_event_interpreter<time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
+  settings<touch_translator>(to_test).scroll_threshold = 2;
+  settings<touch_translator>(to_test).drag_threshold = 2;
   invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
   invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
   invoke_tt(default_touch_move_event{.pos = {12, 0}, .finger_index = 0});
+  EXPECT_THAT(counter.event_types, IsEmpty());
   invoke_tt(default_touch_move_event{.pos = {22, 0}, .finger_index = 1});
   invoke_tt(default_touch_move_event{.pos = {14, 0}, .finger_index = 0});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
   invoke_tt(default_touch_move_event{.pos = {24, 0}, .finger_index = 1});
   invoke_tt(default_touch_move_event{.pos = {16, 0}, .finger_index = 0});
   invoke_tt(default_touch_move_event{.pos = {26, 0}, .finger_index = 1});
@@ -455,6 +460,8 @@ TEST_F(GestureEventsTests, TouchPan) // NOLINT
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
 
   invoke_tt(default_touch_up_event{.finger_index = 0});
+  EXPECT_THAT(counter.event_types,
+              ElementsAre(interpreted_events::pointer_exit));
 
   invoke_tt(default_touch_down_event{});
   EXPECT_THAT(counter.event_types,
@@ -549,13 +556,41 @@ TEST_F(GestureEventsTests, TouchPanLevels) {
 
   invoke_tt(default_touch_up_event{.pos = {10 + last_gen_x, 10 + last_gen_y},
                                    .finger_index = 0});
-  EXPECT_THAT(counter.event_types, IsEmpty());
+  EXPECT_THAT(counter.event_types,
+              ElementsAre(interpreted_events::pointer_exit));
   invoke_tt(default_touch_up_event{.pos = {20 + last_gen_x, 20 + last_gen_y},
                                    .finger_index = 1});
   EXPECT_THAT(counter.event_types, IsEmpty());
 
   // Must incorporate touch up and touch down again and check for any
   // exponential 'exploding' behaviours.
+}
+
+TEST_F(GestureEventsTests, PanThenZoom) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  settings<touch_translator>(to_test).scroll_threshold = 2;
+  settings<touch_translator>(to_test).drag_threshold = 2;
+  settings<touch_translator>(to_test).zoom_threshold = 4;
+  auto invoke_tt = get_invoke_tt(to_test);
+
+  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {12, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {22, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {14, 0}, .finger_index = 0});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
+  invoke_tt(default_touch_move_event{.pos = {21, 0}, .finger_index = 1});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
+  invoke_tt(default_touch_move_event{.pos = {16, 0}, .finger_index = 0});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
+  invoke_tt(default_touch_move_event{.pos = {20, 0}, .finger_index = 1});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
+  invoke_tt(default_touch_move_event{.pos = {18, 0}, .finger_index = 0});
+  EXPECT_THAT(counter.event_types,
+              UnorderedElementsAre(interpreted_events::scroll,
+                                   interpreted_events::zoom));
 }
 
 // TODO:
