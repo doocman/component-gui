@@ -867,6 +867,12 @@ public:
   }
   constexpr explicit operator bool() const { return impl_ != nullptr; }
   constexpr default_point_rect const &area() const noexcept { return area_; }
+
+  constexpr friend bool
+  operator==(interpreter_widget_cache const &lhs,
+             interpreter_widget_cache const &rhs) noexcept {
+    return lhs.impl_ == rhs.impl_;
+  }
 };
 
 constexpr auto is_cached_widget(interpreter_widget_cache const &cw) {
@@ -955,15 +961,6 @@ struct _primary_mouse_click_translator_base {
     constexpr void set_down(keycode c) noexcept { set_from_keycode<true>(c); }
     constexpr void set_up(keycode c) noexcept { set_from_keycode<false>(c); }
   };
-
-  static constexpr void
-  do_exit_widget_if_outside(auto &&q, interpreter_widget_cache const &w,
-                            auto const &e) {
-    if (!hit_box(w.area(), call::position(e))) {
-      send_to_cached_widget<interpreted_events::pointer_exit>(
-          q, call::time_stamp(e), w);
-    }
-  }
 };
 
 template <typename TimePoint>
@@ -971,12 +968,10 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
   struct first_down_t {
     default_point_coordinate click_position{};
     interpreter_widget_cache clicked_widget{};
-    constexpr void exit_current_widget(auto &&...) const {}
   };
   struct drag_t {
     default_point_coordinate start_position{};
     interpreter_widget_cache drag_start_widget{};
-    constexpr void exit_current_widget(auto &&...) const {}
   };
   struct hold_no_drag_t {
     interpreter_widget_cache widget{};
@@ -1023,7 +1018,6 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
                   ts, pos),
               interpreted_event<interpreted_events::pointer_hold, TimePoint>(
                   ts, pos))) {}
-    constexpr void exit_current_widget(auto &&...) const {}
   };
   struct hover_t {
     interpreter_widget_cache widget{};
@@ -1071,23 +1065,13 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
                   ts, pos),
               interpreted_event<interpreted_events::pointer_hover, TimePoint>(
                   ts, pos))) {}
-
-    constexpr void exit_current_widget(auto &&q, auto const &e) const {
-      // interpreter_widget_cache const& w, auto const& e, auto&& q
-      do_exit_widget_if_outside(q, widget, e);
-    }
   };
 
   using state = std::variant<hover_t, first_down_t, hold_no_drag_t, drag_t>;
 
   static constexpr state pointer_visit(auto &&cb, auto &&q, auto const &e,
                                        auto &&s_in) {
-    return std::visit(
-        [&](auto &s) -> state {
-          // s.exit_current_widget(q, e);
-          return cb(s, q, e);
-        },
-        s_in);
+    return std::visit([&](auto &s) -> state { return cb(s, q, e); }, s_in);
   }
 
 public:
@@ -1552,6 +1536,7 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
     CGUI_ASSERT(std::holds_alternative<S>(cs_holder.state));
     auto &cs = std::get<S>(cs_holder.state);
     CGUI_ASSERT(cs.combo_state_index != s.combo_state_index);
+    CGUI_ASSERT(cs.widget == s.widget);
     auto new_pos = center_between(call::position(e), cs.last_position);
     auto old_pos = center_between(s.last_position, cs.last_position);
     if constexpr (is_scroller<S>) {
@@ -1568,23 +1553,42 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
       // send zoom
     }
     s.last_position = call::position(e);
-    if constexpr (!is_scroller<S>) {
-      // check if scroll should be enabled, then enable it and change the
-      // states.
-    } else if constexpr (!is_zoomer<S>) {
-      // check if zoom should be enabled, then enable it and change the states.
-      if (auto zl =
-              get_opt_zoom_value(cs.down_position, cs.last_position,
-                                 s.down_position, call::position(e), conf_)) {
-        auto [dx, dy] = *zl;
-        send_to_cached_widget<interpreted_events::zoom>(
-            q, call::time_stamp(e), s.widget, new_pos, dx, dy);
-        auto new_state1 = scroll_zoom_t(std::move(s).widget, s.down_position,
-                                        s.last_position, s.combo_state_index);
-        main_state = scroll_zoom_t(std::move(s).widget, s.down_position,
-                                   s.last_position, s.combo_state_index);
-        cs_holder.state = scroll_zoom_t(std::move(s).widget, cs.down_position,
-                                        cs.last_position, cs.combo_state_index);
+    if constexpr (!is_scroller<S> || !is_zoomer<S>) {
+      auto constexpr to_scroll_zoom_t = [](auto &&in_state) {
+        return scroll_zoom_t(std::forward<decltype(in_state)>(in_state).widget,
+                             in_state.down_position, in_state.last_position,
+                             in_state.combo_state_index);
+      };
+      auto constexpr set_both_states = [=]<typename... T1, typename... T2>(
+                                           std::pair<T1 &, T2 &>... states) {
+        unused((states.first = to_scroll_zoom_t(std::move(states.second)))...);
+      };
+      auto constexpr to_ref_pair =
+          []<typename T1, typename T2>(
+              T1 &&f, T2 &&s) -> std::pair<T1 &&, T2 &&> { return {f, s}; };
+      if constexpr (!is_scroller<S>) {
+        // check if scroll should be enabled, then enable it and change the
+        // states.
+        if (auto scroll = get_opt_scroll_value(
+                cs.down_position, cs.last_position, s.down_position,
+                call::position(e), conf_)) {
+
+          auto const [scx, scy] = *scroll;
+          send_to_cached_widget<interpreted_events::scroll>(
+              q, call::time_stamp(e), s.widget, new_pos, scx, scy);
+        }
+      } else if constexpr (!is_zoomer<S>) {
+        // check if zoom should be enabled, then enable it and change the
+        // states.
+        if (auto zl =
+                get_opt_zoom_value(cs.down_position, cs.last_position,
+                                   s.down_position, call::position(e), conf_)) {
+          auto [dx, dy] = *zl;
+          send_to_cached_widget<interpreted_events::zoom>(
+              q, call::time_stamp(e), s.widget, new_pos, dx, dy);
+          set_both_states(to_ref_pair(main_state, s),
+                          to_ref_pair(cs_holder.state, cs));
+        }
       }
     }
   }

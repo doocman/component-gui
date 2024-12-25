@@ -597,6 +597,35 @@ TEST_F(GestureEventsTests, PanThenZoom) // NOLINT
                                    interpreted_events::zoom));
 }
 
+TEST_F(GestureEventsTests, ZoomThenPan) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  settings<touch_translator>(to_test).scroll_threshold = 3;
+  settings<touch_translator>(to_test).drag_threshold = 3;
+  settings<touch_translator>(to_test).zoom_threshold = 3;
+  auto invoke_tt = get_invoke_tt(to_test);
+
+  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {11, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event{.pos = {19, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event{.pos = {12, 0}, .finger_index = 0});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
+  invoke_tt(default_touch_move_event{.pos = {21, 0}, .finger_index = 1});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
+  invoke_tt(default_touch_move_event{.pos = {15, 0}, .finger_index = 0});
+  EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
+  invoke_tt(default_touch_move_event{.pos = {23, 0}, .finger_index = 1});
+  EXPECT_THAT(counter.event_types,
+              UnorderedElementsAre(interpreted_events::scroll,
+                                   interpreted_events::zoom));
+  invoke_tt(default_touch_move_event{.pos = {18, 0}, .finger_index = 0});
+  EXPECT_THAT(counter.event_types,
+              UnorderedElementsAre(interpreted_events::scroll,
+                                   interpreted_events::zoom));
+}
+
 // TODO:
 // TouchZoomLevels
 // NoDragAfterPan
