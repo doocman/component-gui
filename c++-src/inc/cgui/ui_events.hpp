@@ -53,6 +53,16 @@ enum class interpreted_events {
   zoom
 };
 
+struct zoom_factor_t {
+  float scale_x;
+  float scale_y;
+};
+
+template <typename T>
+concept has_zoom_factor = requires(T const &t) {
+  { call::zoom_factor(t) } -> std::convertible_to<zoom_factor_t>;
+};
+
 template <typename EventEnum, EventEnum val> struct event_identity {
   static constexpr EventEnum value = val;
 };
@@ -406,6 +416,16 @@ template <is_cgui_default_event_c T>
   requires(requires(T const &t) { t.dy; })
 constexpr auto delta_y(T const &t) {
   return t.dy;
+}
+template <is_cgui_default_event_c T>
+  requires(requires(T const &t) { t.scale_x; })
+constexpr auto scale_x(T const &t) {
+  return t.scale_x;
+}
+template <is_cgui_default_event_c T>
+  requires(requires(T const &t) { t.scale_y; })
+constexpr auto scale_y(T const &t) {
+  return t.scale_y;
 }
 template <is_cgui_default_event_c T>
   requires(requires(T const &t) { t.rawkey; })
@@ -844,6 +864,19 @@ saved_ui_event_switch(Data &&d, Cases &&...cases) {
 
 struct primary_mouse_click_translator_settings {
   int drag_threshold = 5;
+  float zoom_scale = 0.1f;
+};
+
+class interpreter_widget_cache;
+class is_cached_widget {
+  interpreter_widget_cache const *cw_;
+
+public:
+  constexpr explicit is_cached_widget(interpreter_widget_cache const &cw)
+      : cw_(&cw) {}
+  explicit is_cached_widget(interpreter_widget_cache const &&) = delete;
+  explicit is_cached_widget(interpreter_widget_cache &&) = delete;
+  constexpr bool operator()(auto &) const noexcept;
 };
 
 class interpreter_widget_cache {
@@ -873,12 +906,23 @@ public:
              interpreter_widget_cache const &rhs) noexcept {
     return lhs.impl_ == rhs.impl_;
   }
+
+  template <interpreted_events... Events>
+  constexpr bool access(auto &&q, auto &&cb) const {
+    bool called{};
+    q(query_interpreted_events<Events...>(
+        is_cached_widget(*this), [&]<typename W, typename S>(W &w, S &&sender) {
+          CGUI_ASSERT(!called); // called more than once!
+          called = true;
+          cb(w, std::forward<S>(sender));
+        }));
+    return called;
+  }
 };
 
-constexpr auto is_cached_widget(interpreter_widget_cache const &cw) {
-  return [&cw](auto &w) { return cw.refers_to(w); };
+inline constexpr bool is_cached_widget::operator()(auto &w) const noexcept {
+  return cw_->refers_to(w);
 }
-inline auto is_cached_widget(interpreter_widget_cache const &&) = delete;
 
 template <interpreted_events evt_type, typename TP, typename Q,
           typename... Args>
@@ -917,17 +961,14 @@ constexpr interpreter_widget_cache _invoke_with_interpreted_event(
 }
 template <interpreted_events evt_type, typename Q, typename TP,
           typename... Args>
-constexpr void send_to_cached_widget(Q &&q, TP tp,
+constexpr bool send_to_cached_widget(Q &&q, TP tp,
                                      interpreter_widget_cache const &cw,
                                      Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
-  bool called{};
-  q(query_interpreted_events<evt_type>(
-      is_cached_widget(cw), [&]<typename W, typename S>(W &w, S &&sender) {
-        CGUI_ASSERT(!called); // called more than once!
-        called = true;
+  return cw.template access<evt_type>(
+      q, [&]<typename W, typename S>(W &w, S &&sender) {
         std::forward<S>(sender)(w, event_t(tp, std::forward<Args>(args)...));
-      }));
+      });
 }
 
 template <input_events... ievs> struct _interpreter_can_handle {
@@ -1302,10 +1343,19 @@ struct _touch_translator_base {
     using _scroll_zoom_base::_scroll_zoom_base;
   };
   struct zoom_t : _scroll_zoom_base {
-    using _scroll_zoom_base::_scroll_zoom_base;
+    zoom_factor_t original_factor;
+    constexpr zoom_t(auto &&w, default_point_coordinate dp,
+                     default_point_coordinate lp, int csi, zoom_factor_t of)
+        : _scroll_zoom_base(std::forward<decltype(w)>(w), dp, lp, csi),
+          original_factor(of) {}
   };
   struct scroll_zoom_t : _scroll_zoom_base {
-    using _scroll_zoom_base::_scroll_zoom_base;
+    zoom_factor_t original_factor;
+    constexpr scroll_zoom_t(auto &&w, default_point_coordinate dp,
+                            default_point_coordinate lp, int csi,
+                            zoom_factor_t of)
+        : _scroll_zoom_base(std::forward<decltype(w)>(w), dp, lp, csi),
+          original_factor(of) {}
   };
   struct gesture_finished_t {};
   template <typename T>
@@ -1359,7 +1409,9 @@ struct _touch_translator_base {
     auto do_send_zoom = [&](auto &w, auto &&s) {
       if constexpr (is_zoomer<T>) {
         auto [scx, scy] = get_zoom();
-        s(w, zoom_event_t(call::time_stamp(e), position, scx, scy));
+        auto [orgx, orgy] = call::zoom_factor(w);
+        s(w,
+          zoom_event_t(call::time_stamp(e), position, scx * orgx, scy * orgy));
       } else {
         unused(w, s);
       }
@@ -1368,21 +1420,25 @@ struct _touch_translator_base {
                                interpreted_events::zoom>(
         position, [&]<typename W, typename S>(W &w, S &&sender) {
           constexpr bool should_scroll =
-              is_scroller<T>; // std::invocable<S, W&, scroll_event_t> &&
-                              // is_scroller<T>;
+              std::invocable<S, W &, scroll_event_t> && is_scroller<T>;
           constexpr bool should_zoom =
               std::invocable<S, W &, zoom_event_t> && is_zoomer<T>;
           if constexpr (should_scroll) {
             do_send_scroll(w, sender);
           }
           if constexpr (should_zoom) {
+            static_assert(has_zoom_factor<W>,
+                          "You must implement 'zoom_factor_t zoom_factor()' to "
+                          "be able to handle zooming in the widgets.");
             do_send_zoom(w, sender);
           }
           if constexpr (should_scroll && should_zoom) {
-            *result1.first = scroll_zoom_t(w, down_positions.first,
-                                           call::position(e), result2.second);
-            *result2.first = scroll_zoom_t(w, down_positions.second,
-                                           r2_position, result1.second);
+            *result1.first =
+                scroll_zoom_t(w, down_positions.first, call::position(e),
+                              result2.second, call::zoom_factor(w));
+            *result2.first =
+                scroll_zoom_t(w, down_positions.second, r2_position,
+                              result1.second, call::zoom_factor(w));
           } else if constexpr (should_scroll) {
             *result1.first = scroll_t(w, down_positions.first,
                                       call::position(e), result2.second);
@@ -1390,9 +1446,9 @@ struct _touch_translator_base {
                 scroll_t(w, down_positions.second, r2_position, result1.second);
           } else if constexpr (should_zoom) {
             *result1.first = zoom_t(w, down_positions.first, call::position(e),
-                                    result2.second);
-            *result2.first =
-                zoom_t(w, down_positions.second, r2_position, result1.second);
+                                    result2.second, call::zoom_factor(w));
+            *result2.first = zoom_t(w, down_positions.second, r2_position,
+                                    result1.second, call::zoom_factor(w));
           }
         }));
   }
@@ -1410,10 +1466,7 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
       requires(std::constructible_from<state_var, T>)
     constexpr state_t(T &&s_in, int fi) noexcept
         : state(std::forward<T>(s_in)), finger_index(fi) {}
-    constexpr void reset() {
-      std::cout << "ASDAD RESETTING\n";
-      state = no_fingers_t{};
-    }
+    constexpr void reset() { state = no_fingers_t{}; }
   };
 
   std::array<state_t, max_fingers> states_;
@@ -1472,10 +1525,9 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
   zoom_from_distances(float const &old_distance,
                       point_coordinate auto const &new_distances) {
     auto get_scale = [&](auto xy_of) {
+      auto denom = std::max(old_distance, 1e-25f);
       return std::clamp(
-          std::abs(static_cast<float>(xy_of(new_distances.value()))) /
-                  old_distance +
-              0.0001f,
+          std::abs(static_cast<float>(xy_of(new_distances.value()))) / (denom),
           1.f / 128.f, 128.f);
     };
     return {get_scale(call::x_of), get_scale(call::y_of)};
@@ -1546,23 +1598,27 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
           q, call::time_stamp(e), s.widget, new_pos, scx, scy);
     }
     if constexpr (is_zoomer<S>) {
-      auto [dx, dy] = get_zoom_value(s.last_position, call::position(e),
-                                     cs.last_position, cs.last_position);
+      auto [dx, dy] = get_zoom_value(s.down_position, call::position(e),
+                                     cs.down_position, cs.last_position);
+      auto [orgx, orgy] = s.original_factor;
       send_to_cached_widget<interpreted_events::zoom>(
-          q, call::time_stamp(e), s.widget, new_pos, dx, dy);
+          q, call::time_stamp(e), s.widget, new_pos, dx * orgx, dy * orgy);
       // send zoom
     }
     s.last_position = call::position(e);
     if constexpr (!is_scroller<S> || !is_zoomer<S>) {
-      auto constexpr to_scroll_zoom_t = [](auto &&in_state) {
+      auto constexpr to_scroll_zoom_t = [](auto &&in_state,
+                                           zoom_factor_t org_f) {
         return scroll_zoom_t(std::forward<decltype(in_state)>(in_state).widget,
                              in_state.down_position, in_state.last_position,
-                             in_state.combo_state_index);
+                             in_state.combo_state_index, org_f);
       };
-      auto constexpr set_both_states = [=]<typename... T1, typename... T2>(
-                                           std::pair<T1 &, T2 &>... states) {
-        unused((states.first = to_scroll_zoom_t(std::move(states.second)))...);
-      };
+      auto constexpr set_both_states =
+          [=]<typename... T1, typename... T2>(zoom_factor_t org_f,
+                                              std::pair<T1 &, T2 &>... states) {
+            unused((states.first =
+                        to_scroll_zoom_t(std::move(states.second), org_f))...);
+          };
       auto constexpr to_ref_pair =
           []<typename T1, typename T2>(
               T1 &&f, T2 &&s) -> std::pair<T1 &&, T2 &&> { return {f, s}; };
@@ -1584,10 +1640,25 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                 get_opt_zoom_value(cs.down_position, cs.last_position,
                                    s.down_position, call::position(e), conf_)) {
           auto [dx, dy] = *zl;
-          send_to_cached_widget<interpreted_events::zoom>(
-              q, call::time_stamp(e), s.widget, new_pos, dx, dy);
-          set_both_states(to_ref_pair(main_state, s),
-                          to_ref_pair(cs_holder.state, cs));
+          s.widget.template access<interpreted_events::zoom>(
+              q, [&]<typename W, typename Sender>(W &w, Sender &&sender) {
+                static_assert(has_zoom_factor<W>,
+                              "You must implement 'zoom_factor_t zoom_factor() "
+                              "const' for your widget-like object (member, "
+                              "free with ADL, static or as extend_api_t<W>::)");
+                auto org_factor = call::zoom_factor(w);
+                auto [ox, oy] = org_factor;
+                // send_to_cached_widget<interpreted_events::zoom>(
+                //     q, call::time_stamp(e), s.widget, new_pos, dx * ox, dy *
+                //     oy);
+                // std::forward<S>(sender)(w, event_t(tp,
+                // std::forward<Args>(args)...));
+                std::forward<Sender>(sender)(
+                    w, interpreted_event<interpreted_events::zoom>(
+                           call::time_stamp(e), new_pos, dx * ox, dy * oy));
+                set_both_states(org_factor, to_ref_pair(main_state, s),
+                                to_ref_pair(cs_holder.state, cs));
+              });
         }
       }
     }

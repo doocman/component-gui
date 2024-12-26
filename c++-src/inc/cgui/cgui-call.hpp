@@ -297,6 +297,9 @@ CGUI_CALL_CONCEPT(position)
 CGUI_CALL_CONCEPT(time_stamp)
 CGUI_CALL_CONCEPT(delta_x)
 CGUI_CALL_CONCEPT(delta_y)
+CGUI_CALL_CONCEPT(scale_x)
+CGUI_CALL_CONCEPT(scale_y)
+CGUI_CALL_CONCEPT(zoom_factor)
 CGUI_CALL_CONCEPT(raw_key)
 CGUI_CALL_CONCEPT(finger_index)
 CGUI_CALL_CONCEPT(handle)
@@ -694,6 +697,9 @@ inline constexpr impl::_do_time_stamp time_stamp;
 using time_stamp_t = decltype(time_stamp);
 inline constexpr impl::_do_delta_x delta_x;
 inline constexpr impl::_do_delta_y delta_y;
+inline constexpr impl::_do_scale_x scale_x;
+inline constexpr impl::_do_scale_y scale_y;
+inline constexpr impl::_do_zoom_factor zoom_factor;
 inline constexpr impl::_do_raw_key raw_key;
 inline constexpr impl::_do_finger_index finger_index;
 

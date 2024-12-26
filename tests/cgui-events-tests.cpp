@@ -78,6 +78,7 @@ struct event_counter {
   std::vector<interpreted_events> event_types;
   default_point_rect a_ =
       point_unit(default_rect{{-1000, -1000}, {1000, 1000}});
+  zoom_factor_t zf{1.f, 1.f};
   event_counter() = default;
   explicit event_counter(default_point_rect a) : a_(a) {}
   template <typename Evt> constexpr void operator()(Evt const &e) {
@@ -87,6 +88,7 @@ struct event_counter {
   constexpr auto area() const { return a_; }
 
   void reset() { event_types.clear(); }
+  constexpr zoom_factor_t const &zoom_factor() const { return zf; }
 };
 
 inline std::size_t enable_all_events(std::vector<interpreted_events> &vec) {
@@ -150,6 +152,7 @@ public:
   struct dummy_widget_query {
     event_counter *counter{};
     std::vector<interpreted_events> events_to_allow{};
+    zoom_factor_t zf_{1.f, 1.f};
     template <typename P, typename T, typename NF, interpreted_events... evts>
     constexpr bool
     operator()(query_interpreted_events_t<P, T, NF, evts...> const &q) const {
@@ -181,6 +184,7 @@ public:
             return false;
           };
     }
+    constexpr zoom_factor_t const &zoom_factor() const { return zf_; }
   };
 
   time_point_t first_ts{};
@@ -366,11 +370,21 @@ TEST_F(GestureEventsTests, MouseScrollToZoomRCtrl) // NOLINT
 {
   enable_all_events();
   auto to_test = default_event_interpreter<time_point_t>{};
-  auto invoke_tt = get_invoke_tt(to_test);
+  float scale_x{};
+  float scale_y{};
+  settings<primary_mouse_click_translator>(to_test).zoom_scale = 0.1f;
+  auto invoke_tt = get_invoke_tt(to_test, [&]<typename T>(T const &e) {
+    if constexpr (can_be_event<interpreted_events::zoom, T>()) {
+      scale_x = call::scale_x(e);
+      scale_y = call::scale_y(e);
+    }
+  });
   invoke_tt(default_mouse_move_event{});
   invoke_tt(default_key_down_event(keycode::rctrl));
-  invoke_tt(default_mouse_scroll_event{});
+  invoke_tt(default_mouse_scroll_event{.dy = 1.f});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
+  EXPECT_THAT(scale_x, FloatEq(1.1f));
+  EXPECT_THAT(scale_y, FloatEq(1.1f));
 }
 
 TEST_F(GestureEventsTests, MouseScrollLiftLCtrlScrolls) // NOLINT
@@ -624,6 +638,42 @@ TEST_F(GestureEventsTests, ZoomThenPan) // NOLINT
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
+}
+constexpr void apply_touch_zoom_x(auto &&handler, int start_distance,
+                                  int end_distance, int start_x = 0) {
+  auto distance_diff = (end_distance - start_distance) / 2;
+  auto sign_i = 1;
+  if (distance_diff < 0) {
+    sign_i = -1;
+    distance_diff = -distance_diff;
+  }
+  CGUI_ASSERT(distance_diff >= 0);
+  handler(default_touch_down_event{.pos = {start_x, 0}, .finger_index = 0});
+  handler(default_touch_down_event{.pos = {start_x + start_distance, 0},
+                                   .finger_index = 1});
+  for (auto i = 1; i <= distance_diff; ++i) {
+    auto xl = start_x - i * sign_i;
+    auto xr = start_x + start_distance + i * sign_i;
+    handler(default_touch_move_event{.pos = {xl, 0}, .finger_index = 0});
+    handler(default_touch_move_event{.pos = {xr, 0}, .finger_index = 1});
+  }
+}
+TEST_F(GestureEventsTests, TouchZoomLevels) // NOLINT
+{
+  enable_all_events();
+  auto to_test = default_event_interpreter<time_point_t>{};
+  float scale = 1.f;
+  int zoom_count{};
+  auto invoke_tt = get_invoke_tt(to_test, [&]<typename T>(T const &event) {
+    if constexpr (can_be_event<interpreted_events::zoom, T>()) {
+      scale = call::scale_x(event);
+      ++zoom_count;
+    }
+    return true;
+  });
+  apply_touch_zoom_x(invoke_tt, 20, 40);
+  EXPECT_THAT(scale, FloatEq(2.f));
+  EXPECT_THAT(zoom_count, Gt(0));
 }
 
 // TODO:
