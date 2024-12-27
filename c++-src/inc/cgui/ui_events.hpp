@@ -191,36 +191,33 @@ template <interpreted_events... evts>
 using subset_interpreted_events = subset_events<interpreted_events, evts...>;
 
 template <typename T>
-concept subset_input_event_c = std::convertible_to<T, input_events> &&
-  requires()
-{
-  {
-    std::remove_cvref_t<T>::can_be_event(
-        input_event_identity<input_events::system>{})
-  } -> std::convertible_to<bool>;
-  {
-    std::remove_cvref_t<T>::can_be_event(
-        input_event_identity<input_events::mouse_move>{})
-  } -> std::convertible_to<bool>;
-  {
-    std::remove_cvref_t<T>::can_be_event(
-        input_event_identity<input_events::mouse_button_up>{})
-  } -> std::convertible_to<bool>;
-  {
-    std::remove_cvref_t<T>::can_be_event(
-        input_event_identity<input_events::mouse_button_down>{})
-  } -> std::convertible_to<bool>;
-};
+concept subset_input_event_c =
+    std::convertible_to<T, input_events> && requires() {
+      {
+        std::remove_cvref_t<T>::can_be_event(
+            input_event_identity<input_events::system>{})
+      } -> std::convertible_to<bool>;
+      {
+        std::remove_cvref_t<T>::can_be_event(
+            input_event_identity<input_events::mouse_move>{})
+      } -> std::convertible_to<bool>;
+      {
+        std::remove_cvref_t<T>::can_be_event(
+            input_event_identity<input_events::mouse_button_up>{})
+      } -> std::convertible_to<bool>;
+      {
+        std::remove_cvref_t<T>::can_be_event(
+            input_event_identity<input_events::mouse_button_down>{})
+      } -> std::convertible_to<bool>;
+    };
 template <typename T>
 concept subset_interpreted_event_c =
-    std::convertible_to<T, interpreted_events> &&
-  requires()
-{
-  {
-    std::remove_cvref_t<T>::can_be_event(
-        interpreted_event_identity<interpreted_events::primary_click>{})
-  } -> std::convertible_to<bool>;
-};
+    std::convertible_to<T, interpreted_events> && requires() {
+      {
+        std::remove_cvref_t<T>::can_be_event(
+            interpreted_event_identity<interpreted_events::primary_click>{})
+      } -> std::convertible_to<bool>;
+    };
 
 namespace call {
 namespace impl {
@@ -605,8 +602,8 @@ template <typename Interpreter> struct state_interpreter_pair {
   }
 };
 template <typename Interpreter>
-constexpr auto
-_to_state(state_interpreter_pair<Interpreter> *sip) -> decltype(&sip->state) {
+constexpr auto _to_state(state_interpreter_pair<Interpreter> *sip)
+    -> decltype(&sip->state) {
   if (sip == nullptr) {
     return nullptr;
   } else {
@@ -862,11 +859,6 @@ saved_ui_event_switch(Data &&d, Cases &&...cases) {
   return {std::forward<Data>(d), std::forward<Cases>(cases)...};
 }
 
-struct primary_mouse_click_translator_settings {
-  int drag_threshold = 5;
-  float zoom_scale = 0.1f;
-};
-
 class interpreter_widget_cache;
 class is_cached_widget {
   interpreter_widget_cache const *cw_;
@@ -977,6 +969,11 @@ template <input_events... ievs> struct _interpreter_can_handle {
 };
 
 struct _primary_mouse_click_translator_base {
+
+  struct primary_mouse_click_translator_settings {
+    int drag_threshold = 5;
+    float zoom_scale = 0.1f;
+  };
   class keymod_state {
     bool lctrl_{};
     bool rctrl_{};
@@ -1262,11 +1259,16 @@ private:
         event_case<input_events::mouse_scroll>([](auto const &e, auto &&d) {
           auto &[q, s, ks, conf] = d;
           if (ks.ctrl()) {
-            constexpr float base_scale = 1.05f;
-            auto scale = std::pow(base_scale, call::delta_y(e));
-            _invoke_with_interpreted_event<interpreted_events::zoom>(
-                q, call::position(e), call::time_stamp(e), call::position(e),
-                scale, scale);
+            q(query_interpreted_events<interpreted_events::zoom>(
+                call::position(e), [&] <typename W, typename Sender> (W& w, Sender&& sender) {
+                  auto [orgx, orgy] = call::zoom_factor(w);
+                  auto scale_mod = std::pow(1.f + conf.zoom_scale, call::delta_y(e));
+                  std::forward<Sender>(sender)(w, interpreted_event<interpreted_events::zoom>(
+                                                      call::time_stamp(e), call::position(e),
+                                                      orgx * scale_mod, orgy * scale_mod
+                                                      ));
+                }
+                ));
           } else {
             _invoke_with_interpreted_event<interpreted_events::scroll>(
                 q, call::position(e), call::time_stamp(e), call::position(e),
