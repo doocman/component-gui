@@ -1803,9 +1803,6 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                                                     hold_no_drag_t>(
                           call::finger_index(e), call::time_stamp(e),
                           [&](auto &s2, int si2) {
-                            auto combo_dist_sqr =
-                                distance_sqr(s2.down_position.value(),
-                                             call::position(e).value());
                             auto org_center = center_between(s2.down_position,
                                                              sv.down_position);
 
@@ -1817,7 +1814,6 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                                 sv.down_position, call::position(e), conf);
                             CGUI_ASSERT(si2 < max_fingers);
                             auto &s2_vfi = self.states_[si2];
-                            auto s2_pos = s2.last_position;
                             if (zoom_value && scroll_value) {
                               touch_translator::enter<scroll_zoom_t>(
                                   q, e, org_center, sv, s2, {&s, si},
