@@ -7,6 +7,7 @@
 #include <tuple>
 #include <variant>
 
+#include <cgui/cgui-call.hpp>
 #include <cgui/cgui-types.hpp>
 #include <cgui/std-backport/utility.hpp>
 
@@ -24,6 +25,7 @@ enum class keycode {
 
 enum class input_events {
   system,
+  window_resized,
   mouse_move,
   mouse_button_down,
   mouse_button_up,
@@ -31,7 +33,9 @@ enum class input_events {
   mouse_scroll,
   key_down,
   key_up,
-  window_resized,
+  touch_down,
+  touch_up,
+  touch_move,
 };
 
 enum class interpreted_events {
@@ -47,6 +51,16 @@ enum class interpreted_events {
   pointer_exit,
   scroll,
   zoom
+};
+
+struct zoom_factor_t {
+  float scale_x;
+  float scale_y;
+};
+
+template <typename T>
+concept has_zoom_factor = requires(T const &t) {
+  { call::zoom_factor(t) } -> std::convertible_to<zoom_factor_t>;
 };
 
 template <typename EventEnum, EventEnum val> struct event_identity {
@@ -80,10 +94,43 @@ template <> struct input_event_constraints<input_events::mouse_move> {
     { call::position(t) } -> point_coordinate;
   };
 };
+template <> struct input_event_constraints<input_events::key_down> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::raw_key(t) } -> std::convertible_to<keycode>;
+  };
+};
+template <> struct input_event_constraints<input_events::key_up> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::raw_key(t) } -> std::convertible_to<keycode>;
+  };
+};
 template <> struct input_event_constraints<input_events::window_resized> {
   template <typename T>
   static constexpr bool type_passes = requires(T const &t) {
     { call::size_of(t) } -> point_size_wh;
+  };
+};
+template <> struct input_event_constraints<input_events::touch_down> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::position(t) } -> point_coordinate;
+    { call::finger_index(t) } -> std::convertible_to<int>;
+  };
+};
+template <> struct input_event_constraints<input_events::touch_up> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::position(t) } -> point_coordinate;
+    { call::finger_index(t) } -> std::convertible_to<int>;
+  };
+};
+template <> struct input_event_constraints<input_events::touch_move> {
+  template <typename T>
+  static constexpr bool type_passes = requires(T const &t) {
+    { call::position(t) } -> point_coordinate;
+    { call::finger_index(t) } -> std::convertible_to<int>;
   };
 };
 
@@ -308,6 +355,21 @@ template <> struct default_event<input_events::key_up> {
   keycode rawkey{};
   common_event_data common_data{};
 };
+template <> struct default_event<input_events::touch_down> {
+  default_point_coordinate pos{};
+  int finger_index{};
+  common_event_data common_data{};
+};
+template <> struct default_event<input_events::touch_up> {
+  default_point_coordinate pos{};
+  int finger_index{};
+  common_event_data common_data{};
+};
+template <> struct default_event<input_events::touch_move> {
+  default_point_coordinate pos{};
+  int finger_index{};
+  common_event_data common_data{};
+};
 template <> struct default_event<input_events::window_resized> {
   default_point_size_wh sz{};
   common_event_data common_data{};
@@ -324,6 +386,11 @@ template <is_cgui_default_event_c T>
   requires(requires(T const &t) { t.pos; })
 constexpr auto position(T const &t) {
   return t.pos;
+}
+template <is_cgui_default_event_c T>
+  requires(requires(T const &t) { t.finger_index; })
+constexpr auto finger_index(T const &t) {
+  return t.finger_index;
 }
 
 template <is_cgui_default_event_c T> constexpr auto time_stamp(T const &t) {
@@ -351,6 +418,16 @@ constexpr auto delta_y(T const &t) {
   return t.dy;
 }
 template <is_cgui_default_event_c T>
+  requires(requires(T const &t) { t.scale_x; })
+constexpr auto scale_x(T const &t) {
+  return t.scale_x;
+}
+template <is_cgui_default_event_c T>
+  requires(requires(T const &t) { t.scale_y; })
+constexpr auto scale_y(T const &t) {
+  return t.scale_y;
+}
+template <is_cgui_default_event_c T>
   requires(requires(T const &t) { t.rawkey; })
 constexpr keycode raw_key(T const &t) {
   return t.rawkey;
@@ -363,6 +440,9 @@ using default_mouse_exit_event = default_event<input_events::mouse_exit>;
 using default_mouse_scroll_event = default_event<input_events::mouse_scroll>;
 using default_key_down_event = default_event<input_events::key_down>;
 using default_key_up_event = default_event<input_events::key_up>;
+using default_touch_down_event = default_event<input_events::touch_down>;
+using default_touch_up_event = default_event<input_events::touch_up>;
+using default_touch_move_event = default_event<input_events::touch_move>;
 using default_window_resized_event =
     default_event<input_events::window_resized>;
 
@@ -375,7 +455,10 @@ template <interpreted_events ie_v,
 struct interpreted_event : interpreted_event_impl<ie_v> {
   using _base_t = interpreted_event_impl<ie_v>;
   interpreted_event_basic<TimePoint> common_data;
-  constexpr explicit interpreted_event(auto const &evt)
+  template <typename Evt>
+    requires(std::constructible_from<_base_t, Evt> &&
+             std::constructible_from<interpreted_event_basic<TimePoint>, Evt>)
+  constexpr explicit interpreted_event(Evt const &evt)
       : _base_t(evt), common_data(evt) {}
   constexpr interpreted_event(_base_t const &impl, TimePoint const &ts)
       : _base_t(impl), common_data(ts) {}
@@ -496,9 +579,11 @@ template <> struct interpreted_event_impl<interpreted_events::scroll> {
 template <> struct interpreted_event_impl<interpreted_events::zoom> {
   using position_t = default_point_coordinate;
   position_t pos{};
-  float scale{}; ///> Number above 1. -> zoom in / make things bigger.
-  constexpr interpreted_event_impl(point_coordinate auto const &p, float sc)
-      : pos(copy_coordinate<position_t>(p)), scale(sc) {}
+  float scale_x{}; ///> Number above 1. -> zoom in / make things bigger.
+  float scale_y{}; ///> Number above 1. -> zoom in / make things bigger.
+  constexpr interpreted_event_impl(point_coordinate auto const &p, float scx,
+                                   float scy)
+      : pos(copy_coordinate<position_t>(p)), scale_x(scx), scale_y(scy) {}
 };
 
 struct cgui_mouse_exit_event {
@@ -610,6 +695,14 @@ public:
   template <std::convertible_to<time_point_t> TP, typename F>
   constexpr void pass_time(TP &&tp, F &&f) {
     unused(tp, f);
+  }
+
+  template <template <typename> typename Interpreter>
+    requires(
+        (std::is_same_v<Interpreter<TimePoint>, Interpreters<TimePoint>>) ||
+        ...)
+  friend constexpr auto &settings(event_interpreter &ei) {
+    return ei.get(std::type_identity<Interpreter<TimePoint>>{}).get_settings();
   }
 };
 
@@ -769,8 +862,16 @@ saved_ui_event_switch(Data &&d, Cases &&...cases) {
   return {std::forward<Data>(d), std::forward<Cases>(cases)...};
 }
 
-struct primary_mouse_click_translator_settings {
-  int drag_threshold = 5;
+class interpreter_widget_cache;
+class is_cached_widget {
+  interpreter_widget_cache const *cw_;
+
+public:
+  constexpr explicit is_cached_widget(interpreter_widget_cache const &cw)
+      : cw_(&cw) {}
+  explicit is_cached_widget(interpreter_widget_cache const &&) = delete;
+  explicit is_cached_widget(interpreter_widget_cache &&) = delete;
+  constexpr bool operator()(auto &) const noexcept;
 };
 
 class interpreter_widget_cache {
@@ -779,6 +880,7 @@ class interpreter_widget_cache {
 
 public:
   constexpr explicit interpreter_widget_cache(auto &w)
+    requires(!bp::cvref_type<decltype(w), interpreter_widget_cache>)
       : impl_(&w), area_(copy_box<default_point_rect>(call::area(w))) {}
   constexpr interpreter_widget_cache() noexcept = default;
 
@@ -793,15 +895,34 @@ public:
   }
   constexpr explicit operator bool() const { return impl_ != nullptr; }
   constexpr default_point_rect const &area() const noexcept { return area_; }
+
+  constexpr friend bool
+  operator==(interpreter_widget_cache const &lhs,
+             interpreter_widget_cache const &rhs) noexcept {
+    return lhs.impl_ == rhs.impl_;
+  }
+
+  template <interpreted_events... Events>
+  constexpr bool access(auto &&q, auto &&cb) const {
+    bool called{};
+    q(query_interpreted_events<Events...>(
+        is_cached_widget(*this), [&]<typename W, typename S>(W &w, S &&sender) {
+          CGUI_ASSERT(!called); // called more than once!
+          called = true;
+          cb(w, std::forward<S>(sender));
+        }));
+    return called;
+  }
 };
 
-constexpr auto is_cached_widget(interpreter_widget_cache const &cw) {
-  return [&cw](auto &w) { return cw.refers_to(w); };
+inline constexpr bool is_cached_widget::operator()(auto &w) const noexcept {
+  return cw_->refers_to(w);
 }
-inline auto is_cached_widget(interpreter_widget_cache const &&) = delete;
 
 template <interpreted_events evt_type, typename TP, typename Q,
           typename... Args>
+  requires(
+      std::constructible_from<interpreted_event<evt_type, TP>, TP, Args...>)
 constexpr interpreter_widget_cache
 _invoke_with_interpreted_event(Q &&q, point_coordinate auto const &pos,
                                TP const &tp, Args &&...args) {
@@ -835,17 +956,14 @@ constexpr interpreter_widget_cache _invoke_with_interpreted_event(
 }
 template <interpreted_events evt_type, typename Q, typename TP,
           typename... Args>
-constexpr void send_to_cached_widget(Q &&q, TP tp,
+constexpr bool send_to_cached_widget(Q &&q, TP tp,
                                      interpreter_widget_cache const &cw,
                                      Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
-  bool called{};
-  q(query_interpreted_events<evt_type>(
-      is_cached_widget(cw), [&]<typename W, typename S>(W &w, S &&sender) {
-        CGUI_ASSERT(!called); // called more than once!
-        called = true;
+  return cw.template access<evt_type>(
+      q, [&]<typename W, typename S>(W &w, S &&sender) {
         std::forward<S>(sender)(w, event_t(tp, std::forward<Args>(args)...));
-      }));
+      });
 }
 
 template <input_events... ievs> struct _interpreter_can_handle {
@@ -854,6 +972,11 @@ template <input_events... ievs> struct _interpreter_can_handle {
 };
 
 struct _primary_mouse_click_translator_base {
+
+  struct primary_mouse_click_translator_settings {
+    int drag_threshold = 5;
+    float zoom_scale = 0.1f;
+  };
   class keymod_state {
     bool lctrl_{};
     bool rctrl_{};
@@ -879,15 +1002,6 @@ struct _primary_mouse_click_translator_base {
     constexpr void set_down(keycode c) noexcept { set_from_keycode<true>(c); }
     constexpr void set_up(keycode c) noexcept { set_from_keycode<false>(c); }
   };
-
-  static constexpr void
-  do_exit_widget_if_outside(auto &&q, interpreter_widget_cache const &w,
-                            auto const &e) {
-    if (!hit_box(w.area(), call::position(e))) {
-      send_to_cached_widget<interpreted_events::pointer_exit>(
-          q, call::time_stamp(e), w);
-    }
-  }
 };
 
 template <typename TimePoint>
@@ -895,12 +1009,10 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
   struct first_down_t {
     default_point_coordinate click_position{};
     interpreter_widget_cache clicked_widget{};
-    constexpr void exit_current_widget(auto &&...) const {}
   };
   struct drag_t {
     default_point_coordinate start_position{};
     interpreter_widget_cache drag_start_widget{};
-    constexpr void exit_current_widget(auto &&...) const {}
   };
   struct hold_no_drag_t {
     interpreter_widget_cache widget{};
@@ -947,7 +1059,6 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
                   ts, pos),
               interpreted_event<interpreted_events::pointer_hold, TimePoint>(
                   ts, pos))) {}
-    constexpr void exit_current_widget(auto &&...) const {}
   };
   struct hover_t {
     interpreter_widget_cache widget{};
@@ -995,23 +1106,13 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
                   ts, pos),
               interpreted_event<interpreted_events::pointer_hover, TimePoint>(
                   ts, pos))) {}
-
-    constexpr void exit_current_widget(auto &&q, auto const &e) const {
-      // interpreter_widget_cache const& w, auto const& e, auto&& q
-      do_exit_widget_if_outside(q, widget, e);
-    }
   };
 
   using state = std::variant<hover_t, first_down_t, hold_no_drag_t, drag_t>;
 
   static constexpr state pointer_visit(auto &&cb, auto &&q, auto const &e,
                                        auto &&s_in) {
-    return std::visit(
-        [&](auto &s) -> state {
-          // s.exit_current_widget(q, e);
-          return cb(s, q, e);
-        },
-        s_in);
+    return std::visit([&](auto &s) -> state { return cb(s, q, e); }, s_in);
   }
 
 public:
@@ -1137,14 +1238,6 @@ private:
         },
         v);
   }
-
-public:
-  template <typename E>
-  static constexpr auto can_handle = _interpreter_can_handle<
-      input_events::mouse_button_down, input_events::mouse_button_up,
-      input_events::mouse_move, input_events::mouse_scroll,
-      input_events::key_down, input_events::key_up>::op<E>;
-
   template <typename Q>
   static constexpr auto evt_switch(Q &&qi, state &s_in, keymod_state &k_in,
                                    settings const &confi) {
@@ -1169,11 +1262,17 @@ public:
         event_case<input_events::mouse_scroll>([](auto const &e, auto &&d) {
           auto &[q, s, ks, conf] = d;
           if (ks.ctrl()) {
-            constexpr float base_scale = 1.05f;
-            auto scale = std::pow(base_scale, call::delta_y(e));
-            _invoke_with_interpreted_event<interpreted_events::zoom>(
-                q, call::position(e), call::time_stamp(e), call::position(e),
-                scale);
+            q(query_interpreted_events<interpreted_events::zoom>(
+                call::position(e),
+                [&]<typename W, typename Sender>(W &w, Sender &&sender) {
+                  auto [orgx, orgy] = call::zoom_factor(w);
+                  auto scale_mod =
+                      std::pow(1.f + conf.zoom_scale, call::delta_y(e));
+                  std::forward<Sender>(sender)(
+                      w, interpreted_event<interpreted_events::zoom>(
+                             call::time_stamp(e), call::position(e),
+                             orgx * scale_mod, orgy * scale_mod));
+                }));
           } else {
             _invoke_with_interpreted_event<interpreted_events::scroll>(
                 q, call::position(e), call::time_stamp(e), call::position(e),
@@ -1184,27 +1283,625 @@ public:
         event_case<input_events::key_down>([](auto const &e, auto &&d) {
           auto &ks = std::get<keymod_state &>(d);
           ks.set_down(call::raw_key(e));
-        }
-
-                                           ),
+        }),
         event_case<input_events::key_up>([](auto const &e, auto &&d) {
           auto &ks = std::get<keymod_state &>(d);
           ks.set_up(call::raw_key(e));
-        }
-
-                                         ) //
+        }) //
     );
   }
+
+public:
+  template <typename E>
+  static constexpr auto can_handle = _interpreter_can_handle<
+      input_events::mouse_button_down, input_events::mouse_button_up,
+      input_events::mouse_move, input_events::mouse_scroll,
+      input_events::key_down, input_events::key_up>::op<E>;
+
   template <typename Evt, typename Q>
   constexpr void handle(Evt const &e, Q &&q) {
     evt_switch(q, s_, keys_, std::as_const(conf_))(e);
   }
   template <typename Q> constexpr void pass_time(TimePoint const &, Q &&) {}
+
+  constexpr settings &get_settings() noexcept { return conf_; }
+};
+
+struct _touch_translator_base {
+  struct settings {
+    std::chrono::milliseconds context_menu_hold{500};
+    int drag_threshold = 5;
+    int zoom_threshold = 5;
+    int scroll_threshold = 5;
+  };
+
+  struct no_fingers_t {};
+  struct first_down_t {
+    interpreter_widget_cache held_widget{};
+    default_point_coordinate down_position{};
+    default_point_coordinate last_position{};
+
+    constexpr first_down_t(auto &&hw, default_point_coordinate pos)
+        : held_widget(std::forward<decltype(hw)>(hw)), down_position(pos),
+          last_position(pos) {}
+  };
+  struct drag_t {
+    interpreter_widget_cache held_widget{};
+    default_point_coordinate down_position{};
+  };
+  struct hold_no_drag_t {
+    interpreter_widget_cache held_widget{};
+    default_point_coordinate down_position{};
+    default_point_coordinate last_position{};
+  };
+  struct _scroll_zoom_base {
+    interpreter_widget_cache widget;
+    default_point_coordinate down_position{};
+    default_point_coordinate last_position;
+    int combo_state_index{};
+    constexpr _scroll_zoom_base(auto &&w, default_point_coordinate dp,
+                                default_point_coordinate lp, int csi) noexcept
+        : widget(w), down_position(dp), last_position(lp),
+          combo_state_index(csi) {}
+  };
+
+  struct scroll_t : _scroll_zoom_base {
+    using _scroll_zoom_base::_scroll_zoom_base;
+  };
+  struct zoom_t : _scroll_zoom_base {
+    zoom_factor_t original_factor;
+    constexpr zoom_t(auto &&w, default_point_coordinate dp,
+                     default_point_coordinate lp, int csi, zoom_factor_t of)
+        : _scroll_zoom_base(std::forward<decltype(w)>(w), dp, lp, csi),
+          original_factor(of) {}
+  };
+  struct scroll_zoom_t : _scroll_zoom_base {
+    zoom_factor_t original_factor;
+    constexpr scroll_zoom_t(auto &&w, default_point_coordinate dp,
+                            default_point_coordinate lp, int csi,
+                            zoom_factor_t of)
+        : _scroll_zoom_base(std::forward<decltype(w)>(w), dp, lp, csi),
+          original_factor(of) {}
+  };
+  struct gesture_finished_t {};
+  template <typename T>
+  static constexpr bool is_scroller =
+      bp::same_as_any<T, scroll_t, scroll_zoom_t>;
+  template <typename T>
+  static constexpr bool is_zoomer = bp::same_as_any<T, zoom_t, scroll_zoom_t>;
+
+  using state_var =
+      std::variant<no_fingers_t, first_down_t, drag_t, hold_no_drag_t, scroll_t,
+                   zoom_t, scroll_zoom_t, gesture_finished_t>;
+
+  template <typename T>
+    requires(bp::same_as_any<T, scroll_t, zoom_t, scroll_zoom_t>)
+  static constexpr void
+  enter(auto &&q, auto const &e, default_point_coordinate position, auto &s1,
+        auto &s2, std::pair<state_var *, int> result1,
+        std::pair<state_var *, int> result2, auto const &scroll_or_zoom_val,
+        auto const &...opt_zoom_value) {
+    using time_point_t = std::remove_cvref_t<decltype(call::time_stamp(e))>;
+    using scroll_event_t =
+        interpreted_event<interpreted_events::scroll, time_point_t>;
+    using zoom_event_t =
+        interpreted_event<interpreted_events::zoom, time_point_t>;
+    auto const down_positions = std::pair(s1.down_position, s2.down_position);
+    auto const r2_position = s2.last_position;
+    auto get_zoom = [&]() {
+      if constexpr (std::same_as<T, scroll_zoom_t>) {
+        static_assert(sizeof...(opt_zoom_value) == 1, "Missing zoom-value");
+        return bp::first_of(opt_zoom_value...);
+      } else {
+        static_assert(sizeof...(opt_zoom_value) == 0, "Too many arguments");
+        return scroll_or_zoom_val;
+      }
+    };
+    auto do_check_if_exit = [&](auto &sv, auto &w, auto &&) {
+      if (!sv.held_widget.refers_to(w)) {
+        send_to_cached_widget<interpreted_events::pointer_exit>(
+            q, call::time_stamp(e), sv.held_widget);
+      }
+    };
+    // We had to set this in a separate function to work-around a bug in clang
+    // that caused it to try to decompose scroll_or_zoom_val when it was a
+    // simple float-value (in the pure zoom-case).
+    auto do_send_scroll = [&](auto &w, auto &&s) {
+      if constexpr (is_scroller<T>) {
+        auto [scx, scy] = scroll_or_zoom_val;
+        s(w, scroll_event_t(call::time_stamp(e), position, scx, scy));
+      } else {
+        unused(w, s);
+      }
+    };
+    // We had to set this in a separate function to work-around a bug in clang
+    // that caused it to try to use the pair in scroll_or_zoom_val when it was
+    // in the pure scroll case..
+    auto do_send_zoom = [&](auto &w, auto &&s) {
+      if constexpr (is_zoomer<T>) {
+        auto [scx, scy] = get_zoom();
+        auto [orgx, orgy] = call::zoom_factor(w);
+        s(w,
+          zoom_event_t(call::time_stamp(e), position, scx * orgx, scy * orgy));
+      } else {
+        unused(w, s);
+      }
+    };
+    q(query_interpreted_events<interpreted_events::scroll,
+                               interpreted_events::zoom>(
+        position, [&]<typename W, typename S>(W &w, S &&sender) {
+          constexpr bool should_scroll =
+              std::invocable<S, W &, scroll_event_t> && is_scroller<T>;
+          constexpr bool should_zoom =
+              std::invocable<S, W &, zoom_event_t> && is_zoomer<T>;
+          if constexpr (should_scroll || should_zoom) {
+            do_check_if_exit(s1, w, sender);
+            do_check_if_exit(s2, w, sender);
+          }
+          if constexpr (should_scroll) {
+            do_send_scroll(w, sender);
+          }
+          if constexpr (should_zoom) {
+            static_assert(has_zoom_factor<W>,
+                          "You must implement 'zoom_factor_t zoom_factor()' to "
+                          "be able to handle zooming in the widgets.");
+            do_send_zoom(w, sender);
+          }
+          if constexpr (should_scroll && should_zoom) {
+            *result1.first =
+                scroll_zoom_t(w, down_positions.first, call::position(e),
+                              result2.second, call::zoom_factor(w));
+            *result2.first =
+                scroll_zoom_t(w, down_positions.second, r2_position,
+                              result1.second, call::zoom_factor(w));
+          } else if constexpr (should_scroll) {
+            *result1.first = scroll_t(w, down_positions.first,
+                                      call::position(e), result2.second);
+            *result2.first =
+                scroll_t(w, down_positions.second, r2_position, result1.second);
+          } else if constexpr (should_zoom) {
+            *result1.first = zoom_t(w, down_positions.first, call::position(e),
+                                    result2.second, call::zoom_factor(w));
+            *result2.first = zoom_t(w, down_positions.second, r2_position,
+                                    result1.second, call::zoom_factor(w));
+          }
+        }));
+  }
+};
+
+template <typename TimePoint> class touch_translator : _touch_translator_base {
+
+  static constexpr int max_fingers = 5;
+
+  struct state_t {
+    state_var state;
+    int finger_index{};
+    constexpr state_t() noexcept = default;
+    template <typename T>
+      requires(std::constructible_from<state_var, T>)
+    constexpr state_t(T &&s_in, int fi) noexcept
+        : state(std::forward<T>(s_in)), finger_index(fi) {}
+    constexpr void reset() { state = no_fingers_t{}; }
+  };
+
+  std::array<state_t, max_fingers> states_;
+  settings conf_;
+  int active_fingers_{};
+
+  template <typename... AllowedTypes>
+  constexpr bool get_combo_state(int finger_to_avoid, TimePoint,
+                                 auto &&callback) {
+    if (active_fingers_ < 2) {
+      return false;
+    }
+    for (int i{}; auto &s_fi : states_) {
+      if (s_fi.finger_index != finger_to_avoid) {
+        if (std::visit(
+                [&callback, i]<typename S>(S &s) {
+                  if constexpr (bp::same_as_any<S, AllowedTypes...>) {
+                    callback(s, i);
+                    return true;
+                  } else {
+                    return false;
+                  }
+                },
+                s_fi.state)) {
+          return true;
+        }
+      }
+      ++i;
+    }
+    return false;
+  }
+
+  // Search for a state that can be associated with index.
+  constexpr std::pair<state_var *, int> state_for_finger(int index) noexcept {
+    state_t *first_unused{};
+    int first_unused_index{};
+    for (int i = 0; auto &s : states_) {
+      if (s.finger_index == index) {
+        return {&s.state, i};
+      }
+      if (first_unused == nullptr &&
+          std::holds_alternative<no_fingers_t>(s.state)) {
+        first_unused = &s;
+        first_unused_index = i;
+      }
+      ++i;
+    }
+    if (first_unused != nullptr) {
+      first_unused->finger_index = index;
+      return {&first_unused->state, first_unused_index};
+    }
+    return {nullptr, -1};
+  }
+
+  static constexpr std::pair<float, float>
+  zoom_from_distances(float const &old_distance,
+                      point_coordinate auto const &new_distances) {
+    auto get_scale = [&](auto xy_of) {
+      auto denom = std::max(old_distance, 1e-25f);
+      return std::clamp(
+          std::abs(static_cast<float>(xy_of(new_distances.value()))) / (denom),
+          1.f / 128.f, 128.f);
+    };
+    return {get_scale(call::x_of), get_scale(call::y_of)};
+  }
+
+  static constexpr std::pair<float, float>
+  get_zoom_value(point_coordinate auto const &p1_org,
+                 point_coordinate auto const &p1_new,
+                 point_coordinate auto const &p2_org,
+                 point_coordinate auto const &p2_new) {
+    auto old_distances = sub(p2_org, p1_org);
+    auto old_dist = length(old_distances.value());
+    auto new_distances = sub(p2_new, p1_new);
+    return zoom_from_distances(old_dist, new_distances);
+  }
+
+  static constexpr std::optional<std::pair<float, float>> get_opt_zoom_value(
+      point_coordinate auto const &p1_org, point_coordinate auto const &p1_new,
+      point_coordinate auto const &p2_org, point_coordinate auto const &p2_new,
+      settings const &conf) {
+    auto old_distances = sub(p2_org, p1_org);
+    auto new_distances = sub(p2_new, p1_new);
+    auto old_dist = length(old_distances.value());
+    auto new_dist = length(new_distances.value());
+    if (std::abs(old_dist - new_dist) >= conf.zoom_threshold) {
+      return zoom_from_distances(old_dist, new_distances);
+    }
+    return {};
+  }
+  static constexpr std::pair<float, float>
+  get_scroll_value(auto const &old_center, auto const &new_center) {
+    auto center_diff = sub(new_center, old_center).value();
+    return {call::x_of(center_diff), call::y_of(center_diff)};
+  }
+  static constexpr std::optional<std::pair<float, float>>
+  get_opt_scroll_value(point_coordinate auto const &p1_org,
+                       point_coordinate auto const &p1_new,
+                       point_coordinate auto const &p2_org,
+                       point_coordinate auto const &p2_new, settings const &s) {
+    auto old_center = divide(add(p1_org, p2_org), 2);
+    auto new_center = divide(add(p1_new, p2_new), 2);
+    auto pot_value = get_scroll_value(old_center, new_center);
+    auto [x, y] = pot_value;
+    auto dist_sqr = square_value(x) + square_value(y);
+    if (dist_sqr > (s.scroll_threshold * s.scroll_threshold)) {
+      return pot_value;
+    }
+    return {};
+  }
+
+  template <typename S, typename Q, typename Event>
+    requires(is_scroller<S> || is_zoomer<S>)
+  constexpr void move_in_state(S &s, Q &&q, Event const &e,
+                               state_var &main_state) {
+    CGUI_ASSERT(s.combo_state_index >= 0);
+    CGUI_ASSERT(s.combo_state_index < max_fingers);
+    auto &cs_holder = states_[s.combo_state_index];
+    CGUI_ASSERT(std::holds_alternative<S>(cs_holder.state));
+    auto &cs = std::get<S>(cs_holder.state);
+    CGUI_ASSERT(cs.combo_state_index != s.combo_state_index);
+    CGUI_ASSERT(cs.widget == s.widget);
+    auto new_pos = center_between(call::position(e), cs.last_position);
+    auto old_pos = center_between(s.last_position, cs.last_position);
+    if constexpr (is_scroller<S>) {
+      // send scroll
+      auto [scx, scy] = get_scroll_value(old_pos, new_pos);
+      send_to_cached_widget<interpreted_events::scroll>(
+          q, call::time_stamp(e), s.widget, new_pos, scx, scy);
+    }
+    if constexpr (is_zoomer<S>) {
+      auto [dx, dy] = get_zoom_value(s.down_position, call::position(e),
+                                     cs.down_position, cs.last_position);
+      auto [orgx, orgy] = s.original_factor;
+      send_to_cached_widget<interpreted_events::zoom>(
+          q, call::time_stamp(e), s.widget, new_pos, dx * orgx, dy * orgy);
+      // send zoom
+    }
+    s.last_position = call::position(e);
+    if constexpr (!is_scroller<S> || !is_zoomer<S>) {
+      auto constexpr to_scroll_zoom_t = [](auto &&in_state,
+                                           zoom_factor_t org_f) {
+        return scroll_zoom_t(std::forward<decltype(in_state)>(in_state).widget,
+                             in_state.down_position, in_state.last_position,
+                             in_state.combo_state_index, org_f);
+      };
+      auto constexpr set_both_states =
+          [=]<typename... T1, typename... T2>(zoom_factor_t org_f,
+                                              std::pair<T1 &, T2 &>... states) {
+            unused((states.first =
+                        to_scroll_zoom_t(std::move(states.second), org_f))...);
+          };
+      auto constexpr to_ref_pair =
+          []<typename T1, typename T2>(
+              T1 &&f, T2 &&s) -> std::pair<T1 &&, T2 &&> { return {f, s}; };
+      if constexpr (!is_scroller<S>) {
+        // check if scroll should be enabled, then enable it and change the
+        // states.
+        if (auto scroll = get_opt_scroll_value(
+                cs.down_position, cs.last_position, s.down_position,
+                call::position(e), conf_)) {
+
+          auto const [scx, scy] = *scroll;
+          send_to_cached_widget<interpreted_events::scroll>(
+              q, call::time_stamp(e), s.widget, new_pos, scx, scy);
+        }
+      } else if constexpr (!is_zoomer<S>) {
+        // check if zoom should be enabled, then enable it and change the
+        // states.
+        if (auto zl =
+                get_opt_zoom_value(cs.down_position, cs.last_position,
+                                   s.down_position, call::position(e), conf_)) {
+          auto [dx, dy] = *zl;
+          s.widget.template access<interpreted_events::zoom>(
+              q, [&]<typename W, typename Sender>(W &w, Sender &&sender) {
+                static_assert(has_zoom_factor<W>,
+                              "You must implement 'zoom_factor_t zoom_factor() "
+                              "const' for your widget-like object (member, "
+                              "free with ADL, static or as extend_api_t<W>::)");
+                auto org_factor = call::zoom_factor(w);
+                auto [ox, oy] = org_factor;
+                // send_to_cached_widget<interpreted_events::zoom>(
+                //     q, call::time_stamp(e), s.widget, new_pos, dx * ox, dy *
+                //     oy);
+                // std::forward<S>(sender)(w, event_t(tp,
+                // std::forward<Args>(args)...));
+                std::forward<Sender>(sender)(
+                    w, interpreted_event<interpreted_events::zoom>(
+                           call::time_stamp(e), new_pos, dx * ox, dy * oy));
+                set_both_states(org_factor, to_ref_pair(main_state, s),
+                                to_ref_pair(cs_holder.state, cs));
+              });
+        }
+      }
+    }
+  }
+
+  constexpr void reset_state(state_var &s) {
+    CGUI_ASSERT((!std::holds_alternative<no_fingers_t>(s)));
+    s = no_fingers_t{};
+    --active_fingers_;
+  }
+
+  static constexpr interpreter_widget_cache
+  move_no_drag(auto &&q, auto const &e, interpreter_widget_cache org_w) {
+    auto constexpr exit_widget = [](interpreter_widget_cache const &w,
+                                    TimePoint const &tp, auto &&qin) {
+      send_to_cached_widget<interpreted_events::pointer_exit>(qin, tp, w);
+    };
+    q(query_interpreted_events<interpreted_events::pointer_enter,
+                               interpreted_events::pointer_hold>(
+        call::position(e),
+        [&]<typename W, typename S>(W &w, S &&sender) {
+          auto tp = call::time_stamp(e);
+          if (!org_w.refers_to(w)) {
+            exit_widget(org_w, tp, q);
+            org_w.reset(w);
+            if constexpr (std::invocable<S &&, W &,
+                                         interpreted_event<
+                                             interpreted_events::pointer_enter,
+                                             TimePoint>>) {
+              sender(w, interpreted_event<interpreted_events::pointer_enter,
+                                          TimePoint>(tp, call::position(e)));
+            }
+          }
+          if constexpr (std::invocable<
+                            S &&, W &,
+                            interpreted_event<interpreted_events::pointer_hold,
+                                              TimePoint>>) {
+            sender(
+                w,
+                interpreted_event<interpreted_events::pointer_hold, TimePoint>(
+                    tp, call::position(e)));
+          }
+        },
+        [&]() noexcept {
+          exit_widget(org_w, call::time_stamp(e), q);
+          org_w.reset();
+        }));
+    return org_w;
+  }
+
+  template <typename Q>
+  constexpr auto evt_switch(Q &&qi, state_var &s_in, int const &state_index,
+                            settings const &confi) {
+    return saved_ui_event_switch(
+        std::forward_as_tuple(qi, s_in, confi, state_index, *this),
+        // ---------------------
+        event_case<input_events::touch_down>([](auto const &e, auto &&d) {
+          auto &[q, s, conf, si, self] = d;
+          auto const pos = call::position(e);
+          if (std::holds_alternative<no_fingers_t>(s)) {
+            ++self.active_fingers_;
+          } else {
+            // Something is terribly wrong if we hit this.
+            CGUI_ASSERT(false);
+          }
+          s = first_down_t(
+              _invoke_with_interpreted_event(
+                  q, pos,
+                  interpreted_event<interpreted_events::pointer_enter>(
+                      call::time_stamp(e), pos),
+                  interpreted_event<interpreted_events::pointer_hold>(
+                      call::time_stamp(e), pos)),
+              pos);
+        }),
+        // ---------------------
+        event_case<input_events::touch_up>([](auto const &e, auto &&d) {
+          auto &[q, s, conf, si, self] = d;
+          std::visit(
+              [&]<typename S>(S &sv) {
+                if constexpr (bp::same_as_any<S, first_down_t,
+                                              hold_no_drag_t>) {
+                  _invoke_with_interpreted_event<
+                      interpreted_events::primary_click>(q, call::position(e),
+                                                         call::time_stamp(e),
+                                                         call::position(e));
+                  send_to_cached_widget<interpreted_events::pointer_exit>(
+                      q, call::time_stamp(e), sv.held_widget);
+                } else if constexpr (std::is_same_v<S, drag_t>) {
+                  send_to_cached_widget<
+                      interpreted_events::pointer_drag_finished_source>(
+                      q, call::time_stamp(e), sv.held_widget, sv.down_position,
+                      call::position(e));
+                  send_to_cached_widget<interpreted_events::pointer_exit>(
+                      q, call::time_stamp(e), sv.held_widget);
+                  _invoke_with_interpreted_event<
+                      interpreted_events::pointer_drag_finished_destination>(
+                      q, call::position(e), call::time_stamp(e),
+                      sv.down_position, call::position(e));
+                } else if constexpr (bp::same_as_any<S, zoom_t, scroll_t,
+                                                     scroll_zoom_t>) {
+                  CGUI_ASSERT(
+                      (sv.combo_state_index < std::ssize(self.states_) &&
+                       sv.combo_state_index >= 0));
+                  auto &s2 = self.states_[sv.combo_state_index];
+                  s2.state = gesture_finished_t{};
+                  send_to_cached_widget<interpreted_events::pointer_exit>(
+                      q, call::time_stamp(e), sv.widget);
+                }
+              },
+              s);
+          self.reset_state(s);
+        }),
+        // ---------------------
+        event_case<input_events::touch_move>([](auto const &e, auto &&d) {
+          auto &[q, s, conf, si, self] = d;
+          std::visit(
+              [&]<typename S>(S &sv) {
+                // ===
+                if constexpr (bp::same_as_any<S, first_down_t,
+                                              hold_no_drag_t>) {
+                  sv.last_position = call::position(e);
+                }
+                if constexpr (is_scroller<S> || is_zoomer<S>) {
+                  self.move_in_state(sv, q, e, s);
+                } else if constexpr (std::is_same_v<S, first_down_t>) {
+                  if (self.template get_combo_state<first_down_t,
+                                                    hold_no_drag_t>(
+                          call::finger_index(e), call::time_stamp(e),
+                          [&](auto &s2, int si2) {
+                            auto org_center = center_between(s2.down_position,
+                                                             sv.down_position);
+
+                            auto zoom_value = get_opt_zoom_value(
+                                s2.down_position, s2.last_position,
+                                sv.down_position, call::position(e), conf);
+                            auto scroll_value = get_opt_scroll_value(
+                                s2.down_position, s2.last_position,
+                                sv.down_position, call::position(e), conf);
+                            CGUI_ASSERT(si2 < max_fingers);
+                            auto &s2_vfi = self.states_[si2];
+                            if (zoom_value && scroll_value) {
+                              touch_translator::enter<scroll_zoom_t>(
+                                  q, e, org_center, sv, s2, {&s, si},
+                                  {&s2_vfi.state, si2}, *scroll_value,
+                                  *zoom_value);
+                            } else if (zoom_value) {
+                              touch_translator::enter<zoom_t>(
+                                  q, e, org_center, sv, s2, {&s, si},
+                                  {&s2_vfi.state, si2}, *zoom_value);
+                            } else if (scroll_value) {
+                              touch_translator::enter<scroll_t>(
+                                  q, e, org_center, sv, s2, {&s, si},
+                                  {&s2_vfi.state, si2}, *scroll_value);
+                            }
+                          })) {
+                    return;
+                  }
+
+                  auto dist_sqr = distance_sqr(sv.down_position.value(),
+                                               call::position(e).value());
+
+                  if (dist_sqr > (conf.drag_threshold * conf.drag_threshold)) {
+                    auto drag_widget = _invoke_with_interpreted_event(
+                        q, sv.down_position,
+                        interpreted_event<
+                            interpreted_events::pointer_drag_start, TimePoint>(
+                            call::time_stamp(e), call::position(e)),
+                        interpreted_event<interpreted_events::pointer_drag_move,
+                                          TimePoint>(call::time_stamp(e),
+                                                     sv.down_position,
+                                                     call::position(e)));
+                    if (drag_widget) {
+                      s = drag_t{drag_widget, sv.down_position};
+                    } else {
+                      s = hold_no_drag_t{
+                          move_no_drag(q, e, std::move(sv.held_widget)),
+                          sv.down_position, call::position(e)};
+                    }
+                  } else {
+                    send_to_cached_widget<interpreted_events::pointer_hold>(
+                        q, call::time_stamp(e), sv.held_widget,
+                        call::position(e));
+                  }
+                } else if constexpr (bp::same_as_any<S, hold_no_drag_t>) {
+                  sv.held_widget =
+                      move_no_drag(q, e, std::move(sv.held_widget));
+                }
+                // ===
+                else if constexpr (std::is_same_v<S, drag_t>) {
+                  send_to_cached_widget<interpreted_events::pointer_drag_move>(
+                      q, call::time_stamp(e), sv.held_widget, sv.down_position,
+                      call::position(e));
+                }
+                // ===
+                else if constexpr (std::is_same_v<S, hold_no_drag_t>) {
+                  _invoke_with_interpreted_event<
+                      interpreted_events::pointer_hold, TimePoint>(
+                      q, call::position(e), call::time_stamp(e),
+                      call::position(e));
+                }
+              },
+              s);
+        })
+        // ---------------------
+    );
+  }
+
+public:
+  template <typename E>
+  static constexpr auto can_handle =
+      _interpreter_can_handle<input_events::touch_down, input_events::touch_up,
+                              input_events::touch_move>::op<E>;
+
+  template <typename Evt, typename Q>
+  constexpr void handle(Evt const &e, Q &&q) {
+    if (auto [s, index] = state_for_finger(call::finger_index(e));
+        s != nullptr) {
+      evt_switch(q, *s, index, std::as_const(conf_))(e);
+    }
+  }
+
+  constexpr settings &get_settings() noexcept { return conf_; }
 };
 
 template <typename TimePoint = std::chrono::steady_clock>
 using default_event_interpreter =
-    event_interpreter<TimePoint, primary_mouse_click_translator>;
+    event_interpreter<TimePoint, primary_mouse_click_translator,
+                      touch_translator>;
 } // namespace cgui
 
 #endif

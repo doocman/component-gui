@@ -483,16 +483,29 @@ inline auto switch_sdl_event(sdl_event_callback auto &&cb, SDL_Event const &e)
   case SDL_EVENT_QUIT:
     return cb(gen_evt(e.quit));
   case SDL_EVENT_MOUSE_MOTION:
-    return cb(gen_evt(e.motion));
+    if (e.motion.which != static_cast<SDL_MouseID>(SDL_MOUSE_TOUCHID)) {
+      return cb(gen_evt(e.motion));
+    }
+    break;
   case SDL_EVENT_MOUSE_BUTTON_UP:
     [[fallthrough]];
   case SDL_EVENT_MOUSE_BUTTON_DOWN:
-    return cb(gen_evt(e.button));
+    if (e.button.which != static_cast<SDL_MouseID>(SDL_MOUSE_TOUCHID)) {
+      return cb(gen_evt(e.button));
+    }
+    break;
   case SDL_EVENT_WINDOW_RESIZED:
     return cb(gen_evt(e.window));
+  case SDL_EVENT_FINGER_DOWN:
+    [[fallthrough]];
+  case SDL_EVENT_FINGER_UP:
+    [[fallthrough]];
+  case SDL_EVENT_FINGER_MOTION:
+    return cb(gen_evt(e.tfinger));
   default:
-    return cb(e);
+    break;
   }
+  return cb(e);
 }
 
 inline int poll_event(sdl_context_instance &, sdl_event_callback auto &&cb) {
@@ -516,6 +529,16 @@ template <is_point_sized T, typename TX, typename TY>
 T scaled_point(TX x, TY y, auto win_id) {
   auto *w = SDL_GetWindowFromID(win_id);
   auto s = SDL_GetWindowDisplayScale(w);
+  return {int_cast<TX>(x / s), int_cast<TY>(y / s)};
+}
+template <is_point_sized T, typename TX, typename TY>
+T denormalize_scaled(TX xr, TY yr, auto win_id) {
+  auto *w = SDL_GetWindowFromID(win_id);
+  auto s = SDL_GetWindowDisplayScale(w);
+  int width, height;
+  SDL_GetWindowSize(w, &width, &height);
+  auto x = xr * width;
+  auto y = yr * height;
   return {int_cast<TX>(x / s), int_cast<TY>(y / s)};
 }
 } // namespace
@@ -555,10 +578,37 @@ template <> struct extend_api<SDL_MouseButtonEvent> : sdl_event_extend_api {
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
     return static_cast<mouse_buttons>(e.button);
   }
-  static point_unit_t<basic_coordinate<float>>
+  static point_unit_t<basic_coordinate<int>>
   position(SDL_MouseButtonEvent const &e) {
-    return scaled_point<point_unit_t<basic_coordinate<float>>>(e.x, e.y,
-                                                               e.windowID);
+    return scaled_point<point_unit_t<basic_coordinate<int>>>(e.x, e.y,
+                                                             e.windowID);
+  }
+};
+template <> struct extend_api<SDL_TouchFingerEvent> : sdl_event_extend_api {
+  static constexpr subset_input_events<input_events::touch_down,
+                                       input_events::touch_up,
+                                       input_events::touch_move>
+  event_type(SDL_TouchFingerEvent const &e) {
+    switch (e.type) {
+    case SDL_EVENT_FINGER_DOWN:
+      return input_events::touch_down;
+    case SDL_EVENT_FINGER_UP:
+      return input_events::touch_up;
+    case SDL_EVENT_FINGER_MOTION:
+      return input_events::touch_move;
+    default:
+      CGUI_ASSERT(false);
+      std::terminate();
+    }
+  }
+
+  static constexpr int finger_index(SDL_TouchFingerEvent const &e) {
+    return static_cast<int>(e.fingerID);
+  }
+  static point_unit_t<basic_coordinate<int>>
+  position(SDL_TouchFingerEvent const &e) {
+    return denormalize_scaled<point_unit_t<basic_coordinate<int>>>(e.x, e.y,
+                                                                   e.windowID);
   }
 };
 template <> struct extend_api<SDL_WindowEvent> : sdl_event_extend_api {

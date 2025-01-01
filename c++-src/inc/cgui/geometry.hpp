@@ -206,6 +206,122 @@ template <typename T = int> struct basic_size_wh {
   }
 };
 
+/// @brief Adds two coordinate vectors through elementwise addition.
+/// @tparam Ret Specifies the return type. Defaults to `void`, which resolves
+///             to the common type of the two input types unless explicitly
+///             provided.
+/// @tparam P1 The type of the first input coordinate vector.
+/// @tparam P2 The type of the second input coordinate vector.
+/// @tparam RetType The resolved return type, either explicitly provided by
+/// `Ret`
+///                 or deduced as the common type of P1 and P2.
+/// @param p1 The first coordinate vector.
+/// @param p2 The second coordinate vector.
+/// @return The result of adding the two coordinate vectors elementwise.
+///         If both input vectors support operator+, it uses that operator;
+///         otherwise, individual components are summed.
+/// @note The function ensures compatibility with vectors that define an `x_of`
+///       and `y_of` accessor instead of operator+.
+template <typename Ret = void, pixel_coord P1, pixel_coord P2,
+          pixel_coord RetType = typename std::conditional_t<
+              std::is_same_v<void, Ret>, std::common_type<P1, P2>,
+              std::type_identity<Ret>>::type>
+constexpr RetType add(P1 const &p1, P2 const &p2) {
+  if constexpr (requires() {
+                  { p1 + p2 } -> std::convertible_to<RetType>;
+                }) {
+    return p1 + p2;
+  } else {
+    auto x = call::x_of(p1) + call::x_of(p2);
+    auto y = call::y_of(p1) + call::y_of(p2);
+    return RetType(x, y);
+  }
+}
+
+/// @brief Subtracts two coordinate vectors through elementwise addition.
+/// @tparam Ret Specifies the return type. Defaults to `void`, which resolves
+///             to the common type of the two input types unless explicitly
+///             provided.
+/// @tparam P1 The type of the first input coordinate vector.
+/// @tparam P2 The type of the second input coordinate vector.
+/// @tparam RetType The resolved return type, either explicitly provided by
+/// `Ret`
+///                 or deduced as the common type of P1 and P2.
+/// @param p1 The first coordinate vector.
+/// @param p2 The second coordinate vector.
+/// @return The result of adding the two coordinate vectors elementwise.
+///         If both input vectors support operator-, it uses that operator;
+///         otherwise, individual components are summed.
+/// @note The function ensures compatibility with vectors that define an `x_of`
+///       and `y_of` accessor instead of operator+.
+template <typename Ret = void, pixel_coord P1, pixel_coord P2,
+          pixel_coord RetType = typename std::conditional_t<
+              std::is_same_v<void, Ret>, std::common_type<P1, P2>,
+              std::type_identity<Ret>>::type>
+constexpr RetType sub(P1 const &p1, P2 const &p2) {
+  if constexpr (requires() {
+                  { p1 - p2 } -> std::convertible_to<RetType>;
+                }) {
+    return p1 - p2;
+  } else {
+    auto x = call::x_of(p1) - call::x_of(p2);
+    auto y = call::y_of(p1) - call::y_of(p2);
+    return RetType(x, y);
+  }
+}
+
+/// @brief Divides the components of a coordinate vector by a scalar.
+/// @tparam P The type of the input coordinate vector.
+/// @tparam Div The type of the divisor, which must be compatible with the
+/// division operation.
+/// @param p The coordinate vector to be divided.
+/// @param d The scalar divisor.
+/// @return A coordinate vector resulting from dividing each component of `p` by
+/// `d`.
+///         If the vector type supports operator/, it uses that operator;
+///         otherwise, the division is performed component-wise using `x_of` and
+///         `y_of`.
+/// @note The function ensures compatibility with coordinate types that may not
+/// natively
+///       support operator/ by falling back to elementwise division.
+template <pixel_coord P, typename Div>
+  requires(
+      requires(P p, Div d) { p / d; } ||
+      requires(P p, Div d) {
+        call::x_of(p) / d;
+        call::y_of(p) / d;
+      })
+constexpr P divide(P const &p, Div d) {
+  if constexpr (requires() { p / d; }) {
+    return p / d;
+  } else {
+    auto x = call::x_of(p) / d;
+    auto y = call::y_of(p) / d;
+    return P(x, y);
+  }
+}
+
+/// @brief Generate a new point right between two other points. All points must
+/// share the same unit.
+/// @tparam Ret Specifies the return type. Defaults to `void`, which resolves
+///             to the common type of the two input types unless explicitly
+///             provided.
+/// @tparam P1 The type of the first input coordinate vector.
+/// @tparam P2 The type of the second input coordinate vector.
+/// @tparam RetType The resolved return type, either explicitly provided by
+/// `Ret`
+///                 or deduced as the common type of P1 and P2.
+/// @param p1 The first coordinate vector.
+/// @param p2 The second coordinate vector.
+/// @return A coordinate vector pointing to the center of the input vectors.
+template <typename Ret = void, pixel_coord P1, pixel_coord P2,
+          pixel_coord RetType = typename std::conditional_t<
+              std::is_same_v<void, Ret>, std::common_type<P1, P2>,
+              std::type_identity<Ret>>::type>
+constexpr RetType center_between(P1 const &p1, P2 const &p2) {
+  return divide(add<Ret>(p1, p2), 2);
+}
+
 template <typename T>
 basic_size_wh(T &&, T &&) -> basic_size_wh<std::remove_cvref_t<T>>;
 
@@ -1159,6 +1275,31 @@ constexpr T1 copy_coordinate(T2 &&p) {
 }
 
 constexpr auto square_value(auto &&v) { return v * v; }
+
+/// Calculates the length-squared of a coordinate vector
+/// \tparam T Type of coordinate
+/// \param p Coordinate vector
+/// \return Scalar that is p^T p
+template <pixel_coord T> constexpr auto length_sqr(T const &p) {
+  if constexpr (size_tagged<T>) {
+    // We currently don't support 'unit to the power of ...'.
+    return length_sqr(p.value());
+  } else {
+    return square_value(call::x_of(p)) + square_value(call::y_of(p));
+  }
+}
+
+/// Calculates the length-squared of a coordinate vector
+/// \tparam T Type of coordinate
+/// \param p Coordinate vector
+/// \return Scalar that is p^T p
+template <pixel_coord T> constexpr auto length(T const &p) {
+  if constexpr (size_tagged<T>) {
+    return T{std::sqrt(length_sqr(p.value()))};
+  } else {
+    return std::sqrt(length_sqr(p));
+  }
+}
 
 template <pixel_coord T1, same_unit_geometry_as<T1> T2>
 constexpr auto distance_sqr(T1 const &p1, T2 const &p2) {

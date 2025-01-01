@@ -8,6 +8,26 @@
 #include <string_view>
 #endif
 
+#define CGUI_PRAGMA_(X) _Pragma(#X)
+#define CGUI_PRAGMA(X) CGUI_PRAGMA_(X)
+#define CGUI_PRAGMA_S(X) _Pragma(X)
+
+#if defined(__clang__)
+#elif defined(__GNUC__) || defined(__GNUG__)
+#elif defined(_MSC_VER)
+#define CGUI_WARNINGS_PUSH _Pragma("warning(push)")
+#define CGUI_SUPPRESSW_MSVC(X) CGUI_PRAGMA(warning(disable : X))
+#define CGUI_WARNINGS_POP _Pragma("warning(pop)")
+#endif
+
+#ifndef CGUI_SUPPRESSW_MSVC
+#define CGUI_SUPPRESSW_MSVC(...)
+#endif
+#ifndef CGUI_WARNINGS_PUSH
+#define CGUI_WARNINGS_PUSH
+#define CGUI_WARNINGS_POP
+#endif
+
 namespace cgui {
 /// No-op function used to signal that any variables or expressions are ignored
 /// on purpose.
@@ -18,7 +38,7 @@ constexpr void unused(auto &&...) {}
 constexpr void
 cgui_assert(auto &&val, std::string_view text = {},
             std::source_location const &loc = std::source_location::current()) {
-  if (!val) {
+  if (!val) [[unlikely]] {
     std::cerr << loc.file_name() << ':' << loc.line() << ": Assertion failed\n";
     if (!empty(text)) {
       std::cerr << '\t' << text;
