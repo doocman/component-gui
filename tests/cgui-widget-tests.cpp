@@ -578,6 +578,38 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 }
 
+struct dummy_vp_item {};
+
+TEST(Widget, ViewPort) // NOLINT
+{
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto item = dummy_vp_item{};
+  auto w = widget_builder()
+               .event(view_port_trigger::builder()
+                          .subs(std::ref(item))
+                          .on_zoom([](auto &subs, zoom_args_t const &args) {
+                            unused(subs, args);
+                          })
+                          .on_pan([](auto &subs, pan_args_t const &args) {
+                            unused(subs, args);
+                          })
+                          .build())
+               .area(full_area)
+               .build();
+
+  auto rend = test_renderer{full_area};
+  auto sr = sub_renderer(rend);
+  auto rgba_sep = rend.individual_colours();
+  auto &[r, g, b, a] = rgba_sep;
+  auto do_render = [&] {
+    w.render(sr);
+    rgba_sep = rend.individual_colours();
+  };
+  do_render();
+  EXPECT_THAT(r, ElementsAre(1, 0, 0, 0));
+  EXPECT_THAT(a, ElementsAre(255, 0, 0, 0));
+}
+
 TEST(Widget, OnDestruct) // NOLINT
 {
   void *ptr_to_widget = nullptr;

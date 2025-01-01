@@ -2090,6 +2090,21 @@ public:
 
 radio_button_trigger() -> radio_button_trigger<subs_group>;
 
+struct zoom_args_t {};
+struct pan_args_t {};
+
+struct view_port_trigger {
+  class impl {};
+
+  class builder {
+  public:
+    constexpr impl build() && { return {}; }
+    constexpr builder subs(auto &&...) && { return {}; }
+    constexpr builder on_zoom(auto &&) && { return {}; }
+    constexpr builder on_pan(auto &&) && { return {}; }
+  };
+};
+
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_HPP

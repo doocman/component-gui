@@ -1460,15 +1460,6 @@ struct common_type<::cgui::autoconverting_pixelpoint_unit<ST, T, S>,
                    ::cgui::pixelpoint_unit<ST2, U>> {
   using type = ::cgui::pixelpoint_unit<ST2, common_type_t<T, U>>;
 };
-/*
-template <typename ST, typename ST2, typename T, typename S, typename U>
-  requires(requires() { typename common_type<T, U>::type; })
-struct common_type<::cgui::pixelpoint_unit<ST2, U>,
-                   ::cgui::autoconverting_pixelpoint_unit<ST, T, S>> {
-  using type = common_type_t<::cgui::autoconverting_pixelpoint_unit<ST, T, S>,
-                             ::cgui::pixelpoint_unit<ST2, U>>;
-};
-*/
 } // namespace std
 
 #endif
