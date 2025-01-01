@@ -8,6 +8,9 @@
 
 #include <cgui_test_utils.hpp>
 
+CGUI_WARNINGS_PUSH
+CGUI_SUPPRESSW_MSVC(4244)
+
 namespace cgui::tests {
 using namespace ::testing;
 
@@ -1083,3 +1086,5 @@ TEST_F(GestureEventsHitTests, TouchParentPanCallsExitOnChild) // NOLINT
 }
 
 } // namespace cgui::tests
+
+CGUI_WARNINGS_POP
