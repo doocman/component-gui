@@ -578,19 +578,34 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 }
 
-struct dummy_vp_item {};
+struct dummy_vp_item {
+  default_point_rect size{};
+  constexpr void render(renderer auto &&r, render_args auto &&args) const {
+    if (args.width() > point_unit(0) && args.height() > point_unit(0)) {
+      call::draw_pixels(
+          r, convert_pixelpoint<pixel_size_tag>(size, call::pixel_scale(r)),
+          [](auto &&b, auto &&cb) {
+            for (auto y : y_view(b)) {
+              for (auto x : x_view(b)) {
+                cb(default_pixel_coordinate{x, y},
+                   default_colour_t{
+                       static_cast<std::uint_least8_t>(x.value() + 1),
+                       static_cast<std::uint_least8_t>(y.value() + 1), 0, 255});
+              }
+            }
+          });
+    }
+  }
+};
 
 TEST(Widget, ViewPort) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
-  auto item = dummy_vp_item{};
+  auto item = dummy_vp_item{default_point_rect(full_area)};
   auto w = widget_builder()
                .event(view_port_trigger::builder()
-                          .subs(std::ref(item))
+                          .view(std::ref(item))
                           .on_zoom([](auto &subs, zoom_args_t const &args) {
-                            unused(subs, args);
-                          })
-                          .on_pan([](auto &subs, pan_args_t const &args) {
                             unused(subs, args);
                           })
                           .build())
@@ -608,6 +623,11 @@ TEST(Widget, ViewPort) // NOLINT
   do_render();
   EXPECT_THAT(r, ElementsAre(1, 0, 0, 0));
   EXPECT_THAT(a, ElementsAre(255, 0, 0, 0));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, 1.f, 0.f));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(0, 1, 0, 0));
+  EXPECT_THAT(a, ElementsAre(0, 255, 0, 0));
 }
 
 TEST(Widget, OnDestruct) // NOLINT

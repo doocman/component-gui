@@ -2093,17 +2093,64 @@ radio_button_trigger() -> radio_button_trigger<subs_group>;
 struct zoom_args_t {};
 struct pan_args_t {};
 
-struct view_port_trigger {
-  class impl {};
+namespace view_port_trigger {
 
-  class builder {
-  public:
-    constexpr impl build() && { return {}; }
-    constexpr builder subs(auto &&...) && { return {}; }
-    constexpr builder on_zoom(auto &&) && { return {}; }
-    constexpr builder on_pan(auto &&) && { return {}; }
-  };
+template <typename T, typename TRender = dummy_renderer,
+          typename RenderArgs = widget_render_args<>>
+concept sub_widget = has_render<T, TRender &&, RenderArgs const &>;
+
+template <renderer TRender = dummy_renderer,
+          render_args RenderArgs = widget_render_args<>>
+struct sub_widget_constraint {
+  template <sub_widget<TRender, RenderArgs> T>
+  constexpr void operator()(T &&) const noexcept {}
 };
+
+template <typename V> class impl : bp::empty_structs_optimiser<V> {
+  using _base_t = bp::empty_structs_optimiser<V>;
+
+public:
+  using _base_t::_base_t;
+
+  constexpr void render(renderer auto &&r, render_args auto &&args) const {
+    call::render(this->get_first(), r, args);
+  }
+  template <bounding_box A, typename E, widget_back_propagater BP>
+    requires(
+
+        interpreted_event_types<E,
+                                interpreted_events::scroll //
+                                >)
+  constexpr void handle(A const &area, E const &event, BP &&bp) {}
+};
+
+template <typename V> class builder_impl : bp::empty_structs_optimiser<V> {
+  using _base_t = bp::empty_structs_optimiser<V>;
+
+public:
+  constexpr builder_impl() = default;
+  template <typename V2>
+    requires(std::constructible_from<_base_t, V2>)
+  constexpr explicit builder_impl(V2 &&v) : _base_t(std::forward<V2>(v)) {}
+
+  constexpr auto build() && {
+    using v_t = decltype(build::return_or_build<sub_widget_constraint<>>(
+        std::move(*this).get_first()));
+    using result_t = impl<v_t>;
+    static_assert(sub_widget<v_t>);
+    // using result_t = impl<
+    return result_t(build::return_or_build<sub_widget_constraint<>>(
+        std::move(*this).get_first()));
+  }
+  template <build::fulfill_or_after_build<sub_widget_constraint<>> SW>
+  constexpr builder_impl<SW> view(SW &&sw) && {
+    return builder_impl<SW>(std::forward<SW>(sw));
+  }
+  constexpr builder_impl on_zoom(auto &&) && { return std::move(*this); }
+};
+
+constexpr builder_impl<empty_placeholder_t> builder() { return {}; }
+} // namespace view_port_trigger
 
 } // namespace cgui
 

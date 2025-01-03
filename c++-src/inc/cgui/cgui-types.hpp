@@ -286,8 +286,12 @@ constexpr auto fill = []<typename T, pixel_or_point_rect_basic TB, colour TC>(
   }
 };
 
-template <typename>
-concept render_args = true;
+template <typename T>
+concept render_args = requires(T &&t) {
+  t.width();
+  t.height();
+  t.widget_state();
+};
 
 template <typename T>
 concept state_marker = requires(T const &t) {

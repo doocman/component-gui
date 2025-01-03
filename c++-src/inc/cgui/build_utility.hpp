@@ -60,6 +60,27 @@ template <typename T>
 concept usable_in_build_tuples =
     bp::has_tuple_size<T> || requires() { typename all_tuple_tags<T>::type; };
 
+template <typename Constraint, typename B, typename... Args>
+  requires(std::invocable<Constraint, B> ||
+           std::invocable<Constraint, std::unwrap_ref_decay_t<B>> ||
+           (builder<B, Args...> &&
+            std::invocable<Constraint, build_result_t<B, Args...>>))
+constexpr decltype(auto) return_or_build(B &&b, Args &&...args) {
+  if constexpr (std::invocable<Constraint, B>) {
+    return std::forward<B>(b);
+  } else if constexpr (std::invocable<Constraint, std::unwrap_ref_decay_t<B>>) {
+    return static_cast<std::unwrap_ref_decay_t<B>>(b);
+  } else {
+    return call::build(std::forward<B>(b), std::forward<Args>(args)...);
+  }
+}
+
+template <typename T, typename Constraint, typename... Args>
+concept fulfill_or_after_build =
+    requires(bp::as_forward<T> t, bp::as_forward<Args>... args) {
+      return_or_build<Constraint>(*t, *args...);
+    };
+
 namespace impl {
 inline namespace {
 template <typename Constraint, typename... Args>
@@ -68,15 +89,11 @@ constexpr auto optional_builder(Args &&...args) {
              B &&b) -> decltype(auto)
            requires(std::invocable<Constraint, B> || builder<B, Args...>)
   {
-    if constexpr (std::invocable<Constraint, B>) {
-      return std::forward<B>(b);
-    } else {
-      return std::apply(
-          [&b](auto &&...afs) {
-            return call::build(std::forward<B>(b), *afs...);
-          },
-          at);
-    }
+    return std::apply(
+        [&b](auto &&...afs) -> decltype(auto) {
+          return return_or_build<Constraint>(std::forward<B>(b), *afs...);
+        },
+        at);
   };
 }
 } // namespace
