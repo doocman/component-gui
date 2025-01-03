@@ -598,17 +598,13 @@ struct dummy_vp_item {
   }
 };
 
-TEST(Widget, ViewPort) // NOLINT
+TEST(Widget, ViewPortPan) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
-  auto item = dummy_vp_item{default_point_rect(full_area)};
+  auto constexpr ext_area = default_rect{{0, 0}, {4, 4}};
+  auto item = dummy_vp_item{default_point_rect(ext_area)};
   auto w = widget_builder()
-               .event(view_port_trigger::builder()
-                          .view(std::ref(item))
-                          .on_zoom([](auto &subs, zoom_args_t const &args) {
-                            unused(subs, args);
-                          })
-                          .build())
+               .event(view_port_trigger::builder().view(std::ref(item)).build())
                .area(full_area)
                .build();
 
@@ -617,17 +613,29 @@ TEST(Widget, ViewPort) // NOLINT
   auto rgba_sep = rend.individual_colours();
   auto &[r, g, b, a] = rgba_sep;
   auto do_render = [&] {
+    std::ranges::fill(r, std::int_least8_t{});
+    std::ranges::fill(g, std::int_least8_t{});
     w.render(sr);
     rgba_sep = rend.individual_colours();
   };
   do_render();
-  EXPECT_THAT(r, ElementsAre(1, 0, 0, 0));
-  EXPECT_THAT(a, ElementsAre(255, 0, 0, 0));
+  EXPECT_THAT(r, ElementsAre(1, 2, 1, 2));
+  EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
   w.handle(interpreted_event<interpreted_events::scroll>(
       {}, default_point_coordinate{}, 1.f, 0.f));
   do_render();
-  EXPECT_THAT(r, ElementsAre(0, 1, 0, 0));
-  EXPECT_THAT(a, ElementsAre(0, 255, 0, 0));
+  EXPECT_THAT(r, ElementsAre(2, 3, 2, 3));
+  EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, 0.f, 1.f));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(2, 3, 2, 3));
+  EXPECT_THAT(g, ElementsAre(2, 2, 3, 3));
+}
+
+TEST(Widget, ViewPortZoom) // NOLINT
+{
+  FAIL() << "Not yet implemented";
 }
 
 TEST(Widget, OnDestruct) // NOLINT

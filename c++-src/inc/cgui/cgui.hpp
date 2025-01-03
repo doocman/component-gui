@@ -100,6 +100,14 @@ public:
   constexpr explicit operator recursive_area_navigator<A2>() const {
     return {copy_box<A2>(relative_area_), offset_x_, offset_y_};
   }
+
+  template <pixel_coord V>
+    requires(same_unit_as<V, TB>)
+  constexpr recursive_area_navigator translate(V const &v) const {
+    return {
+        nudge_down(nudge_right(relative_area_, call::x_of(v)), call::y_of(v)),
+        offset_x_ - call::x_of(v), offset_y_ - call::y_of(v)};
+  }
 };
 
 template <canvas T, pixel_rect TB> class sub_renderer {
@@ -120,8 +128,7 @@ private:
     return a;
   }
 
-  template <pixel_or_point_rect_basic TB2>
-  constexpr auto to_pixels(TB2 const &b) const {
+  template <size_tagged TB2> constexpr auto to_pixels(TB2 const &b) const {
     return convert_pixelpoint<pixel_size_tag>(b, pixel_scale());
   }
 
@@ -198,9 +205,7 @@ public:
   }
 
   constexpr void fill(pixel_or_point_rect_basic auto const &dest,
-                      colour auto const &c)
-  // requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
-  {
+                      colour auto const &c) {
     auto absolute_dest_maker = [this](auto const &d) {
       return to_absolute(to_relative_dest(
           convert_pixelpoint<pixel_size_tag>(d, pixel_scale())));
@@ -214,11 +219,8 @@ public:
       }
       call::fill(*c_, absolute_dest, c);
     } else {
-      // call::draw_pixels(*this, absolute_dest,
-      // fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
       draw_pixels(dest,
                   fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
-      //::cgui::fill(*this, absolute_dest, c);
     }
   }
 
@@ -232,6 +234,13 @@ public:
 
   constexpr sub_renderer sub(point_rect auto const &b, auto &&...args) const {
     return sub(to_pixels(b), std::forward<decltype(args)>(args)...);
+  }
+
+  constexpr sub_renderer translate(pixel_coordinate auto const &p) const {
+    return {*c_, area_.translate(p), set_colour_};
+  }
+  constexpr sub_renderer translate(point_coordinate auto const &p) const {
+    return translate(to_pixels(p));
   }
 
   constexpr sub_renderer with(default_colour_t c) {
@@ -2108,12 +2117,25 @@ struct sub_widget_constraint {
 
 template <typename V> class impl : bp::empty_structs_optimiser<V> {
   using _base_t = bp::empty_structs_optimiser<V>;
+  default_point_coordinate pan_{};
+
+  constexpr auto evt_switch() {
+    return saved_ui_event_switch(
+        std::ref(*this),
+        event_case<interpreted_events::scroll>(
+            [](auto const &e, impl &self, auto &&...) {
+              call::x_of(self.pan_,
+                         call::x_of(self.pan_) + point_unit(call::delta_x(e)));
+              call::y_of(self.pan_,
+                         call::y_of(self.pan_) + point_unit(call::delta_y(e)));
+            }));
+  }
 
 public:
   using _base_t::_base_t;
 
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
-    call::render(this->get_first(), r, args);
+    call::render(this->get_first(), r.translate(pan_), args);
   }
   template <bounding_box A, typename E, widget_back_propagater BP>
     requires(
@@ -2121,7 +2143,9 @@ public:
         interpreted_event_types<E,
                                 interpreted_events::scroll //
                                 >)
-  constexpr void handle(A const &area, E const &event, BP &&bp) {}
+  constexpr void handle(A const &area, E const &event, BP &&bp) {
+    evt_switch()(event, std::forward<BP>(bp));
+  }
 };
 
 template <typename V> class builder_impl : bp::empty_structs_optimiser<V> {
