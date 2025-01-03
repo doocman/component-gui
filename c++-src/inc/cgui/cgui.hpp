@@ -2123,11 +2123,13 @@ template <typename V> class impl : bp::empty_structs_optimiser<V> {
     return saved_ui_event_switch(
         std::ref(*this),
         event_case<interpreted_events::scroll>(
-            [](auto const &e, impl &self, auto &&...) {
+            [](auto const &e, impl &self, auto&& bp, auto &&...) {
+              bp.rerender();
               call::x_of(self.pan_,
                          call::x_of(self.pan_) + point_unit(call::delta_x(e)));
               call::y_of(self.pan_,
                          call::y_of(self.pan_) + point_unit(call::delta_y(e)));
+
             }));
   }
 
@@ -2144,7 +2146,7 @@ public:
                                 interpreted_events::scroll //
                                 >)
   constexpr void handle(A const &area, E const &event, BP &&bp) {
-    evt_switch()(event, std::forward<BP>(bp));
+    evt_switch()(event, std::forward<BP>(bp), area);
   }
 };
 

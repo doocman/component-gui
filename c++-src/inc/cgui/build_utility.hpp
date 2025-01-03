@@ -67,8 +67,10 @@ template <typename Constraint, typename B, typename... Args>
             std::invocable<Constraint, build_result_t<B, Args...>>))
 constexpr decltype(auto) return_or_build(B &&b, Args &&...args) {
   if constexpr (std::invocable<Constraint, B>) {
+    unused(args...);
     return std::forward<B>(b);
   } else if constexpr (std::invocable<Constraint, std::unwrap_ref_decay_t<B>>) {
+    unused(args...);
     return static_cast<std::unwrap_ref_decay_t<B>>(b);
   } else {
     return call::build(std::forward<B>(b), std::forward<Args>(args)...);

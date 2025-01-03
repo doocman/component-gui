@@ -578,9 +578,9 @@ template <> struct extend_api<SDL_MouseButtonEvent> : sdl_event_extend_api {
   static constexpr mouse_buttons mouse_button(SDL_MouseButtonEvent const &e) {
     return static_cast<mouse_buttons>(e.button);
   }
-  static point_unit_t<basic_coordinate<int>>
+  static point_unit_t<basic_coordinate<float>>
   position(SDL_MouseButtonEvent const &e) {
-    return scaled_point<point_unit_t<basic_coordinate<int>>>(e.x, e.y,
+    return scaled_point<point_unit_t<basic_coordinate<float>>>(e.x, e.y,
                                                              e.windowID);
   }
 };
