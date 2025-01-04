@@ -596,7 +596,7 @@ struct dummy_vp_item {
           });
     }
   }
-  constexpr default_point_rect const& area() const noexcept { return size; }
+  constexpr default_point_rect const &area() const noexcept { return size; }
 };
 
 TEST(Widget, ViewPortPan) // NOLINT
@@ -634,12 +634,14 @@ TEST(Widget, ViewPortPan) // NOLINT
   w.handle(interpreted_event<interpreted_events::scroll>(
       {}, default_point_coordinate{}, 2.f, 0.f));
   do_render();
-  EXPECT_THAT(r, ElementsAre(3, 4, 3, 4)) << "The scroll should not exceed past the size of the viewed item";
+  EXPECT_THAT(r, ElementsAre(3, 4, 3, 4))
+      << "The scroll should not exceed past the size of the viewed item";
   EXPECT_THAT(g, ElementsAre(2, 2, 3, 3));
   w.handle(interpreted_event<interpreted_events::scroll>(
       {}, default_point_coordinate{}, -8.f, 0.f));
   do_render();
-  EXPECT_THAT(r, ElementsAre(0, 1, 0, 1)) << "The scroll should not exceed past point zero of the view";
+  EXPECT_THAT(r, ElementsAre(0, 1, 0, 1))
+      << "The scroll should not exceed past point zero of the view";
   EXPECT_THAT(g, ElementsAre(2, 2, 3, 3));
 }
 
@@ -664,17 +666,17 @@ TEST(Widget, ViewPortSmallViewed) // NOLINT
   };
   do_render();
   EXPECT_THAT(r, ElementsAre(0, 255, 255, 255));
-  EXPECT_THAT(g, ElementsAre(1, 255, 255, 255));
+  EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, 1.f, 0.f));
+      {}, default_point_coordinate{}, 1.f, 1.f));
   do_render();
   EXPECT_THAT(r, ElementsAre(0, 255, 255, 255));
-  EXPECT_THAT(g, ElementsAre(1, 255, 255, 255));
+  EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, -1.f, 0.f));
+      {}, default_point_coordinate{}, -1.f, -1.f));
   do_render();
   EXPECT_THAT(r, ElementsAre(0, 255, 255, 255));
-  EXPECT_THAT(g, ElementsAre(1, 255, 255, 255));
+  EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
 }
 
 TEST(Widget, ViewPortZoom) // NOLINT

@@ -581,7 +581,7 @@ template <> struct extend_api<SDL_MouseButtonEvent> : sdl_event_extend_api {
   static point_unit_t<basic_coordinate<float>>
   position(SDL_MouseButtonEvent const &e) {
     return scaled_point<point_unit_t<basic_coordinate<float>>>(e.x, e.y,
-                                                             e.windowID);
+                                                               e.windowID);
   }
 };
 template <> struct extend_api<SDL_TouchFingerEvent> : sdl_event_extend_api {
