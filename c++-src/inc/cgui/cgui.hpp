@@ -2106,7 +2106,10 @@ namespace view_port_trigger {
 
 template <typename T, typename TRender = dummy_renderer,
           typename RenderArgs = widget_render_args<>>
-concept sub_widget = has_render<T, TRender &&, RenderArgs const &>;
+concept sub_widget = has_render<T, TRender &&, RenderArgs const &> && requires(T const& t)
+{
+  {call::area(t)} -> point_rect;
+};
 
 template <renderer TRender = dummy_renderer,
           render_args RenderArgs = widget_render_args<>>
@@ -2117,18 +2120,35 @@ struct sub_widget_constraint {
 
 template <typename V> class impl : bp::empty_structs_optimiser<V> {
   using _base_t = bp::empty_structs_optimiser<V>;
+  constexpr decltype(auto) viewed_area() const {
+    return call::area(_base_t::get_first());
+  }
+
   default_point_coordinate pan_{};
+
+  constexpr default_point_coordinate clamped_pan(default_point_coordinate p0, bounding_box auto const& a) {
+    using scalar_t = std::remove_cvref_t<decltype(call::x_of(p0))>;
+    auto w = static_cast<scalar_t>(call::width(a));
+    return {
+      std::clamp<scalar_t>(call::x_of(p0), call::l_x(viewed_area()), call::r_x(viewed_area()) - w),
+      std::clamp<scalar_t>(call::y_of(p0), call::t_y(viewed_area()), call::b_y(viewed_area()) - w)
+    };
+  }
 
   constexpr auto evt_switch() {
     return saved_ui_event_switch(
         std::ref(*this),
         event_case<interpreted_events::scroll>(
-            [](auto const &e, impl &self, auto&& bp, auto &&...) {
+            [](auto const &e, impl &self, auto&& bp, bounding_box auto const& a) {
+              auto naive_x = call::x_of(self.pan_) + point_unit(call::delta_x(e));
+              auto naive_y = call::y_of(self.pan_) + point_unit(call::delta_y(e));
+              self.pan_ = self.clamped_pan({naive_x, naive_y}, a);
+              //auto max_x = std::max<decltype(naive_x)>(call::r_x(call::area(self.get_first())) - call::width(a), decltype(naive_x){});
+              //auto min_x = call::l_x(call::area(self.get_first()));
               bp.rerender();
-              call::x_of(self.pan_,
-                         call::x_of(self.pan_) + point_unit(call::delta_x(e)));
-              call::y_of(self.pan_,
-                         call::y_of(self.pan_) + point_unit(call::delta_y(e)));
+              //call::x_of(self.pan_, std::clamp<decltype(naive_x)>(naive_x, min_x, max_x));
+              //call::y_of(self.pan_,
+              //           call::y_of(self.pan_) + point_unit(call::delta_y(e)));
 
             }));
   }
