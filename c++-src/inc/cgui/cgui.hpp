@@ -1774,10 +1774,9 @@ public:
 };
 
 template <bounding_box B, typename T>
-basic_button_list_args(B const &, T &&)
-    -> basic_button_list_args<
-        std::unwrap_ref_decay_t<T>,
-        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+basic_button_list_args(B const &, T &&) -> basic_button_list_args<
+    std::unwrap_ref_decay_t<T>,
+    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
 template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;
@@ -2088,6 +2087,7 @@ public:
   constexpr void render(auto &&...) const {}
   constexpr bool find_sub(auto &&...) { return false; }
   constexpr void handle(auto &&...) {}
+  constexpr default_point_rect intrinsic_min_size() const { return {}; }
 };
 
 template <typename TElements = subs_group>
