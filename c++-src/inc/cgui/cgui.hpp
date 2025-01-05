@@ -2167,10 +2167,12 @@ class impl : bp::empty_structs_optimiser<V> {
         }),
         event_case<interpreted_events::zoom>(
             [](auto const &e, impl &self, auto &&bp, auto &&) {
-              float new_scale = (call::scale_x(e) + call::scale_y(e)) / 2.f;
-              if (new_scale != self.scale_) {
-                self.scale_ = new_scale;
-                bp.rerender();
+              if constexpr (zoomable) {
+                float new_scale = (call::scale_x(e) + call::scale_y(e)) / 2.f;
+                if (new_scale != self.scale_) {
+                  self.scale_ = new_scale;
+                  bp.rerender();
+                }
               }
             }));
   }
