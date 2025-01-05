@@ -116,6 +116,8 @@ template <canvas T, pixel_rect TB, pixelpoint_scale Scale> class sub_renderer {
   default_colour_t set_colour_{};
   Scale scale_;
 
+  static_assert(!std::is_reference_v<Scale>);
+
 public:
   constexpr auto pixel_scale() const { return scale_; }
 
@@ -228,7 +230,7 @@ public:
   }
 
   constexpr sub_renderer sub(pixel_rect auto &&b, default_colour_t col) const {
-    return {*c_, area_.sub(b), col, scale};
+    return {*c_, area_.sub(b), col, scale_};
   }
 
   constexpr sub_renderer sub(pixel_rect auto &&b) const {
@@ -246,7 +248,7 @@ public:
     return translate(to_pixels(p));
   }
   template <pixelpoint_scale S2, typename CT = decltype(S2{} * scale_)>
-  constexpr sub_renderer<T, TB, S2> scale(S2 s) const {
+  constexpr sub_renderer<T, TB, CT> scale(S2 s) const {
     return {*c_, area_, set_colour_, s * scale_};
   }
 
