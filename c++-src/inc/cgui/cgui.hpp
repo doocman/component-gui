@@ -1829,7 +1829,7 @@ concept element =
             bp::return_constant_t<state_marker_t, element_state{}>, int>> &&
     requires(T &&t, Position const &p) {
       call::find_sub(t, bp::false_predicate, bp::no_op);
-      //{call::intrinsic_min_size(t)} -> point_rect;
+      { call::intrinsic_min_size(t) } -> point_rect;
     };
 struct sub_constraint {
   constexpr void operator()(element auto &&) const {}
