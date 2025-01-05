@@ -578,6 +578,136 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 }
 
+struct dummy_vp_item {
+  default_point_rect size{};
+  constexpr void render(renderer auto &&r, render_args auto &&args) const {
+    if (args.width() > point_unit(0) && args.height() > point_unit(0)) {
+      call::draw_pixels(
+          r, convert_pixelpoint<pixel_size_tag>(size, call::pixel_scale(r)),
+          [](auto &&b, auto &&cb) {
+            for (auto y : y_view(b)) {
+              for (auto x : x_view(b)) {
+                cb(default_pixel_coordinate{x, y},
+                   default_colour_t{
+                       static_cast<std::uint_least8_t>(x.value() + 1),
+                       static_cast<std::uint_least8_t>(y.value() + 1), 0, 255});
+              }
+            }
+          });
+    }
+  }
+  constexpr default_point_rect const &area() const noexcept { return size; }
+};
+
+TEST(Widget, ViewPortPan) // NOLINT
+{
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr ext_area = default_rect{{-1, -1}, {4, 4}};
+  auto item = dummy_vp_item{default_point_rect(ext_area)};
+  auto w = widget_builder()
+               .event(view_port_trigger::builder().view(std::ref(item)).build())
+               .area(full_area)
+               .build();
+
+  auto rend = test_renderer{full_area};
+  auto sr = sub_renderer(rend);
+  auto rgba_sep = rend.individual_colours();
+  auto &[r, g, b, a] = rgba_sep;
+  auto do_render = [&] {
+    std::ranges::fill(rend.drawn_pixels, default_colour_t{255, 255, 255, 0});
+    w.render(sr);
+    rgba_sep = rend.individual_colours();
+  };
+  do_render();
+  EXPECT_THAT(r, ElementsAre(1, 2, 1, 2));
+  EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, 1.f, 0.f));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(2, 3, 2, 3));
+  EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, 0.f, 1.f));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(2, 3, 2, 3));
+  EXPECT_THAT(g, ElementsAre(2, 2, 3, 3));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, 2.f, 0.f));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(3, 4, 3, 4))
+      << "The scroll should not exceed past the size of the viewed item";
+  EXPECT_THAT(g, ElementsAre(2, 2, 3, 3));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, -8.f, 0.f));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(0, 1, 0, 1))
+      << "The scroll should not exceed past point zero of the view";
+  EXPECT_THAT(g, ElementsAre(2, 2, 3, 3));
+}
+
+TEST(Widget, ViewPortSmallViewed) // NOLINT
+{
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr ext_area = default_rect{{-1, -1}, {0, 0}};
+  auto item = dummy_vp_item{default_point_rect(ext_area)};
+  auto w = widget_builder()
+               .event(view_port_trigger::builder().view(std::ref(item)).build())
+               .area(full_area)
+               .build();
+
+  auto rend = test_renderer{full_area};
+  auto sr = sub_renderer(rend);
+  auto rgba_sep = rend.individual_colours();
+  auto &[r, g, b, a] = rgba_sep;
+  auto do_render = [&] {
+    std::ranges::fill(rend.drawn_pixels, default_colour_t{255, 255, 255, 0});
+    w.render(sr);
+    rgba_sep = rend.individual_colours();
+  };
+  do_render();
+  EXPECT_THAT(r, ElementsAre(0, 255, 255, 255));
+  EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, 1.f, 1.f));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(0, 255, 255, 255));
+  EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, -1.f, -1.f));
+  do_render();
+  EXPECT_THAT(r, ElementsAre(0, 255, 255, 255));
+  EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
+}
+
+TEST(Widget, ViewPortZoom) // NOLINT
+{
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr ext_area = default_rect{{0, 0}, {1, 1}};
+  auto item = dummy_vp_item{default_point_rect(ext_area)};
+  auto w = widget_builder()
+               .event(view_port_trigger::builder()
+                          .view(std::ref(item))
+                          .enable_zoom()
+                          .build())
+               .area(full_area)
+               .build();
+  w.handle(interpreted_event<interpreted_events::zoom>(
+      {}, default_point_coordinate{}, 2.f, 2.f));
+
+  auto rend = test_renderer{full_area};
+  auto sr = sub_renderer(rend);
+  auto rgba_sep = rend.individual_colours();
+  auto &[r, g, b, a] = rgba_sep;
+  auto do_render = [&] {
+    std::ranges::fill(rend.drawn_pixels, default_colour_t{255, 255, 255, 0});
+    w.render(sr);
+    rgba_sep = rend.individual_colours();
+  };
+  do_render();
+  EXPECT_THAT(r, ElementsAre(1, 2, 1, 2));
+  EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
+}
+
 TEST(Widget, OnDestruct) // NOLINT
 {
   void *ptr_to_widget = nullptr;

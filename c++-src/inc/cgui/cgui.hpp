@@ -100,15 +100,26 @@ public:
   constexpr explicit operator recursive_area_navigator<A2>() const {
     return {copy_box<A2>(relative_area_), offset_x_, offset_y_};
   }
+
+  template <pixel_coord V>
+    requires(same_unit_as<V, TB>)
+  constexpr recursive_area_navigator translate(V const &v) const {
+    return {
+        nudge_down(nudge_right(relative_area_, call::x_of(v)), call::y_of(v)),
+        offset_x_ - call::x_of(v), offset_y_ - call::y_of(v)};
+  }
 };
 
-template <canvas T, pixel_rect TB> class sub_renderer {
+template <canvas T, pixel_rect TB, pixelpoint_scale Scale> class sub_renderer {
   T *c_;
   recursive_area_navigator<TB> area_;
   default_colour_t set_colour_{};
+  Scale scale_;
+
+  static_assert(!std::is_reference_v<Scale>);
 
 public:
-  constexpr auto pixel_scale() const { return call::pixel_scale(*c_); }
+  constexpr auto pixel_scale() const { return scale_; }
 
 private:
   static constexpr TB bound_area(TB a) {
@@ -120,8 +131,7 @@ private:
     return a;
   }
 
-  template <pixel_or_point_rect_basic TB2>
-  constexpr auto to_pixels(TB2 const &b) const {
+  template <size_tagged TB2> constexpr auto to_pixels(TB2 const &b) const {
     return convert_pixelpoint<pixel_size_tag>(b, pixel_scale());
   }
 
@@ -133,15 +143,17 @@ private:
   constexpr TB2 to_absolute(TB2 const &relative_dest) const {
     return area_.move_to_absolute(relative_dest);
   }
+
+public:
   constexpr sub_renderer(T &c, recursive_area_navigator<TB> a,
-                         default_colour_t sc)
-      : c_(std::addressof(c)), area_(a), set_colour_(sc) {
+                         default_colour_t sc, Scale s)
+      : c_(std::addressof(c)), area_(a), set_colour_(sc), scale_(s) {
     assert(valid_box(area_.relative_area()));
   }
 
-public:
   constexpr sub_renderer(T &c, TB a)
-      : sub_renderer(c, recursive_area_navigator<TB>(a), {}) {}
+      : sub_renderer(c, recursive_area_navigator<TB>(a), {},
+                     call::pixel_scale(c)) {}
   constexpr explicit sub_renderer(T &c)
       : sub_renderer(c, call::pixel_area(c)) {}
   template <point_rect TB2>
@@ -198,9 +210,7 @@ public:
   }
 
   constexpr void fill(pixel_or_point_rect_basic auto const &dest,
-                      colour auto const &c)
-  // requires(has_native_fill<decltype(*c_), decltype(dest), decltype(c)>)
-  {
+                      colour auto const &c) {
     auto absolute_dest_maker = [this](auto const &d) {
       return to_absolute(to_relative_dest(
           convert_pixelpoint<pixel_size_tag>(d, pixel_scale())));
@@ -214,16 +224,13 @@ public:
       }
       call::fill(*c_, absolute_dest, c);
     } else {
-      // call::draw_pixels(*this, absolute_dest,
-      // fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
       draw_pixels(dest,
                   fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
-      //::cgui::fill(*this, absolute_dest, c);
     }
   }
 
   constexpr sub_renderer sub(pixel_rect auto &&b, default_colour_t col) const {
-    return {*c_, area_.sub(b), col};
+    return {*c_, area_.sub(b), col, scale_};
   }
 
   constexpr sub_renderer sub(pixel_rect auto &&b) const {
@@ -232,6 +239,17 @@ public:
 
   constexpr sub_renderer sub(point_rect auto const &b, auto &&...args) const {
     return sub(to_pixels(b), std::forward<decltype(args)>(args)...);
+  }
+
+  constexpr sub_renderer translate(pixel_coordinate auto const &p) const {
+    return {*c_, area_.translate(p), set_colour_, scale_};
+  }
+  constexpr sub_renderer translate(point_coordinate auto const &p) const {
+    return translate(to_pixels(p));
+  }
+  template <pixelpoint_scale S2, typename CT = decltype(S2{} * scale_)>
+  constexpr sub_renderer<T, TB, CT> scale(S2 s) const {
+    return {*c_, area_, set_colour_, s * scale_};
   }
 
   constexpr sub_renderer with(default_colour_t c) {
@@ -243,14 +261,20 @@ public:
   constexpr TB area() const { return area_.relative_area(); }
 };
 
+template <typename T>
+using pixelpoint_scale_from_t =
+    std::remove_cvref_t<decltype(call::pixel_scale(std::declval<T &&>()))>;
+
 template <typename T, pixel_rect TB>
-sub_renderer(T &, TB) -> sub_renderer<T, TB>;
+sub_renderer(T &, TB) -> sub_renderer<T, TB, pixelpoint_scale_from_t<T>>;
 template <typename T>
 sub_renderer(T &t)
-    -> sub_renderer<T, std::remove_cvref_t<decltype(call::pixel_area(t))>>;
+    -> sub_renderer<T, std::remove_cvref_t<decltype(call::pixel_area(t))>,
+                    pixelpoint_scale_from_t<T>>;
 template <typename T, point_rect TB>
 sub_renderer(T &, TB const &)
-    -> sub_renderer<T, convert_pixelpoint_t<pixel_size_tag, TB>>;
+    -> sub_renderer<T, convert_pixelpoint_t<pixel_size_tag, TB>,
+                    pixelpoint_scale_from_t<T>>;
 
 template <point_rect TArea = point_unit_t<default_rect>>
 class basic_widget_back_propagater {
@@ -880,7 +904,7 @@ widget_builder() {
 
 template <font_face TFont> class text_renderer {
   using glyph_t = std::remove_cvref_t<
-      decltype(call::glyph(std::declval<TFont &>(), 'a').value())>;
+      decltype(call::glyph(std::declval<TFont &>(), char{}).value())>;
 
   struct glyph_entry {
     glyph_t g;
@@ -2089,6 +2113,125 @@ public:
 };
 
 radio_button_trigger() -> radio_button_trigger<subs_group>;
+
+struct zoom_args_t {};
+struct pan_args_t {};
+
+namespace view_port_trigger {
+
+template <typename T, typename TRender = dummy_renderer,
+          typename RenderArgs = widget_render_args<>>
+concept sub_widget =
+    has_render<T, TRender &&, RenderArgs const &> && requires(T const &t) {
+      { call::area(t) } -> point_rect;
+    };
+
+template <renderer TRender = dummy_renderer,
+          render_args RenderArgs = widget_render_args<>>
+struct sub_widget_constraint {
+  template <sub_widget<TRender, RenderArgs> T>
+  constexpr void operator()(T &&) const noexcept {}
+};
+
+template <typename V, bool zoomable>
+class impl : bp::empty_structs_optimiser<V> {
+  using _base_t = bp::empty_structs_optimiser<V>;
+  constexpr decltype(auto) viewed_area() const {
+    return call::area(_base_t::get_first());
+  }
+
+  default_point_coordinate pan_{};
+  float scale_ = 1.f;
+
+  constexpr default_point_coordinate
+  clamped_pan(default_point_coordinate p0, point_scalar auto const &w) const {
+    using scalar_t = std::remove_cvref_t<decltype(call::x_of(p0))>;
+    auto lx = call::l_x(viewed_area());
+    auto ty = call::t_y(viewed_area());
+    return {std::clamp<scalar_t>(
+                call::x_of(p0), lx,
+                std::max<scalar_t>(call::r_x(viewed_area()) - w, lx)),
+            std::clamp<scalar_t>(
+                call::y_of(p0), ty,
+                std::max<scalar_t>(call::b_y(viewed_area()) - w, ty))};
+  }
+
+  constexpr auto evt_switch() {
+    return saved_ui_event_switch(
+        std::ref(*this),
+        event_case<interpreted_events::scroll>([](auto const &e, impl &self,
+                                                  auto &&bp,
+                                                  bounding_box auto const &a) {
+          auto naive_x = call::x_of(self.pan_) + point_unit(call::delta_x(e));
+          auto naive_y = call::y_of(self.pan_) + point_unit(call::delta_y(e));
+          self.pan_ = self.clamped_pan({naive_x, naive_y}, call::width(a));
+          bp.rerender();
+        }),
+        event_case<interpreted_events::zoom>(
+            [](auto const &e, impl &self, auto &&bp, auto &&) {
+              if constexpr (zoomable) {
+                float new_scale = (call::scale_x(e) + call::scale_y(e)) / 2.f;
+                if (new_scale != self.scale_) {
+                  self.scale_ = new_scale;
+                  bp.rerender();
+                }
+              }
+            }));
+  }
+
+public:
+  using _base_t::_base_t;
+
+  constexpr void render(renderer auto &&r, render_args auto &&args) const {
+    call::render(
+        this->get_first(),
+        r.translate(clamped_pan(pan_, call::width(args))).scale(scale_), args);
+  }
+  template <bounding_box A, typename E, widget_back_propagater BP>
+    requires(
+
+        interpreted_event_types<E,
+                                interpreted_events::scroll //
+                                > ||
+        (zoomable && interpreted_event_types<E, interpreted_events::zoom>))
+  constexpr void handle(A const &area, E const &event, BP &&bp) {
+    evt_switch()(event, std::forward<BP>(bp), area);
+  }
+};
+
+template <typename V, bool zoomable>
+class builder_impl : bp::empty_structs_optimiser<V> {
+  using _base_t = bp::empty_structs_optimiser<V>;
+
+  friend class builder_impl<V, !zoomable>;
+
+public:
+  constexpr builder_impl() = default;
+  constexpr explicit(false) builder_impl(builder_impl<V, !zoomable> &&o)
+      : _base_t(static_cast<_base_t &&>(o)) {}
+
+  template <typename V2>
+    requires(std::constructible_from<_base_t, V2>)
+  constexpr explicit builder_impl(V2 &&v) : _base_t(std::forward<V2>(v)) {}
+
+  constexpr auto build() && {
+    using v_t = decltype(build::return_or_build<sub_widget_constraint<>>(
+        std::move(*this).get_first()));
+    using result_t = impl<v_t, zoomable>;
+    static_assert(sub_widget<v_t>);
+    // using result_t = impl<
+    return result_t(build::return_or_build<sub_widget_constraint<>>(
+        std::move(*this).get_first()));
+  }
+  template <build::fulfill_or_after_build<sub_widget_constraint<>> SW>
+  constexpr builder_impl<SW, zoomable> view(SW &&sw) && {
+    return builder_impl<SW, zoomable>(std::forward<SW>(sw));
+  }
+  constexpr builder_impl<V, true> enable_zoom() && { return std::move(*this); }
+};
+
+constexpr builder_impl<empty_placeholder_t, false> builder() { return {}; }
+} // namespace view_port_trigger
 
 } // namespace cgui
 

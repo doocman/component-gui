@@ -821,13 +821,15 @@ public:
           // decltype(args)...>);
           return std::apply(
               [&]<typename... Ts2>(Ts2 &&...args) {
-                return std::invoke(*cf, *ef, *df, std::forward<Ts2>(args)...);
+                // return std::invoke(*cf, *ef, *df,
+                // std::forward<Ts2>(args)...);
+                return (*cf)(*ef, *df, std::forward<Ts2>(args)...);
               },
               args_tuple);
         }
       };
-      return call::apply_to(*to_base(*sf), [&case_caller]<typename... Cases>(
-                                               Data &&d, Cases &&...cs) {
+      return call::apply_to(to_base(*sf), [&case_caller]<typename... Cases>(
+                                              Data &&d, Cases &&...cs) {
         return (case_caller(std::forward<Data>(d), std::forward<Cases>(cs)) ||
                 ...);
       });

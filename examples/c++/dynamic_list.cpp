@@ -118,7 +118,6 @@ int main(int argc, char **argv) {
       etxt.set_text("End program");
     }
 
-    // gui.render(renderer);
     renderer.clear();
     renderer.render_to(gui);
     renderer.present();
