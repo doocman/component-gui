@@ -110,13 +110,14 @@ public:
   }
 };
 
-template <canvas T, pixel_rect TB> class sub_renderer {
+template <canvas T, pixel_rect TB, pixelpoint_scale Scale> class sub_renderer {
   T *c_;
   recursive_area_navigator<TB> area_;
   default_colour_t set_colour_{};
+  Scale scale_;
 
 public:
-  constexpr auto pixel_scale() const { return call::pixel_scale(*c_); }
+  constexpr auto pixel_scale() const { return scale_; }
 
 private:
   static constexpr TB bound_area(TB a) {
@@ -140,15 +141,17 @@ private:
   constexpr TB2 to_absolute(TB2 const &relative_dest) const {
     return area_.move_to_absolute(relative_dest);
   }
+
+public:
   constexpr sub_renderer(T &c, recursive_area_navigator<TB> a,
-                         default_colour_t sc)
-      : c_(std::addressof(c)), area_(a), set_colour_(sc) {
+                         default_colour_t sc, Scale s)
+      : c_(std::addressof(c)), area_(a), set_colour_(sc), scale_(s) {
     assert(valid_box(area_.relative_area()));
   }
 
-public:
   constexpr sub_renderer(T &c, TB a)
-      : sub_renderer(c, recursive_area_navigator<TB>(a), {}) {}
+      : sub_renderer(c, recursive_area_navigator<TB>(a), {},
+                     call::pixel_scale(c)) {}
   constexpr explicit sub_renderer(T &c)
       : sub_renderer(c, call::pixel_area(c)) {}
   template <point_rect TB2>
@@ -225,7 +228,7 @@ public:
   }
 
   constexpr sub_renderer sub(pixel_rect auto &&b, default_colour_t col) const {
-    return {*c_, area_.sub(b), col};
+    return {*c_, area_.sub(b), col, scale};
   }
 
   constexpr sub_renderer sub(pixel_rect auto &&b) const {
@@ -237,10 +240,14 @@ public:
   }
 
   constexpr sub_renderer translate(pixel_coordinate auto const &p) const {
-    return {*c_, area_.translate(p), set_colour_};
+    return {*c_, area_.translate(p), set_colour_, scale_};
   }
   constexpr sub_renderer translate(point_coordinate auto const &p) const {
     return translate(to_pixels(p));
+  }
+  template <pixelpoint_scale S2, typename CT = decltype(S2{} * scale_)>
+  constexpr sub_renderer<T, TB, S2> scale(S2 s) const {
+    return {*c_, area_, set_colour_, s * scale_};
   }
 
   constexpr sub_renderer with(default_colour_t c) {
@@ -252,14 +259,20 @@ public:
   constexpr TB area() const { return area_.relative_area(); }
 };
 
+template <typename T>
+using pixelpoint_scale_from_t =
+    std::remove_cvref_t<decltype(call::pixel_scale(std::declval<T &&>()))>;
+
 template <typename T, pixel_rect TB>
-sub_renderer(T &, TB) -> sub_renderer<T, TB>;
+sub_renderer(T &, TB) -> sub_renderer<T, TB, pixelpoint_scale_from_t<T>>;
 template <typename T>
 sub_renderer(T &t)
-    -> sub_renderer<T, std::remove_cvref_t<decltype(call::pixel_area(t))>>;
+    -> sub_renderer<T, std::remove_cvref_t<decltype(call::pixel_area(t))>,
+                    pixelpoint_scale_from_t<T>>;
 template <typename T, point_rect TB>
 sub_renderer(T &, TB const &)
-    -> sub_renderer<T, convert_pixelpoint_t<pixel_size_tag, TB>>;
+    -> sub_renderer<T, convert_pixelpoint_t<pixel_size_tag, TB>,
+                    pixelpoint_scale_from_t<T>>;
 
 template <point_rect TArea = point_unit_t<default_rect>>
 class basic_widget_back_propagater {
@@ -889,7 +902,7 @@ widget_builder() {
 
 template <font_face TFont> class text_renderer {
   using glyph_t = std::remove_cvref_t<
-      decltype(call::glyph(std::declval<TFont &>(), 'a').value())>;
+      decltype(call::glyph(std::declval<TFont &>(), char{}).value())>;
 
   struct glyph_entry {
     glyph_t g;
@@ -1751,9 +1764,10 @@ public:
 };
 
 template <bounding_box B, typename T>
-basic_button_list_args(B const &, T &&) -> basic_button_list_args<
-    std::unwrap_ref_decay_t<T>,
-    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+basic_button_list_args(B const &, T &&)
+    -> basic_button_list_args<
+        std::unwrap_ref_decay_t<T>,
+        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
 template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;
@@ -2117,13 +2131,15 @@ struct sub_widget_constraint {
   constexpr void operator()(T &&) const noexcept {}
 };
 
-template <typename V> class impl : bp::empty_structs_optimiser<V> {
+template <typename V, bool zoomable>
+class impl : bp::empty_structs_optimiser<V> {
   using _base_t = bp::empty_structs_optimiser<V>;
   constexpr decltype(auto) viewed_area() const {
     return call::area(_base_t::get_first());
   }
 
   default_point_coordinate pan_{};
+  float scale_ = 1.f;
 
   constexpr default_point_coordinate
   clamped_pan(default_point_coordinate p0, point_scalar auto const &w) const {
@@ -2147,40 +2163,49 @@ template <typename V> class impl : bp::empty_structs_optimiser<V> {
           auto naive_x = call::x_of(self.pan_) + point_unit(call::delta_x(e));
           auto naive_y = call::y_of(self.pan_) + point_unit(call::delta_y(e));
           self.pan_ = self.clamped_pan({naive_x, naive_y}, call::width(a));
-          // auto max_x =
-          // std::max<decltype(naive_x)>(call::r_x(call::area(self.get_first()))
-          // - call::width(a), decltype(naive_x){}); auto min_x =
-          // call::l_x(call::area(self.get_first()));
           bp.rerender();
-          // call::x_of(self.pan_, std::clamp<decltype(naive_x)>(naive_x, min_x,
-          // max_x)); call::y_of(self.pan_,
-          //            call::y_of(self.pan_) + point_unit(call::delta_y(e)));
-        }));
+        }),
+        event_case<interpreted_events::zoom>(
+            [](auto const &e, impl &self, auto &&bp, auto &&) {
+              float new_scale = (call::scale_x(e) + call::scale_y(e)) / 2.f;
+              if (new_scale != self.scale_) {
+                self.scale_ = new_scale;
+                bp.rerender();
+              }
+            }));
   }
 
 public:
   using _base_t::_base_t;
 
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
-    call::render(this->get_first(),
-                 r.translate(clamped_pan(pan_, call::width(args))), args);
+    call::render(
+        this->get_first(),
+        r.translate(clamped_pan(pan_, call::width(args))).scale(scale_), args);
   }
   template <bounding_box A, typename E, widget_back_propagater BP>
     requires(
 
         interpreted_event_types<E,
                                 interpreted_events::scroll //
-                                >)
+                                > ||
+        (zoomable && interpreted_event_types<E, interpreted_events::zoom>))
   constexpr void handle(A const &area, E const &event, BP &&bp) {
     evt_switch()(event, std::forward<BP>(bp), area);
   }
 };
 
-template <typename V> class builder_impl : bp::empty_structs_optimiser<V> {
+template <typename V, bool zoomable>
+class builder_impl : bp::empty_structs_optimiser<V> {
   using _base_t = bp::empty_structs_optimiser<V>;
+
+  friend class builder_impl<V, !zoomable>;
 
 public:
   constexpr builder_impl() = default;
+  constexpr explicit(false) builder_impl(builder_impl<V, !zoomable> &&o)
+      : _base_t(static_cast<_base_t &&>(o)) {}
+
   template <typename V2>
     requires(std::constructible_from<_base_t, V2>)
   constexpr explicit builder_impl(V2 &&v) : _base_t(std::forward<V2>(v)) {}
@@ -2188,20 +2213,20 @@ public:
   constexpr auto build() && {
     using v_t = decltype(build::return_or_build<sub_widget_constraint<>>(
         std::move(*this).get_first()));
-    using result_t = impl<v_t>;
+    using result_t = impl<v_t, zoomable>;
     static_assert(sub_widget<v_t>);
     // using result_t = impl<
     return result_t(build::return_or_build<sub_widget_constraint<>>(
         std::move(*this).get_first()));
   }
   template <build::fulfill_or_after_build<sub_widget_constraint<>> SW>
-  constexpr builder_impl<SW> view(SW &&sw) && {
-    return builder_impl<SW>(std::forward<SW>(sw));
+  constexpr builder_impl<SW, zoomable> view(SW &&sw) && {
+    return builder_impl<SW, zoomable>(std::forward<SW>(sw));
   }
-  constexpr builder_impl on_zoom(auto &&) && { return std::move(*this); }
+  constexpr builder_impl<V, true> enable_zoom() && { return std::move(*this); }
 };
 
-constexpr builder_impl<empty_placeholder_t> builder() { return {}; }
+constexpr builder_impl<empty_placeholder_t, false> builder() { return {}; }
 } // namespace view_port_trigger
 
 } // namespace cgui

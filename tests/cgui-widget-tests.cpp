@@ -681,7 +681,31 @@ TEST(Widget, ViewPortSmallViewed) // NOLINT
 
 TEST(Widget, ViewPortZoom) // NOLINT
 {
-  FAIL() << "Not yet implemented";
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr ext_area = default_rect{{0, 0}, {1, 1}};
+  auto item = dummy_vp_item{default_point_rect(ext_area)};
+  auto w = widget_builder()
+               .event(view_port_trigger::builder()
+                          .view(std::ref(item))
+                          .enable_zoom()
+                          .build())
+               .area(full_area)
+               .build();
+  w.handle(interpreted_event<interpreted_events::zoom>(
+      {}, default_point_coordinate{}, 2.f, 2.f));
+
+  auto rend = test_renderer{full_area};
+  auto sr = sub_renderer(rend);
+  auto rgba_sep = rend.individual_colours();
+  auto &[r, g, b, a] = rgba_sep;
+  auto do_render = [&] {
+    std::ranges::fill(rend.drawn_pixels, default_colour_t{255, 255, 255, 0});
+    w.render(sr);
+    rgba_sep = rend.individual_colours();
+  };
+  do_render();
+  EXPECT_THAT(r, ElementsAre(1, 2, 1, 2));
+  EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
 }
 
 TEST(Widget, OnDestruct) // NOLINT

@@ -102,12 +102,12 @@ class ft_font_glyph {
   constexpr ft_font_glyph() = default;
 
 #if CGUI_USE_BM_GLYPH
-  constexpr FT_Glyph &glyph() { return g_.first_value(); }
-  constexpr FT_Glyph glyph() const { return g_.first_value(); }
-  bool has_bitmap_glyph() const {
+  [[nodiscard]] constexpr FT_Glyph &glyph() { return g_.first_value(); }
+  [[nodiscard]] constexpr FT_Glyph glyph() const { return g_.first_value(); }
+  [[nodiscard]] bool has_bitmap_glyph() const {
     return (glyph() != nullptr) && (glyph()->format == FT_GLYPH_FORMAT_BITMAP);
   }
-  FT_BitmapGlyph bitmap_glyph() const {
+  [[nodiscard]] FT_BitmapGlyph bitmap_glyph() const {
     CGUI_ASSERT(has_bitmap_glyph());
     return std::bit_cast<FT_BitmapGlyph>(glyph());
   }
@@ -191,9 +191,13 @@ public:
   }
 
 #if CGUI_USE_BM_GLYPH
-  constexpr auto advance_x() const { return pixel_unit(g_->advance.x >> 16); }
-  constexpr auto advance_y() const { return pixel_unit(g_->advance.y >> 16); }
-  constexpr FT_Glyph handle() const noexcept { return glyph(); }
+  [[nodiscard]] constexpr auto advance_x() const {
+    return pixel_unit(g_->advance.x >> 16);
+  }
+  [[nodiscard]] constexpr auto advance_y() const {
+    return pixel_unit(g_->advance.y >> 16);
+  }
+  [[nodiscard]] constexpr FT_Glyph handle() const noexcept { return glyph(); }
 
   [[nodiscard]] pixel_unit_t<FT_BBox> pixel_area() const noexcept {
     FT_BBox b;

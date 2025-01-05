@@ -191,33 +191,36 @@ template <interpreted_events... evts>
 using subset_interpreted_events = subset_events<interpreted_events, evts...>;
 
 template <typename T>
-concept subset_input_event_c =
-    std::convertible_to<T, input_events> && requires() {
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            input_event_identity<input_events::system>{})
-      } -> std::convertible_to<bool>;
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            input_event_identity<input_events::mouse_move>{})
-      } -> std::convertible_to<bool>;
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            input_event_identity<input_events::mouse_button_up>{})
-      } -> std::convertible_to<bool>;
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            input_event_identity<input_events::mouse_button_down>{})
-      } -> std::convertible_to<bool>;
-    };
+concept subset_input_event_c = std::convertible_to<T, input_events> &&
+  requires()
+{
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        input_event_identity<input_events::system>{})
+  } -> std::convertible_to<bool>;
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        input_event_identity<input_events::mouse_move>{})
+  } -> std::convertible_to<bool>;
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        input_event_identity<input_events::mouse_button_up>{})
+  } -> std::convertible_to<bool>;
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        input_event_identity<input_events::mouse_button_down>{})
+  } -> std::convertible_to<bool>;
+};
 template <typename T>
 concept subset_interpreted_event_c =
-    std::convertible_to<T, interpreted_events> && requires() {
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            interpreted_event_identity<interpreted_events::primary_click>{})
-      } -> std::convertible_to<bool>;
-    };
+    std::convertible_to<T, interpreted_events> &&
+  requires()
+{
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        interpreted_event_identity<interpreted_events::primary_click>{})
+  } -> std::convertible_to<bool>;
+};
 
 namespace call {
 namespace impl {
@@ -602,8 +605,8 @@ template <typename Interpreter> struct state_interpreter_pair {
   }
 };
 template <typename Interpreter>
-constexpr auto _to_state(state_interpreter_pair<Interpreter> *sip)
-    -> decltype(&sip->state) {
+constexpr auto
+_to_state(state_interpreter_pair<Interpreter> *sip) -> decltype(&sip->state) {
   if (sip == nullptr) {
     return nullptr;
   } else {

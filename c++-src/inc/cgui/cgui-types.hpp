@@ -239,14 +239,18 @@ struct dummy_alpha_draw_callback {
 template <typename T, typename TArea = point_unit_t<default_rect>,
           typename TDrawPixels = dummy_pixel_draw_callback,
           typename TDrawAlpha = dummy_alpha_draw_callback,
-          typename TColour = default_colour_t>
+          typename TColour = default_colour_t,
+          typename TPoint = default_point_coordinate, typename TScale = float>
 concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb,
-                            TDrawAlpha &&alpha_cb, TColour const &col) {
+                            TDrawAlpha &&alpha_cb, TColour const &col,
+                            TPoint const &point, TScale const &scale) {
   call::draw_pixels(t, a, pixel_cb);
   call::draw_alpha(t, a, alpha_cb);
   t.sub(a);
   t.sub(a, col);
   t.with(col);
+  t.translate(point);
+  t.scale(scale);
 };
 
 template <typename T, typename... TVals>
@@ -376,9 +380,11 @@ using state_marker_t = decltype(call::state(std::declval<T const &>()));
 template <typename T>
 using all_states_t = all_states_in_marker_t<state_marker_t<T>>;
 template <typename T>
-concept stateful_aspect = requires(T const &t) {
-  call::state(t);
-} && requires() { typename all_states_in_marker<state_marker_t<T>>::type; };
+concept stateful_aspect = requires(T const &t) { call::state(t); } &&
+  requires()
+{
+  typename all_states_in_marker<state_marker_t<T>>::type;
+};
 template <typename T> constexpr auto all_states() noexcept {
   if constexpr (stateful_aspect<T>) {
     return all_states_t<T>{};
@@ -438,9 +444,10 @@ widget_render_args(TW, TH, TState &&)
 template <typename TW, typename TH>
 widget_render_args(TW, TH) -> widget_render_args<std::common_type_t<TW, TH>>;
 template <bounding_box B, typename TState>
-widget_render_args(B const &, TState &&) -> widget_render_args<
-    std::remove_cvref_t<decltype(call::width(std::declval<B>()))>,
-    std::remove_cvref_t<TState>>;
+widget_render_args(B const &, TState &&)
+    -> widget_render_args<
+        std::remove_cvref_t<decltype(call::width(std::declval<B>()))>,
+        std::remove_cvref_t<TState>>;
 
 template <typename T>
 concept canvas = requires(T const &tc) {
@@ -478,6 +485,10 @@ struct dummy_renderer {
   static constexpr int pixel_scale() { return 1; }
   constexpr void fill(pixel_or_point_rect_basic auto const &,
                       colour auto const &) {}
+  constexpr dummy_renderer translate(auto const &) const { return {}; }
+  constexpr dummy_renderer scale(pixelpoint_scale auto const &) const {
+    return {};
+  }
 };
 
 template <typename T, typename TRender = dummy_renderer>
