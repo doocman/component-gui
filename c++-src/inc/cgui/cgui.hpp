@@ -770,6 +770,14 @@ public:
     }
     return found;
   }
+
+  constexpr point_rect auto intrinsic_min_size() const
+    requires(requires(TEventHandler const &eh) {
+      call::intrinsic_min_size(eh);
+    })
+  {
+    return call::intrinsic_min_size(event_handler(*this));
+  }
 };
 
 template <renderer TR, typename TStateArgs>
@@ -1821,6 +1829,7 @@ concept element =
             bp::return_constant_t<state_marker_t, element_state{}>, int>> &&
     requires(T &&t, Position const &p) {
       call::find_sub(t, bp::false_predicate, bp::no_op);
+      //{call::intrinsic_min_size(t)} -> point_rect;
     };
 struct sub_constraint {
   constexpr void operator()(element auto &&) const {}
@@ -2067,6 +2076,10 @@ public:
       }
     });
     cb(elements());
+  }
+
+  constexpr point_rect decltype(auto) intrinsic_min_size() const {
+    return call::intrinsic_min_size(this->get_first());
   }
 };
 

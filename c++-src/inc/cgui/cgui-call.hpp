@@ -303,6 +303,7 @@ CGUI_CALL_CONCEPT(zoom_factor)
 CGUI_CALL_CONCEPT(raw_key)
 CGUI_CALL_CONCEPT(finger_index)
 CGUI_CALL_CONCEPT(handle)
+CGUI_CALL_CONCEPT(intrinsic_min_size)
 CGUI_CALL_CONCEPT(set_state)
 CGUI_CALL_CONCEPT(state)
 CGUI_CALL_CONCEPT(mouse_button)
@@ -691,6 +692,7 @@ inline constexpr impl::_do_bitmap_top bitmap_top;
 inline constexpr impl::_do_set_state set_state;
 inline constexpr impl::_do_state state;
 inline constexpr impl::_do_handle handle;
+inline constexpr impl::_do_intrinsic_min_size intrinsic_min_size;
 inline constexpr impl::_do_position position;
 using position_t = decltype(position);
 inline constexpr impl::_do_time_stamp time_stamp;

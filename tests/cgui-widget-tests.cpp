@@ -398,6 +398,10 @@ struct test_button_list {
            default_colour_t{bright, bright, bright, 255u});
     }
   }
+
+  [[nodiscard]] constexpr default_point_rect intrinsic_min_size() const {
+    return box_from_xywh<default_point_rect>(0, 0, sz, 1);
+  }
 };
 static_assert(radio_button::element<test_button_list>);
 
@@ -418,6 +422,7 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
                          },
                          [&deactivations, &current_element](int element) {
                            ++deactivations;
+                           EXPECT_THAT(element, Eq(current_element));
                            current_element = -1;
                          },
                          3})
@@ -445,6 +450,8 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
   EXPECT_THAT(activations, Eq(2));
   EXPECT_THAT(deactivations, Eq(1));
   EXPECT_THAT(current_element, Eq(1));
+
+  EXPECT_THAT(call::width(list.intrinsic_min_size()).value(), Eq(3));
 }
 
 TEST(Widget, RadioButtonListRender) // NOLINT
