@@ -100,6 +100,25 @@ template <typename T> struct basic_coordinate {
   }
 };
 
+template <typename T1, typename T2>
+  requires(std::equality_comparable_with<T1, T2>)
+constexpr bool operator==(basic_coordinate<T1> const &l,
+                          basic_coordinate<T2> const &r) {
+  return (l.x == r.x) && (l.y == r.y);
+}
+
+template <typename T1, typename T2>
+  requires(std::totally_ordered_with<T1, T2>)
+constexpr auto operator<=>(basic_coordinate<T1> const &l,
+                           basic_coordinate<T2> const &r) {
+  auto xcmp = l.x <=> r.x;
+  if (xcmp == 0) {
+    return l.y <=> r.y;
+  } else {
+    return xcmp;
+  }
+}
+
 using default_coordinate = basic_coordinate<int>;
 
 template <typename TX, typename TY>
@@ -967,26 +986,24 @@ operator/(pixelpoint_unit<SizeTag, T> const &l, U const &r) {
 }
 template <typename ST, typename T>
   requires(requires(T const &t) {
-            { -t } -> bp::not_void;
-          })
-constexpr auto operator-(pixelpoint_unit<ST, T> const &o)
-    -> pixelpoint_unit<
-        ST, std::remove_cvref_t<decltype(-std::declval<T const &>())>> {
+    { -t } -> bp::not_void;
+  })
+constexpr auto operator-(pixelpoint_unit<ST, T> const &o) -> pixelpoint_unit<
+    ST, std::remove_cvref_t<decltype(-std::declval<T const &>())>> {
   return {ST{}, -o.value()};
 }
 template <typename ST, typename T>
   requires(requires(T const &t) {
-            { +t } -> bp::not_void;
-          })
-constexpr auto operator+(pixelpoint_unit<ST, T> const &o)
-    -> pixelpoint_unit<
-        ST, std::remove_cvref_t<decltype(-std::declval<T const &>())>> {
+    { +t } -> bp::not_void;
+  })
+constexpr auto operator+(pixelpoint_unit<ST, T> const &o) -> pixelpoint_unit<
+    ST, std::remove_cvref_t<decltype(-std::declval<T const &>())>> {
   return {ST{}, -o.value()};
 }
 
 template <typename SizeTag, typename T>
-pixelpoint_unit(SizeTag,
-                T &&) -> pixelpoint_unit<SizeTag, std::remove_cvref_t<T>>;
+pixelpoint_unit(SizeTag, T &&)
+    -> pixelpoint_unit<SizeTag, std::remove_cvref_t<T>>;
 
 template <typename T> using pixel_unit_t = pixelpoint_unit<pixel_size_tag, T>;
 template <typename T> using point_unit_t = pixelpoint_unit<point_size_tag, T>;
@@ -1382,8 +1399,8 @@ inline constexpr impl::do_point_area point_area;
 
 /// Version of box_union that supports empty boxes.
 template <typename TRes = void, typename TB1, typename TB2>
-constexpr auto box_add(TB1 const &b1,
-                       TB2 const &b2) -> decltype(box_union<TRes>(b1, b2)) {
+constexpr auto box_add(TB1 const &b1, TB2 const &b2)
+    -> decltype(box_union<TRes>(b1, b2)) {
   using result_t = decltype(box_union<TRes>(b1, b2));
   if (empty_box(b1)) {
     return copy_box<result_t>(b2);

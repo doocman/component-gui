@@ -586,7 +586,10 @@ TEST(Widget, RadioButtonListRender) // NOLINT
 }
 
 struct dummy_vp_item {
+  struct dummy_event {};
   default_point_rect size{};
+  int dummy_events_received{};
+  std::optional<default_point_coordinate> click_point{};
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
     if (args.width() > point_unit(0) && args.height() > point_unit(0)) {
       call::draw_pixels(
@@ -604,6 +607,18 @@ struct dummy_vp_item {
     }
   }
   constexpr default_point_rect const &area() const noexcept { return size; }
+
+  template <bounding_box A, widget_back_propagater BP>
+  constexpr void handle(A const &, dummy_event const &, BP &&bp) {
+    ++dummy_events_received;
+    bp.rerender();
+  }
+  template <bounding_box A,
+            interpreted_event_types<interpreted_events::primary_click> E,
+            widget_back_propagater BP>
+  constexpr void handle(A const &, E const &event, BP &&) {
+    click_point = call::position(event);
+  }
 };
 
 TEST(Widget, ViewPortPan) // NOLINT
@@ -713,6 +728,31 @@ TEST(Widget, ViewPortZoom) // NOLINT
   do_render();
   EXPECT_THAT(r, ElementsAre(1, 2, 1, 2));
   EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
+}
+
+TEST(Widget, ViewPortZoomPassHandling) // NOLINT
+{
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr ext_area = default_rect{{0, 0}, {4, 4}};
+  auto item = dummy_vp_item{default_point_rect(ext_area)};
+  auto w = widget_builder()
+               .event(view_port_trigger::builder()
+                          .view(std::ref(item))
+                          .enable_zoom()
+                          .build())
+               .area(full_area)
+               .build();
+  auto rerender_area = w.handle(dummy_vp_item::dummy_event{});
+  EXPECT_THAT(item.dummy_events_received, Eq(1));
+  expect_box_equal(rerender_area.value(), full_area);
+  w.handle(interpreted_event<interpreted_events::primary_click>(
+      {}, default_point_coordinate{}));
+  ASSERT_TRUE(item.click_point.has_value());
+  EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{}));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, 1.f, 1.f));
+  ASSERT_TRUE(item.click_point.has_value());
+  EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{1, 1}));
 }
 
 TEST(Widget, OnDestruct) // NOLINT

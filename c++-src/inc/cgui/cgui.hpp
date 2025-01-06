@@ -2206,9 +2206,14 @@ public:
         interpreted_event_types<E,
                                 interpreted_events::scroll //
                                 > ||
-        (zoomable && interpreted_event_types<E, interpreted_events::zoom>))
+        (zoomable && interpreted_event_types<E, interpreted_events::zoom>) ||
+        has_handle<V &, A, E, BP>)
   constexpr void handle(A const &area, E const &event, BP &&bp) {
-    evt_switch()(event, std::forward<BP>(bp), area);
+    if (!evt_switch()(event, std::forward<BP>(bp), area)) {
+      if constexpr (has_handle<V &, A, E, BP>) {
+        call::handle(this->get_first(), area, event, bp);
+      }
+    }
   }
 };
 
