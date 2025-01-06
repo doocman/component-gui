@@ -294,6 +294,7 @@ CGUI_CALL_CONCEPT(full_height)
 CGUI_CALL_CONCEPT(ascender)
 CGUI_CALL_CONCEPT(base_to_top)
 CGUI_CALL_CONCEPT(position)
+CGUI_CALL_CONCEPT(move_event)
 CGUI_CALL_CONCEPT(time_stamp)
 CGUI_CALL_CONCEPT(delta_x)
 CGUI_CALL_CONCEPT(delta_y)
@@ -694,6 +695,7 @@ inline constexpr impl::_do_state state;
 inline constexpr impl::_do_handle handle;
 inline constexpr impl::_do_intrinsic_min_size intrinsic_min_size;
 inline constexpr impl::_do_position position;
+inline constexpr impl::_do_move_event move_event;
 using position_t = decltype(position);
 inline constexpr impl::_do_time_stamp time_stamp;
 using time_stamp_t = decltype(time_stamp);

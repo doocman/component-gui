@@ -71,28 +71,31 @@ using input_event_identity = event_identity<input_events, tEvt>;
 template <interpreted_events tEvt>
 using interpreted_event_identity = event_identity<interpreted_events, tEvt>;
 
+template <typename T, typename Point = default_point_coordinate>
+concept positioned_event = requires(T& t, T const& tc, Point const& p)
+{
+  { call::position(tc)} -> point_coordinate;
+  {call::move_event(tc, p)} -> std::convertible_to<T>;
+};
+
 template <input_events> struct input_event_constraints {
   template <typename> static constexpr bool type_passes = true;
 };
 template <> struct input_event_constraints<input_events::mouse_button_down> {
   template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> point_coordinate;
+  static constexpr bool type_passes = positioned_event<T> && requires(T const &t) {
     call::mouse_button(t);
   };
 };
 template <> struct input_event_constraints<input_events::mouse_button_up> {
   template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> point_coordinate;
+  static constexpr bool type_passes = positioned_event<T> && requires(T const &t) {
     call::mouse_button(t);
   };
 };
 template <> struct input_event_constraints<input_events::mouse_move> {
   template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> point_coordinate;
-  };
+  static constexpr bool type_passes = positioned_event<T>;
 };
 template <> struct input_event_constraints<input_events::key_down> {
   template <typename T>
@@ -114,22 +117,19 @@ template <> struct input_event_constraints<input_events::window_resized> {
 };
 template <> struct input_event_constraints<input_events::touch_down> {
   template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> point_coordinate;
+  static constexpr bool type_passes = positioned_event<T> && requires(T const &t) {
     { call::finger_index(t) } -> std::convertible_to<int>;
   };
 };
 template <> struct input_event_constraints<input_events::touch_up> {
   template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> point_coordinate;
+  static constexpr bool type_passes = positioned_event<T> && requires(T const &t) {
     { call::finger_index(t) } -> std::convertible_to<int>;
   };
 };
 template <> struct input_event_constraints<input_events::touch_move> {
   template <typename T>
-  static constexpr bool type_passes = requires(T const &t) {
-    { call::position(t) } -> point_coordinate;
+  static constexpr bool type_passes = positioned_event<T> && requires(T const &t) {
     { call::finger_index(t) } -> std::convertible_to<int>;
   };
 };
@@ -380,10 +380,20 @@ template <typename T>
 concept is_cgui_default_event_c = is_cgui_default_event_v<T>;
 
 template <is_cgui_default_event_c T>
-  requires(requires(T const &t) { t.pos; })
-constexpr auto position(T const &t) {
-  return t.pos;
+  requires(requires(T &&t) { t.pos; })
+constexpr auto&& position(T &&t) {
+  return std::forward<T>(t).pos;
 }
+
+template <is_cgui_default_event_c T, point_coordinate P>
+requires(requires(T& t) { {call::position(t)} -> std::assignable_from<P>; })
+constexpr T move_event(T evt, P const& delta) {
+  decltype(auto) e = call::position(evt);
+  call::x_of(e, call::x_of(e) + call::x_of(delta));
+  call::y_of(e, call::y_of(e) + call::y_of(delta));
+  return evt;
+}
+
 template <is_cgui_default_event_c T>
   requires(requires(T const &t) { t.finger_index; })
 constexpr auto finger_index(T const &t) {
