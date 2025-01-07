@@ -2192,6 +2192,20 @@ class impl : bp::empty_structs_optimiser<V> {
             }));
   }
 
+  template <typename T> constexpr auto move_to_viewed(T &&e) const {
+    if constexpr (has_position<T>) {
+      if constexpr (zoomable) {
+        auto new_pos = add(divide(call::position(e), scale_), pan_);
+        return call::move_event(std::forward<T>(e), new_pos);
+      } else {
+        auto new_pos = add(call::position(e), pan_);
+        return call::move_event(std::forward<T>(e), new_pos);
+      }
+    } else {
+      return std::forward<T>(e);
+    }
+  }
+
 public:
   using _base_t::_base_t;
 
@@ -2211,7 +2225,7 @@ public:
   constexpr void handle(A const &area, E const &event, BP &&bp) {
     if (!evt_switch()(event, std::forward<BP>(bp), area)) {
       if constexpr (has_handle<V &, A, E, BP>) {
-        call::handle(this->get_first(), area, event, bp);
+        call::handle(this->get_first(), area, move_to_viewed(event), bp);
       }
     }
   }
@@ -2237,7 +2251,6 @@ public:
         std::move(*this).get_first()));
     using result_t = impl<v_t, zoomable>;
     static_assert(sub_widget<v_t>);
-    // using result_t = impl<
     return result_t(build::return_or_build<sub_widget_constraint<>>(
         std::move(*this).get_first()));
   }

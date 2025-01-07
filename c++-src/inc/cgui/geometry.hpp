@@ -87,6 +87,12 @@ concept pixel_coord_ref = requires(bp::as_forward<T> t) {
 template <typename T, typename TVal>
 concept pixel_coord_mut = pixel_coord_ref<T, TVal> || pixel_coord_set<T, TVal>;
 
+/// @brief Concept for readable position.
+template <typename T>
+concept has_position = requires(bp::as_forward<T> t) {
+  { call::position(*t) } -> pixel_coord;
+};
+
 /// @brief Basic structure for representing pixel coordinates.
 template <typename T> struct basic_coordinate {
   T x; ///< X coordinate
@@ -316,6 +322,29 @@ constexpr P divide(P const &p, Div d) {
   } else {
     auto x = call::x_of(p) / d;
     auto y = call::y_of(p) / d;
+    return P(x, y);
+  }
+}
+
+/// @brief Multiplies the components of a vector by a scalar.
+/// @tparam P The type of input vector
+/// @tparam F The type of the factor.
+/// @param p The vector to be multiplied.
+/// @param f The scalar factor.
+/// @return Vector with all elements multiplied with f.
+template <pixel_coord P, typename F>
+  requires(
+      requires(P p, F f) { p *f; } ||
+      requires(P p, F f) {
+        call::x_of(p) * f;
+        call::y_of(p) * f;
+      })
+constexpr P multiply(P const &p, F const &f) {
+  if constexpr (requires() { p *f; }) {
+    return p * f;
+  } else {
+    auto x = call::x_of(p) * f;
+    auto y = call::y_of(p) * f;
     return P(x, y);
   }
 }

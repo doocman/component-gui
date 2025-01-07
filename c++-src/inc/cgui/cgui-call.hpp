@@ -645,17 +645,42 @@ constexpr decltype(auto) top_left_t::_fallback_mut(auto &&b, auto &&v) {
   t_y_t::call(*b, _do_y_of::call(*v));
 }
 constexpr decltype(auto) bottom_right_t::_fallback(auto const &b) {
-  // return tlbr_wh_conv(*b, r_x_t{}, b_y_t{});
   return fallback_coordinate(r_x_t::call(*b), b_y_t::call(*b));
 }
 constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
-  // auto val = _fallback(b);
-  //_do_set_x_of::call(val, _do_x_of::call(*v));
-  //_do_set_y_of::call(val, _do_y_of::call(*v));
-  // return val;
   r_x_t::call(*b, _do_x_of::call(*v));
   b_y_t::call(*b, _do_y_of::call(*v));
 }
+
+struct do_move_event {
+  template <typename T, typename Pos>
+    requires(
+        requires(bp::as_forward<T> t, Pos const &p) {
+          _do_move_event::call(*t, p);
+        } ||
+        requires(bp::as_forward<T> t) {
+          { _do_position::call(*t) } -> pixel_coord_mut<Pos>;
+        })
+  static constexpr std::convertible_to<std::remove_cvref_t<T>> auto
+  call(T &&t, Pos const &p) {
+    auto tf = bp::as_forward<T>(t);
+    if constexpr (requires() { _do_move_event::call(*tf, p); }) {
+      return _do_move_event::call(*tf, p);
+    } else {
+      auto res = *tf;
+      decltype(auto) tp = _do_position::call(res);
+      _do_set_x_of::call(tp, _do_x_of::call(p));
+      _do_set_y_of::call(tp, _do_y_of::call(p));
+      return res;
+    }
+  }
+  constexpr auto operator()(auto &&v, auto const &p) const
+    requires(requires() { call(std::forward<decltype(v)>(v), p); })
+  {
+    return call(std::forward<decltype(v)>(v), p);
+  }
+};
+
 } // namespace impl
 /// @endcond
 
@@ -695,7 +720,7 @@ inline constexpr impl::_do_state state;
 inline constexpr impl::_do_handle handle;
 inline constexpr impl::_do_intrinsic_min_size intrinsic_min_size;
 inline constexpr impl::_do_position position;
-inline constexpr impl::_do_move_event move_event;
+inline constexpr impl::do_move_event move_event;
 using position_t = decltype(position);
 inline constexpr impl::_do_time_stamp time_stamp;
 using time_stamp_t = decltype(time_stamp);

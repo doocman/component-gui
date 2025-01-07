@@ -751,6 +751,8 @@ TEST(Widget, ViewPortZoomPassHandling) // NOLINT
   EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{}));
   w.handle(interpreted_event<interpreted_events::scroll>(
       {}, default_point_coordinate{}, 1.f, 1.f));
+  w.handle(interpreted_event<interpreted_events::primary_click>(
+      {}, default_point_coordinate{}));
   ASSERT_TRUE(item.click_point.has_value());
   EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{1, 1}));
 }
