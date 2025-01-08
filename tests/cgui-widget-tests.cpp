@@ -775,4 +775,88 @@ TEST(Widget, OnDestruct) // NOLINT
   EXPECT_THAT(ptr_to_widget, Eq(nullptr));
 }
 
+struct dummy_trigger {
+  std::optional<default_point_coordinate> last_click{};
+  constexpr void handle(
+      auto &&,
+      interpreted_event_types<interpreted_events::primary_click> auto const &e,
+      auto &&...) {
+    last_click = call::position(e);
+  }
+};
+
+TEST(Widget, QueryAndEvents3Layer) // NOLINT
+{
+  constexpr auto full_area = default_rect{{0, 0}, {16, 16}};
+  auto constexpr make_widget_builder = [=](int lvl, dummy_trigger &t) {
+    auto constexpr per_level_trim = 2;
+    auto tl = (lvl == 0) ? 0 : per_level_trim;
+    auto wh = 16 - lvl * per_level_trim * 2;
+    return widget_builder()
+        .area(box_from_xywh<default_rect>(tl, tl, wh, wh))
+        .event(std::ref(t));
+  };
+  std::array<dummy_trigger, 3> triggers{};
+  auto const reset_triggers = [&] {
+    for (auto &t : triggers) {
+      t.last_click = std::nullopt;
+    }
+  };
+  auto w =
+      make_widget_builder(0, triggers[0])
+          .subcomponents(
+              make_widget_builder(1, triggers[1])
+                  .subcomponents(make_widget_builder(2, triggers[2]).build())
+                  .build())
+          .build();
+  static_assert(
+      has_handle<decltype(w),
+                 interpreted_event<interpreted_events::primary_click>>);
+
+  auto b = basic_widget_back_propagater(
+      box_from_xyxy<default_point_rect>(0, 0, 16, 16));
+
+  auto const click_w = [&](int pxy) {
+    return w.query(std::type_identity<std::chrono::steady_clock::time_point>{},
+                   query_interpreted_events<interpreted_events::primary_click>(
+                       default_point_coordinate(pxy, pxy),
+                       [pxy](auto &wf, auto &&s) {
+                         s(wf,
+                           interpreted_event<interpreted_events::primary_click>(
+                               {}, default_point_coordinate(pxy, pxy)));
+                       }),
+                   b);
+  };
+  auto event_found = click_w(1);
+  EXPECT_TRUE(event_found);
+  EXPECT_FALSE(triggers[1].last_click);
+  EXPECT_FALSE(triggers[2].last_click);
+  ASSERT_TRUE(triggers[0].last_click);
+  EXPECT_THAT(*triggers[0].last_click, Eq(default_point_coordinate(1, 1)));
+
+  reset_triggers();
+  event_found = click_w(3);
+  EXPECT_TRUE(event_found);
+  EXPECT_FALSE(triggers[0].last_click);
+  EXPECT_FALSE(triggers[2].last_click);
+  ASSERT_TRUE(triggers[1].last_click);
+  EXPECT_THAT(*triggers[1].last_click, Eq(default_point_coordinate(1, 1)));
+
+  reset_triggers();
+  event_found = click_w(5);
+  EXPECT_TRUE(event_found);
+  EXPECT_FALSE(triggers[0].last_click);
+  EXPECT_FALSE(triggers[1].last_click);
+  ASSERT_TRUE(triggers[2].last_click);
+  EXPECT_THAT(*triggers[2].last_click, Eq(default_point_coordinate(1, 1)));
+
+  reset_triggers();
+  event_found = click_w(11);
+  EXPECT_TRUE(event_found);
+  EXPECT_FALSE(triggers[0].last_click);
+  EXPECT_FALSE(triggers[1].last_click);
+  ASSERT_TRUE(triggers[2].last_click);
+  EXPECT_THAT(*triggers[2].last_click, Eq(default_point_coordinate(7, 7)));
+}
+
 } // namespace cgui::tests

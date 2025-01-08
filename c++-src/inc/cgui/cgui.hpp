@@ -429,8 +429,9 @@ public:
                                interpreted_event<events, time_point_t> const &,
                                basic_widget_back_propagater<native_box_t>> ||
                            ...)) {
-              auto sb = b.sub(w.area());
-              if (w.query(std::type_identity<time_point_t>{}, q, sb, &b)) {
+              if (auto sbo = w.query(std::type_identity<time_point_t>{}, q,
+                                     b.sub(w.area()))) {
+                b.merge_sub(*sbo);
                 return true;
               }
             }
@@ -740,32 +741,33 @@ public:
 
   template <typename TimePoint, typename Pred, typename OnFind,
             typename OnNoFind, interpreted_events... events,
-            widget_back_propagater BP, widget_back_propagater BPMain>
-  constexpr bool
+            widget_back_propagater BP>
+  constexpr std::optional<std::remove_cvref_t<BP>>
   query(std::type_identity<TimePoint> tpi,
         query_interpreted_events_t<Pred, OnFind, OnNoFind, events...> const &q,
-        BP &bp, BPMain *bp_main) {
-    bool found{};
+        BP &&bp) {
+    std::optional<std::remove_cvref_t<BP>> found;
     if constexpr (!std::is_empty_v<TSubs>) {
-      call::for_each(subcomponents(), [&found, &q, &bp, tpi,
-                                       bp_main]<typename SW>(SW &&sw) {
-        if constexpr ((has_handle<SW, interpreted_event<events, TimePoint>,
-                                  BP> ||
-                       ...)) {
-          found = found || sw.query(tpi, q, bp.sub(sw.area()), bp_main);
-        }
-      });
+      call::for_each(
+          subcomponents(), [&found, &q, &bp, tpi]<typename SW>(SW &&sw) {
+            if constexpr ((has_handle<SW, interpreted_event<events, TimePoint>,
+                                      BP> ||
+                           ...)) {
+              if (!found) {
+                found = sw.query(tpi, q, bp.sub(sw.area()));
+              }
+            }
+          });
     }
     if constexpr ((has_handle<widget &, interpreted_event<events, TimePoint>,
                               BP> ||
                    ...)) {
       if (!found) {
-        found = q(*this, [&bp, bp_main]<typename E>(widget &self, E const &e)
-                    requires has_handle<widget &, E const &, BP &>
-                  {
-                    self.handle(e, bp);
-                    bp_main->merge_sub(bp);
-                  });
+        if (q(*this, [&bp]<typename E>(widget &self, E const &e)
+                requires has_handle<widget &, E const &, BP &>
+              { self.handle(e, bp); })) {
+          found = std::forward<BP>(bp);
+        }
       }
     }
     return found;
@@ -842,37 +844,38 @@ public:
     static_assert(bounding_box<TArea>,
                   "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
+    auto s = bp::as_forward(std::move(*this));
     using display_t = decltype(build::build_group(
-        display_element_constraint<dummy_renderer>{},
-        std::move(*this).displays_, all_states<TEventHandler>()));
+        display_element_constraint<dummy_renderer>{}, (*s).displays_,
+        all_states<TEventHandler>()));
 
     using subs_t = decltype(build::build_group(
-        impl::widget_display_constraint{}, std::move(*this).subs_));
-    auto s = bp::as_forward(std::move(*this));
+        impl::widget_display_constraint{}, (*s).subs_));
     return widget<TArea, display_t, TState, TEventHandler, subs_t, TOnResize>(
         (*s).area_,
         build::build_group(display_element_constraint<dummy_renderer>{},
                            (*s).displays_, all_states<TEventHandler>()),
         (*s).state_, (*s).event_,
-        build::build_group(impl::widget_display_constraint{},
-                           std::move(*this).subs_),
+        build::build_group(impl::widget_display_constraint{}, (*s).subs_),
         (*s).on_resize_);
   }
 
   template <typename TE2, typename TRes = widget_builder_impl<
-                              TArea, TDisplay, TState, std::remove_cvref_t<TE2>,
-                              TSubs, TOnResize>>
+                              TArea, TDisplay, TState,
+                              std::unwrap_ref_decay_t<TE2>, TSubs, TOnResize>>
   TRes event(TE2 &&e) && {
-    return TRes(std::move(area_), std::move(displays_), std::move(state_),
-                std::forward<TE2>(e), std::move(subs_), std::move(on_resize_));
+    auto s = bp::as_forward<widget_builder_impl>(*this);
+    return TRes((*s).area_, (*s).displays_, (*s).state_, std::forward<TE2>(e),
+                (*s).subs_, (*s).on_resize_);
   }
 
   template <pixel_or_point_rect_basic TA,
             typename TRes = widget_builder_impl<
                 TA, TDisplay, TState, TEventHandler, TSubs, TOnResize>>
   TRes area(TA const &a) && {
-    return TRes(a, std::move(displays_), std::move(state_), std::move(event_),
-                std::move(subs_), std::move(on_resize_));
+    auto s = bp::as_forward<widget_builder_impl>(*this);
+    return TRes(a, (*s).displays_, (*s).state_, (*s).event_, (*s).subs_,
+                (*s).on_resize_);
   }
 
   template <typename TA>
@@ -887,19 +890,17 @@ public:
             typename TRes = widget_builder_impl<
                 TArea, TDisplay, TState, TEventHandler, TTuple, TOnResize>>
   TRes subcomponents(Ts &&...args) && {
-    return TRes{std::move(area_),
-                std::move(displays_),
-                std::move(state_),
-                std::move(event_),
-                TTuple(std::forward<Ts>(args)...),
-                std::move(on_resize_)};
+    auto s = bp::as_forward<widget_builder_impl>(*this);
+    return TRes((*s).area_, (*s).displays_, (*s).state_, (*s).event_,
+                TTuple(std::forward<Ts>(args)...), (*s).on_resize_);
   }
   template <typename T, typename TRes = widget_builder_impl<
                             TArea, TDisplay, TState, TEventHandler, TSubs,
                             std::unwrap_ref_decay_t<T>>>
   TRes on_resize(T &&rsz) && {
-    return {std::move(area_),  std::move(displays_), std::move(state_),
-            std::move(event_), std::move(subs_),     std::forward<T>(rsz)};
+    auto s = bp::as_forward<widget_builder_impl>(*this);
+    return TRes((*s).area_, (*s).displays_, (*s).state_, (*s).event_,
+                (*s).subs_, std::forward<T>(rsz));
   }
 };
 
