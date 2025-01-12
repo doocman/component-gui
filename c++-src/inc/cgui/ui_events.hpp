@@ -624,26 +624,69 @@ template <typename WidgetT> struct query_result {
   constexpr explicit operator bool() const noexcept { return w_ != nullptr; }
 };
 
+struct query_position_base {
+  default_point_coordinate moved_{};
+  constexpr auto relative_position(point_coordinate auto const& p) const {
+    return add(moved_, p);
+  }
+  constexpr auto const& moved_from_absolute() const { return moved_; }
+};
 template <typename>
 struct query_position;
 template <>
-struct query_position<void> {
+struct query_position<void> : query_position_base {
   static constexpr bool pass_position(auto&&...) noexcept { return true; }
+  constexpr query_position() = default;
+  constexpr explicit query_position(std::nullptr_t const&) {};
+  constexpr query_position(auto&&, default_point_coordinate const& bp) : query_position_base(bp) {}
 
-  static constexpr query_position relative(point_coordinate auto const& ) noexcept {
-    return {};
+  constexpr query_position relative(point_coordinate auto const& p) noexcept {
+    return {nullptr, relative_position(p)};
   }
 };
 template <point_coordinate T>
-struct query_position<T> {
+struct query_position<T> : query_position_base {
   T pos_{};
+  constexpr query_position() = default;
+  constexpr explicit query_position(T const& p ) : pos_(p) {};
+  constexpr query_position(T const& p, default_point_coordinate const& bp) : query_position_base(bp), pos_(p) {}
+
   constexpr bool pass_position(widget_type_erasable auto const& w) const {
     return hit_box(call::area(w), pos_);
   }
   constexpr query_position relative(point_coordinate auto const& p) const {
-    return {sub(pos_, p)};
+    return {relative_position(p), sub(pos_, p)};
   }
 };
+
+template <widget_type_erasable T, point_coordinate Move>
+class query_handle_wrap {
+  T& base_;
+  Move const& mv_;
+
+
+  constexpr auto reposition(auto e) const {
+    call::position(e) = sub(call::position(e), mv_);
+    return e;
+  }
+public:
+  constexpr query_handle_wrap(T& b, Move const& p) noexcept : base_(b), mv_(p) {}
+
+  template <typename E>
+  requires(has_handle<T&, E&&>)
+  constexpr void handle(E&& e) const {
+    auto ef = bp::as_forward<E>(e);
+    if constexpr(has_position<E>) {
+      call::handle(base_, reposition(*ef));
+    } else {
+      call::handle(base_, *ef);
+    }
+  }
+  constexpr decltype(auto) area() const { return call::area(base_); }
+  constexpr decltype(auto) zoom_factor() const requires(has_zoom_factor<T>) { return call::zoom_factor(base_); }
+  constexpr widget_id_t widget_id() const { return call::widget_id(base_); }
+};
+
 
 template <typename Pos, typename Pred, typename OnFind, typename OnNoFind>
 requires (point_coordinate<Pos> || std::is_void_v<Pos>)
@@ -684,7 +727,7 @@ public:
 
   constexpr bool operator()(widget_type_erasable auto &&in) const {
     if (qpos().pass_position(in) && pred()(in)) {
-      on_find()(in);
+      on_find()(query_handle_wrap(in, qpos().moved_from_absolute()));
       any_found_ = true;
       return true;
     }
@@ -1003,7 +1046,7 @@ _invoke_with_interpreted_event(Q &&q, point_coordinate auto const &pos,
                                TP const &tp, Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
   interpreter_widget_cache cached{};
-  q(query_interpreted_events<evt_type>(pos, [&]<typename W>(W &w) {
+  q(query_interpreted_events<evt_type>(pos, [&]<typename W>(W &&w) {
     CGUI_ASSERT(!cached); // called more than once!
     cached.reset(w);
     call::handle(w, event_t(tp, std::forward<Args>(args)...));
@@ -1015,7 +1058,7 @@ constexpr interpreter_widget_cache _invoke_with_interpreted_event(
     Q &&q, default_point_coordinate pos,
     interpreted_event<evt_types, TP> const &...events) {
   interpreter_widget_cache cached{};
-  q(query_interpreted_events<evt_types...>(pos, [&]<typename W>(W &w) {
+  q(query_interpreted_events<evt_types...>(pos, [&]<typename W>(W &&w) {
     CGUI_ASSERT(!cached); // called more than once!
     cached.reset(w);
     auto invoker = [&w]<typename E>(E const &e) {
@@ -1033,7 +1076,7 @@ constexpr bool send_to_cached_widget(Q &&q, TP tp,
                                      interpreter_widget_cache const &cw,
                                      Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
-  return cw.template access<evt_type>(q, [&]<typename W>(W &w) {
+  return cw.template access<evt_type>(q, [&]<typename W>(W &&w) {
     call::handle(w, event_t(tp, std::forward<Args>(args)...));
   });
 }
@@ -1096,7 +1139,7 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
       using enum interpreted_events;
       q(query_interpreted_events<pointer_enter, pointer_hover>(
           pos,
-          [&]<typename W>(W &w) {
+          [&]<typename W>(W &&w) {
             if (!prev_widget.refers_to(w)) {
               if (prev_widget) {
                 send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
@@ -1144,7 +1187,7 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
       using enum interpreted_events;
       q(query_interpreted_events<pointer_enter, pointer_hover>(
           pos,
-          [&]<typename W>(W &w) {
+          [&]<typename W>(W &&w) {
             if (!prev_widget.refers_to(w)) {
               if (prev_widget) {
                 send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
@@ -1335,7 +1378,7 @@ private:
           auto &[q, s, ks, conf] = d;
           if (ks.ctrl()) {
             q(query_interpreted_events<interpreted_events::zoom>(
-                call::position(e), [&]<typename W>(W &w) {
+                call::position(e), [&]<typename W>(W &&w) {
                   auto [orgx, orgy] = call::zoom_factor(w);
                   auto scale_mod =
                       std::pow(1.f + conf.zoom_scale, call::delta_y(e));
@@ -1500,7 +1543,7 @@ struct _touch_translator_base {
     };
     q(query_interpreted_events<interpreted_events::scroll,
                                interpreted_events::zoom>(
-        position, [&]<typename W>(W &w) {
+        position, [&]<typename W>(W &&w) {
           constexpr bool should_scroll =
               has_handle<W &, scroll_event_t> && is_scroller<T>;
           constexpr bool should_zoom =
@@ -1760,7 +1803,7 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
     q(query_interpreted_events<interpreted_events::pointer_enter,
                                interpreted_events::pointer_hold>(
         call::position(e),
-        [&]<typename W>(W &w) {
+        [&]<typename W>(W &&w) {
           auto tp = call::time_stamp(e);
           if (!org_w.refers_to(w)) {
             exit_widget(org_w, tp, q);
