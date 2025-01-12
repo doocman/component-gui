@@ -298,10 +298,10 @@ public:
     }
     to_rerender_ = box_intersection(part_area, full_area_.relative_area());
   }
-  TArea result_area() const {
+  constexpr TArea result_area() const {
     return full_area_.move_to_absolute(to_rerender_);
   }
-  TArea relative_position(point_coordinate auto const &p) const {
+  constexpr TArea relative_position(point_coordinate auto const &p) const {
     return full_area_.relative_area(to_rerender_, p);
   }
   constexpr bool empty_result() const { return empty_box(to_rerender_); }
@@ -324,6 +324,11 @@ public:
   constexpr explicit operator basic_widget_back_propagater<A2>() const {
     return {static_cast<recursive_area_navigator<A2>>(full_area_),
             copy_box<A2>(to_rerender_)};
+  }
+
+  template <point_rect TA2 = TArea>
+  constexpr point_rect auto move_to_absolute(TA2 const& rel_area) const {
+    return full_area_.move_to_absolute(rel_area);
   }
 };
 
@@ -419,9 +424,9 @@ public:
     });
     interpreter_.handle(
         evt,
-        [this, &b]<typename Pred, typename OnFind, typename OnNoFind,
+        [this, &b]<typename QM,
                    interpreted_events... events>(
-            query_interpreted_events_t<Pred, OnFind, OnNoFind, events...> const
+            query_interpreted_events_t<QM, events...> const
                 &q) {
           auto eacher = [&]<typename W>(W &w) {
             if constexpr ((has_handle<
@@ -739,22 +744,54 @@ public:
   }
   constexpr void reset_on_destruct() { on_destruct_.value() = bp::no_op; }
 
-  template <typename TimePoint, typename Pred, typename OnFind,
-            typename OnNoFind, interpreted_events... events,
+  constexpr point_rect auto intrinsic_min_size() const
+    requires(requires(TEventHandler const &eh) {
+      call::intrinsic_min_size(eh);
+    })
+  {
+    return call::intrinsic_min_size(event_handler(*this));
+  }
+
+private:
+  template <widget_back_propagater BP>
+  struct query_wrap {
+    widget& w;
+    BP& bp;
+
+    template <typename E>
+    requires (has_handle<widget&, E, BP&>)
+    constexpr void handle(E const& e) const {
+      w.handle(e, bp);
+    }
+    constexpr auto area() const { return
+                                  //bp.move_to_absolute(w.area());
+          w.area();
+    }
+    constexpr widget_id_t widget_id() const {
+      return {std::bit_cast<std::intptr_t>(&w)};
+    }
+    constexpr zoom_factor_t zoom_factor() const requires(requires(widget& w2) { call::zoom_factor(w2); }) {
+      return call::zoom_factor(w);
+    }
+  };
+
+public:
+
+  template <typename TimePoint, typename QM, interpreted_events... events,
             widget_back_propagater BP>
   constexpr std::optional<std::remove_cvref_t<BP>>
   query(std::type_identity<TimePoint> tpi,
-        query_interpreted_events_t<Pred, OnFind, OnNoFind, events...> const &q,
+        query_interpreted_events_t<QM, events...> const &q,
         BP &&bp) {
     std::optional<std::remove_cvref_t<BP>> found;
     if constexpr (!std::is_empty_v<TSubs>) {
       call::for_each(
-          subcomponents(), [&found, &q, &bp, tpi]<typename SW>(SW &&sw) {
+          subcomponents(), [&found, qr = q.relative(call::top_left(call::area(*this))), &bp, tpi]<typename SW>(SW &&sw) {
             if constexpr ((has_handle<SW, interpreted_event<events, TimePoint>,
                                       BP> ||
                            ...)) {
               if (!found) {
-                found = sw.query(tpi, q, bp.sub(sw.area()));
+                found = sw.query(tpi, qr, bp.sub(sw.area()));
               }
             }
           });
@@ -763,22 +800,12 @@ public:
                               BP> ||
                    ...)) {
       if (!found) {
-        if (q(*this, [&bp]<typename E>(widget &self, E const &e)
-                requires has_handle<widget &, E const &, BP &>
-              { self.handle(e, bp); })) {
+        if (q(query_wrap<std::remove_cvref_t<BP>>{*this, bp})) {
           found = std::forward<BP>(bp);
         }
       }
     }
     return found;
-  }
-
-  constexpr point_rect auto intrinsic_min_size() const
-    requires(requires(TEventHandler const &eh) {
-      call::intrinsic_min_size(eh);
-    })
-  {
-    return call::intrinsic_min_size(event_handler(*this));
   }
 };
 

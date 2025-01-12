@@ -315,6 +315,7 @@ CGUI_CALL_CONCEPT(set_displayed)
 CGUI_CALL_CONCEPT(set_text)
 CGUI_CALL_CONCEPT(render_text)
 CGUI_CALL_CONCEPT(area)
+CGUI_CALL_CONCEPT(widget_id)
 CGUI_CALL_CONCEPT(glyph)
 CGUI_CALL_CONCEPT(text_colour)
 CGUI_CALL_CONCEPT(find_sub)
@@ -736,6 +737,7 @@ inline constexpr impl::_do_finger_index finger_index;
 /// software.
 inline constexpr impl::_do_fill fill;
 inline constexpr impl::_do_area area;
+inline constexpr impl::_do_widget_id widget_id;
 inline constexpr impl::_do_render render;
 inline constexpr impl::_do_glyph glyph;
 inline constexpr impl::_do_set_displayed set_displayed;

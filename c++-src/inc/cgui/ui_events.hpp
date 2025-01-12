@@ -612,57 +612,128 @@ constexpr auto _to_state(state_interpreter_pair<Interpreter> *sip)
   }
 }
 
+template <typename T>
+concept widget_type_erasable = requires(T &t) {
+  { call::area(t) } -> point_rect;
+  { call::widget_id(t) } -> std::convertible_to<widget_id_t>;
+};
+
 template <typename WidgetT> struct query_result {
   WidgetT *w_{};
 
   constexpr explicit operator bool() const noexcept { return w_ != nullptr; }
 };
-template <typename Pred, typename OnFind, typename OnNoFind,
-          interpreted_events... events>
-struct query_interpreted_events_t {
-  Pred p_;
-  OnFind f_;
-  OnNoFind no_f_;
+
+template <typename>
+struct query_position;
+template <>
+struct query_position<void> {
+  static constexpr bool pass_position(auto&&...) noexcept { return true; }
+
+  static constexpr query_position relative(point_coordinate auto const& ) noexcept {
+    return {};
+  }
+};
+template <point_coordinate T>
+struct query_position<T> {
+  T pos_{};
+  constexpr bool pass_position(widget_type_erasable auto const& w) const {
+    return hit_box(call::area(w), pos_);
+  }
+  constexpr query_position relative(point_coordinate auto const& p) const {
+    return {sub(pos_, p)};
+  }
+};
+
+template <typename Pos, typename Pred, typename OnFind, typename OnNoFind>
+requires (point_coordinate<Pos> || std::is_void_v<Pos>)
+struct _query_members : protected bp::empty_structs_optimiser<query_position<Pos>, Pred, OnFind, OnNoFind>{
+protected:
   static_assert(
       noexcept(std::declval<OnNoFind>()()),
       "The OnNoFind should be noexcept as it is called from a destructor!");
+
+  using _base_t = bp::empty_structs_optimiser<query_position<Pos>, Pred, OnFind, OnNoFind>;
+  using qpos_t = query_position<Pos>;
   mutable bool any_found_{};
 
-  constexpr query_interpreted_events_t(Pred p, OnFind f, OnNoFind no_f)
-      : p_(std::move(p)), f_(std::move(f)), no_f_(std::move(no_f)) {}
+  constexpr _base_t const& base() const {
+    return *this;
+  }
 
-  constexpr bool operator()(auto &in, auto &&s) const {
-    if (p_(in)) {
-      f_(in, std::forward<decltype(s)>(s));
+  constexpr decltype(auto) qpos() const noexcept {
+    return get<0>(base());
+  }
+  constexpr decltype(auto) pred() const noexcept {
+    return get<1>(base());
+  }
+  constexpr decltype(auto) on_find() const noexcept {
+    return get<2>(base());
+  }
+  constexpr decltype(auto) on_no_find() const noexcept {
+    return get<3>(base());
+  }
+
+public:
+  constexpr _query_members(Pred p, OnFind f, OnNoFind no_f) requires(std::is_void_v<Pos>)
+      : _base_t(nullptr, std::move(p), std::move(f), std::move(no_f)) {}
+  template <typename P2>
+  requires (std::constructible_from<qpos_t, P2>)
+  constexpr _query_members(P2&& pos, Pred p, OnFind f, OnNoFind no_f)
+      : _base_t(std::forward<P2>(pos), std::move(p), std::move(f), std::move(no_f)) {}
+
+  constexpr bool operator()(widget_type_erasable auto &&in) const {
+    if (qpos().pass_position(in) && pred()(in)) {
+      on_find()(in);
       any_found_ = true;
       return true;
     }
     return false;
   }
+
+  constexpr _query_members relative(point_coordinate auto const& p) const {
+    return {qpos().relative(p), pred(), on_find(), on_no_find()};
+  }
+
+};
+
+template <
+    typename Members,
+    interpreted_events... events>
+class query_interpreted_events_t : public Members
+{
+  constexpr explicit query_interpreted_events_t(Members&& m) : Members(std::move(m)) {}
+public:
+  using Members::Members;
+
   constexpr ~query_interpreted_events_t() {
-    if (!any_found_) {
-      no_f_();
+    if (!Members::any_found_) {
+      Members::on_no_find()();
     }
+  }
+  constexpr query_interpreted_events_t relative(point_coordinate auto const& p) const {
+    return query_interpreted_events_t(Members::relative(p));
   }
 };
 
 template <interpreted_events... events, typename Pred, typename OnFind,
           typename OnNoFind = bp::no_op_t>
   requires(std::predicate<Pred, dummy_widget const &>)
-constexpr query_interpreted_events_t<std::remove_cvref_t<Pred>,
+constexpr query_interpreted_events_t<_query_members<void, std::remove_cvref_t<Pred>,
                                      std::remove_cvref_t<OnFind>,
-                                     std::remove_cvref_t<OnNoFind>, events...>
+                                     std::remove_cvref_t<OnNoFind>>, events...>
 query_interpreted_events(Pred &&p, OnFind &&f, OnNoFind &&nf = {}) {
   return {std::forward<Pred>(p), std::forward<OnFind>(f),
           std::forward<OnNoFind>(nf)};
 }
 
-template <interpreted_events... events, typename OnFind,
+template <interpreted_events... events, point_coordinate Pos, typename OnFind,
           typename OnNoFind = bp::no_op_t>
-constexpr auto query_interpreted_events(point_coordinate auto const &pos,
+constexpr auto query_interpreted_events(Pos const &pos,
                                         OnFind &&f, OnNoFind &&nf = {}) {
-  return query_interpreted_events<events...>(
-      [pos](auto const &w) { return hit_box(call::area(w), pos); },
+  return query_interpreted_events_t<
+      _query_members<Pos, bp::pretend_predicate_t<true>, std::remove_cvref_t<OnFind>, std::remove_cvref_t<OnNoFind>>, events...>(
+      pos, bp::pretend_predicate<true>,
       std::forward<OnFind>(f), std::forward<OnNoFind>(nf));
 }
 
@@ -877,21 +948,24 @@ public:
 class interpreter_widget_cache {
   void const *impl_{};
   default_point_rect area_{};
+  widget_id_t id_;
 
 public:
-  constexpr explicit interpreter_widget_cache(auto &w)
+  constexpr explicit interpreter_widget_cache(widget_type_erasable auto &w)
     requires(!bp::cvref_type<decltype(w), interpreter_widget_cache>)
-      : impl_(&w), area_(copy_box<default_point_rect>(call::area(w))) {}
+      : impl_(&w), area_(copy_box<default_point_rect>(call::area(w))),
+        id_(call::widget_id(w)) {}
   constexpr interpreter_widget_cache() noexcept = default;
 
   constexpr void reset() noexcept { impl_ = nullptr; }
-  constexpr void reset(auto &w) noexcept {
+  constexpr void reset(widget_type_erasable auto &w) noexcept {
     impl_ = &w;
     area_ = copy_box<default_point_rect>(call::area(w));
+    id_ = call::widget_id(w);
   }
 
-  constexpr bool refers_to(auto &w) const {
-    return static_cast<void const *>(&w) == impl_;
+  constexpr bool refers_to(widget_type_erasable auto &w) const {
+    return call::widget_id(w) == id_;
   }
   constexpr explicit operator bool() const { return impl_ != nullptr; }
   constexpr default_point_rect const &area() const noexcept { return area_; }
@@ -899,17 +973,18 @@ public:
   constexpr friend bool
   operator==(interpreter_widget_cache const &lhs,
              interpreter_widget_cache const &rhs) noexcept {
-    return lhs.impl_ == rhs.impl_;
+    CGUI_ASSERT(((lhs.id_ == rhs.id_) == (lhs.impl_ == rhs.impl_)));
+    return lhs.id_ == rhs.id_;
   }
 
   template <interpreted_events... Events>
   constexpr bool access(auto &&q, auto &&cb) const {
     bool called{};
     q(query_interpreted_events<Events...>(
-        is_cached_widget(*this), [&]<typename W, typename S>(W &w, S &&sender) {
+        is_cached_widget(*this), [&]<typename W>(W &&w) {
           CGUI_ASSERT(!called); // called more than once!
           called = true;
-          cb(w, std::forward<S>(sender));
+          cb(w);
         }));
     return called;
   }
@@ -928,12 +1003,11 @@ _invoke_with_interpreted_event(Q &&q, point_coordinate auto const &pos,
                                TP const &tp, Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
   interpreter_widget_cache cached{};
-  q(query_interpreted_events<evt_type>(
-      pos, [&]<typename W, typename S>(W &w, S &&sender) {
-        CGUI_ASSERT(!cached); // called more than once!
-        cached.reset(w);
-        std::forward<S>(sender)(w, event_t(tp, std::forward<Args>(args)...));
-      }));
+  q(query_interpreted_events<evt_type>(pos, [&]<typename W>(W &w) {
+    CGUI_ASSERT(!cached); // called more than once!
+    cached.reset(w);
+    call::handle(w, event_t(tp, std::forward<Args>(args)...));
+  }));
   return cached;
 }
 template <interpreted_events... evt_types, typename TP, typename Q>
@@ -941,17 +1015,16 @@ constexpr interpreter_widget_cache _invoke_with_interpreted_event(
     Q &&q, default_point_coordinate pos,
     interpreted_event<evt_types, TP> const &...events) {
   interpreter_widget_cache cached{};
-  q(query_interpreted_events<evt_types...>(
-      pos, [&]<typename W, typename S>(W &w, S &&sender) {
-        CGUI_ASSERT(!cached); // called more than once!
-        cached.reset(w);
-        auto invoker = [&w, &sender]<typename E>(E const &e) {
-          if constexpr (std::invocable<S, W &, E>) {
-            sender(w, e);
-          }
-        };
-        bp::run_for_each(invoker, events...);
-      }));
+  q(query_interpreted_events<evt_types...>(pos, [&]<typename W>(W &w) {
+    CGUI_ASSERT(!cached); // called more than once!
+    cached.reset(w);
+    auto invoker = [&w]<typename E>(E const &e) {
+      if constexpr (has_handle<W &, E>) {
+        call::handle(w, e);
+      }
+    };
+    bp::run_for_each(invoker, events...);
+  }));
   return cached;
 }
 template <interpreted_events evt_type, typename Q, typename TP,
@@ -960,10 +1033,9 @@ constexpr bool send_to_cached_widget(Q &&q, TP tp,
                                      interpreter_widget_cache const &cw,
                                      Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
-  return cw.template access<evt_type>(
-      q, [&]<typename W, typename S>(W &w, S &&sender) {
-        std::forward<S>(sender)(w, event_t(tp, std::forward<Args>(args)...));
-      });
+  return cw.template access<evt_type>(q, [&]<typename W>(W &w) {
+    call::handle(w, event_t(tp, std::forward<Args>(args)...));
+  });
 }
 
 template <input_events... ievs> struct _interpreter_can_handle {
@@ -1024,22 +1096,22 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
       using enum interpreted_events;
       q(query_interpreted_events<pointer_enter, pointer_hover>(
           pos,
-          [&]<typename W, typename S>(W &w, S &&sender) {
+          [&]<typename W>(W &w) {
             if (!prev_widget.refers_to(w)) {
               if (prev_widget) {
                 send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
               }
               widget.reset(w);
-              if constexpr (std::invocable<
-                                S, W &,
-                                interpreted_event<pointer_enter, TimePoint>>) {
-                sender(w, interpreted_event<pointer_enter, TimePoint>(ts, pos));
+              if constexpr (has_handle<W &, interpreted_event<pointer_enter,
+                                                              TimePoint>>) {
+                call::handle(
+                    w, interpreted_event<pointer_enter, TimePoint>(ts, pos));
               }
             }
-            if constexpr (std::invocable<
-                              S, W &,
-                              interpreted_event<pointer_hold, TimePoint>>) {
-              sender(w, interpreted_event<pointer_hold, TimePoint>(ts, pos));
+            if constexpr (has_handle<W &, interpreted_event<pointer_hold,
+                                                            TimePoint>>) {
+              call::handle(w,
+                           interpreted_event<pointer_hold, TimePoint>(ts, pos));
             }
           },
           [this, &q, ts]() noexcept {
@@ -1072,22 +1144,22 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
       using enum interpreted_events;
       q(query_interpreted_events<pointer_enter, pointer_hover>(
           pos,
-          [&]<typename W, typename S>(W &w, S &&sender) {
+          [&]<typename W>(W &w) {
             if (!prev_widget.refers_to(w)) {
               if (prev_widget) {
                 send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
               }
               widget.reset(w);
-              if constexpr (std::invocable<
-                                S, W &,
-                                interpreted_event<pointer_enter, TimePoint>>) {
-                sender(w, interpreted_event<pointer_enter, TimePoint>(ts, pos));
+              if constexpr (has_handle<W &, interpreted_event<pointer_enter,
+                                                              TimePoint>>) {
+                call::handle(
+                    w, interpreted_event<pointer_enter, TimePoint>(ts, pos));
               }
             }
-            if constexpr (std::invocable<
-                              S, W &,
-                              interpreted_event<pointer_hover, TimePoint>>) {
-              sender(w, interpreted_event<pointer_hover, TimePoint>(ts, pos));
+            if constexpr (has_handle<W &, interpreted_event<pointer_hover,
+                                                            TimePoint>>) {
+              call::handle(
+                  w, interpreted_event<pointer_hover, TimePoint>(ts, pos));
             }
           },
           [this, &q, ts]() noexcept {
@@ -1263,15 +1335,13 @@ private:
           auto &[q, s, ks, conf] = d;
           if (ks.ctrl()) {
             q(query_interpreted_events<interpreted_events::zoom>(
-                call::position(e),
-                [&]<typename W, typename Sender>(W &w, Sender &&sender) {
+                call::position(e), [&]<typename W>(W &w) {
                   auto [orgx, orgy] = call::zoom_factor(w);
                   auto scale_mod =
                       std::pow(1.f + conf.zoom_scale, call::delta_y(e));
-                  std::forward<Sender>(sender)(
-                      w, interpreted_event<interpreted_events::zoom>(
-                             call::time_stamp(e), call::position(e),
-                             orgx * scale_mod, orgy * scale_mod));
+                  call::handle(w, interpreted_event<interpreted_events::zoom>(
+                                      call::time_stamp(e), call::position(e),
+                                      orgx * scale_mod, orgy * scale_mod));
                 }));
           } else {
             _invoke_with_interpreted_event<interpreted_events::scroll>(
@@ -1397,7 +1467,7 @@ struct _touch_translator_base {
         return scroll_or_zoom_val;
       }
     };
-    auto do_check_if_exit = [&](auto &sv, auto &w, auto &&) {
+    auto do_check_if_exit = [&](auto &sv, auto &w) {
       if (!sv.held_widget.refers_to(w)) {
         send_to_cached_widget<interpreted_events::pointer_exit>(
             q, call::time_stamp(e), sv.held_widget);
@@ -1406,46 +1476,47 @@ struct _touch_translator_base {
     // We had to set this in a separate function to work-around a bug in clang
     // that caused it to try to decompose scroll_or_zoom_val when it was a
     // simple float-value (in the pure zoom-case).
-    auto do_send_scroll = [&](auto &w, auto &&s) {
+    auto do_send_scroll = [&](auto &w) {
       if constexpr (is_scroller<T>) {
         auto [scx, scy] = scroll_or_zoom_val;
-        s(w, scroll_event_t(call::time_stamp(e), position, scx, scy));
+        call::handle(w,
+                     scroll_event_t(call::time_stamp(e), position, scx, scy));
       } else {
-        unused(w, s);
+        unused(w);
       }
     };
     // We had to set this in a separate function to work-around a bug in clang
     // that caused it to try to use the pair in scroll_or_zoom_val when it was
     // in the pure scroll case..
-    auto do_send_zoom = [&](auto &w, auto &&s) {
+    auto do_send_zoom = [&](auto &w) {
       if constexpr (is_zoomer<T>) {
         auto [scx, scy] = get_zoom();
         auto [orgx, orgy] = call::zoom_factor(w);
-        s(w,
-          zoom_event_t(call::time_stamp(e), position, scx * orgx, scy * orgy));
+        call::handle(w, zoom_event_t(call::time_stamp(e), position, scx * orgx,
+                                     scy * orgy));
       } else {
-        unused(w, s);
+        unused(w);
       }
     };
     q(query_interpreted_events<interpreted_events::scroll,
                                interpreted_events::zoom>(
-        position, [&]<typename W, typename S>(W &w, S &&sender) {
+        position, [&]<typename W>(W &w) {
           constexpr bool should_scroll =
-              std::invocable<S, W &, scroll_event_t> && is_scroller<T>;
+              has_handle<W &, scroll_event_t> && is_scroller<T>;
           constexpr bool should_zoom =
-              std::invocable<S, W &, zoom_event_t> && is_zoomer<T>;
+              has_handle<W &, zoom_event_t> && is_zoomer<T>;
           if constexpr (should_scroll || should_zoom) {
-            do_check_if_exit(s1, w, sender);
-            do_check_if_exit(s2, w, sender);
+            do_check_if_exit(s1, w);
+            do_check_if_exit(s2, w);
           }
           if constexpr (should_scroll) {
-            do_send_scroll(w, sender);
+            do_send_scroll(w);
           }
           if constexpr (should_zoom) {
             static_assert(has_zoom_factor<W>,
                           "You must implement 'zoom_factor_t zoom_factor()' to "
                           "be able to handle zooming in the widgets.");
-            do_send_zoom(w, sender);
+            do_send_zoom(w);
           }
           if constexpr (should_scroll && should_zoom) {
             *result1.first =
@@ -1656,19 +1727,14 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                                    s.down_position, call::position(e), conf_)) {
           auto [dx, dy] = *zl;
           s.widget.template access<interpreted_events::zoom>(
-              q, [&]<typename W, typename Sender>(W &w, Sender &&sender) {
+              q, [&]<typename W>(W &&w) {
                 static_assert(has_zoom_factor<W>,
                               "You must implement 'zoom_factor_t zoom_factor() "
                               "const' for your widget-like object (member, "
                               "free with ADL, static or as extend_api_t<W>::)");
                 auto org_factor = call::zoom_factor(w);
                 auto [ox, oy] = org_factor;
-                // send_to_cached_widget<interpreted_events::zoom>(
-                //     q, call::time_stamp(e), s.widget, new_pos, dx * ox, dy *
-                //     oy);
-                // std::forward<S>(sender)(w, event_t(tp,
-                // std::forward<Args>(args)...));
-                std::forward<Sender>(sender)(
+                call::handle(
                     w, interpreted_event<interpreted_events::zoom>(
                            call::time_stamp(e), new_pos, dx * ox, dy * oy));
                 set_both_states(org_factor, to_ref_pair(main_state, s),
@@ -1694,24 +1760,23 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
     q(query_interpreted_events<interpreted_events::pointer_enter,
                                interpreted_events::pointer_hold>(
         call::position(e),
-        [&]<typename W, typename S>(W &w, S &&sender) {
+        [&]<typename W>(W &w) {
           auto tp = call::time_stamp(e);
           if (!org_w.refers_to(w)) {
             exit_widget(org_w, tp, q);
             org_w.reset(w);
-            if constexpr (std::invocable<S &&, W &,
-                                         interpreted_event<
-                                             interpreted_events::pointer_enter,
-                                             TimePoint>>) {
-              sender(w, interpreted_event<interpreted_events::pointer_enter,
-                                          TimePoint>(tp, call::position(e)));
+            if constexpr (has_handle<W &, interpreted_event<
+                                              interpreted_events::pointer_enter,
+                                              TimePoint>>) {
+              call::handle(w,
+                           interpreted_event<interpreted_events::pointer_enter,
+                                             TimePoint>(tp, call::position(e)));
             }
           }
-          if constexpr (std::invocable<
-                            S &&, W &,
-                            interpreted_event<interpreted_events::pointer_hold,
-                                              TimePoint>>) {
-            sender(
+          if constexpr (has_handle<W &, interpreted_event<
+                                            interpreted_events::pointer_hold,
+                                            TimePoint>>) {
+            call::handle(
                 w,
                 interpreted_event<interpreted_events::pointer_hold, TimePoint>(
                     tp, call::position(e)));

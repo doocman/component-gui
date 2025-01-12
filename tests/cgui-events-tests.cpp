@@ -78,13 +78,20 @@ constexpr interpreted_events to_interpreted_event_enum() {
 }
 
 struct event_counter {
+  static widget_id_t next_id() {
+    static widget_id_t next{0};
+    auto res = next;
+    ++next.value;
+    return res;
+  }
   std::vector<interpreted_events> event_types;
   default_point_rect a_ =
       point_unit(default_rect{{-1000, -1000}, {1000, 1000}});
   zoom_factor_t zf{1.f, 1.f};
+  widget_id_t id_ = next_id();
   event_counter() = default;
   explicit event_counter(default_point_rect a) : a_(a) {}
-  template <typename Evt> constexpr void operator()(Evt const &e) {
+  template <typename Evt> constexpr void handle(Evt const &e) {
     event_types.push_back(to_interpreted_event_enum<Evt>());
   }
 
@@ -92,6 +99,26 @@ struct event_counter {
 
   void reset() { event_types.clear(); }
   constexpr zoom_factor_t const &zoom_factor() const { return zf; }
+  constexpr widget_id_t widget_id() const noexcept {
+    return id_;
+  }
+
+  template <typename T>
+  struct with_cb_t {
+    T& cb_;
+    event_counter& ec_;
+    constexpr void handle(auto const& e) const {
+      cb_(e);
+      ec_.handle(e);
+    }
+    constexpr auto area() const { return ec_.area(); }
+    constexpr auto zoom_factor() const { return ec_.zoom_factor(); }
+    constexpr auto widget_id() const { return ec_.widget_id(); }
+  };
+  template <typename T>
+  constexpr auto with_cb(T& cb) {
+    return with_cb_t<T>(cb, *this);
+  }
 };
 
 inline std::size_t enable_all_events(std::vector<interpreted_events> &vec) {
@@ -156,13 +183,13 @@ public:
     event_counter *counter{};
     std::vector<interpreted_events> events_to_allow{};
     zoom_factor_t zf_{1.f, 1.f};
-    template <typename P, typename T, typename NF, interpreted_events... evts>
+    template <typename QM, interpreted_events... evts>
     constexpr bool
-    operator()(query_interpreted_events_t<P, T, NF, evts...> const &q) const {
+    operator()(query_interpreted_events_t<QM, evts...> const &q) const {
       if (std::ranges::any_of(events_to_allow,
                               [](auto &&e) { return ((e == evts) || ...); })) {
         CGUI_ASSERT(counter != nullptr);
-        q(*counter, direct_invoke);
+        q(*counter);
         return true;
       }
       return false;
@@ -172,16 +199,18 @@ public:
     constexpr auto get_query(CB &&cb = {}) {
       return
           [this,
-           cb]<typename P, typename T, typename NF, interpreted_events... evts>(
-              query_interpreted_events_t<P, T, NF, evts...> const &q) {
+           cb]<typename QM, interpreted_events... evts>(
+              query_interpreted_events_t<QM, evts...> const &q) {
             if (std::ranges::any_of(events_to_allow, [](auto &&e) {
                   return ((e == evts) || ...);
                 })) {
               CGUI_ASSERT(counter != nullptr);
-              q(*counter, [cb](auto &dw, auto &&e) {
-                cb(e);
-                dw(e);
-              });
+              q(counter->with_cb(cb)
+              //      , [cb](auto &dw, auto &&e) {
+              //  cb(e);
+              //  dw(e);
+              //}
+                );
               return true;
             }
             return false;
@@ -779,14 +808,14 @@ struct GestureEventsHitTests : public ::testing::Test {
   };
   struct widget_query {
     std::vector<mock_widget> widgets;
-    template <typename P, typename T, typename NF, interpreted_events... evts>
+    template <typename QM, interpreted_events... evts>
     constexpr bool
-    operator()(query_interpreted_events_t<P, T, NF, evts...> const &q) {
+    operator()(query_interpreted_events_t<QM, evts...> const &q) {
       for (auto &w : widgets) {
         if (std::ranges::any_of(
                 w.allowed_events,
                 [](auto &&e) { return ((e == evts) || ...); }) &&
-            q(w.counter, direct_invoke)) {
+            q(w.counter)) {
           return true;
         }
       }

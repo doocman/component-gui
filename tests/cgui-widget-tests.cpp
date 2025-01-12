@@ -820,8 +820,8 @@ TEST(Widget, QueryAndEvents3Layer) // NOLINT
     return w.query(std::type_identity<std::chrono::steady_clock::time_point>{},
                    query_interpreted_events<interpreted_events::primary_click>(
                        default_point_coordinate(pxy, pxy),
-                       [pxy](auto &wf, auto &&s) {
-                         s(wf,
+                       [pxy](auto &&wf) {
+                         call::handle(wf,
                            interpreted_event<interpreted_events::primary_click>(
                                {}, default_point_coordinate(pxy, pxy)));
                        }),
