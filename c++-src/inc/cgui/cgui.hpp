@@ -316,7 +316,6 @@ public:
     if (!s.empty_result()) {
       auto sub_area = s.relative_position(full_area_.offset());
       rerender(sub_area);
-      // rerender(s.relative_area());
     }
   }
 
@@ -327,9 +326,11 @@ public:
   }
 
   template <point_rect TA2 = TArea>
-  constexpr point_rect auto move_to_absolute(TA2 const& rel_area) const {
+  constexpr point_rect auto move_to_absolute(TA2 const &rel_area) const {
     return full_area_.move_to_absolute(rel_area);
   }
+
+  constexpr auto offset() const { return full_area_.offset(); }
 };
 
 namespace impl {
@@ -422,32 +423,29 @@ public:
         b.merge_sub(s);
       }
     });
-    interpreter_.handle(
-        evt,
-        [this, &b]<typename QM,
-                   interpreted_events... events>(
-            query_interpreted_events_t<QM, events...> const
-                &q) {
-          auto eacher = [&]<typename W>(W &w) {
-            if constexpr ((has_handle<
-                               W &,
-                               interpreted_event<events, time_point_t> const &,
-                               basic_widget_back_propagater<native_box_t>> ||
-                           ...)) {
-              if (auto sbo = w.query(std::type_identity<time_point_t>{}, q,
-                                     b.sub(w.area()))) {
-                b.merge_sub(*sbo);
-                return true;
-              }
-            }
-            return false;
-          };
-          call::apply_to(widgets_, [&eacher](auto &...ws) {
-            // We are not expecting overlapping widgets here.
-            unused((eacher(ws) || ...));
-          });
-          //
-        });
+    interpreter_.handle(evt, [this,
+                              &b]<typename QM, interpreted_events... events>(
+                                 query_interpreted_events_t<QM, events...> const
+                                     &q) {
+      auto eacher = [&]<typename W>(W &w) {
+        if constexpr ((has_handle<
+                           W &, interpreted_event<events, time_point_t> const &,
+                           basic_widget_back_propagater<native_box_t>> ||
+                       ...)) {
+          if (auto sbo = w.query(std::type_identity<time_point_t>{}, q,
+                                 b.sub(w.area()))) {
+            b.merge_sub(*sbo);
+            return true;
+          }
+        }
+        return false;
+      };
+      call::apply_to(widgets_, [&eacher](auto &...ws) {
+        // We are not expecting overlapping widgets here.
+        unused((eacher(ws) || ...));
+      });
+      //
+    });
     return b.result_area();
   }
 
@@ -753,45 +751,51 @@ public:
   }
 
 private:
-  template <widget_back_propagater BP>
-  struct query_wrap {
-    widget& w;
-    BP& bp;
+  template <widget_back_propagater BP> struct query_wrap {
+    widget &w;
+    BP &bp;
 
     template <typename E>
-    requires (has_handle<widget&, E, BP&>)
-    constexpr void handle(E const& e) const {
-      w.handle(e, bp);
+      requires(has_handle<widget &, E, BP &>)
+    constexpr void handle(E const &e) const {
+      if constexpr (positioned_event<E>) {
+        auto new_position = sub(call::position(e), bp.offset());
+        w.handle(call::move_event(e, new_position), bp);
+      } else {
+        w.handle(e, bp);
+      }
     }
-    constexpr auto area() const { return
-                                  //bp.move_to_absolute(w.area());
-          w.area();
+    constexpr auto area() const {
+      auto offset = bp.offset();
+      decltype(auto) a = w.area();
+      return box_from_xywh<TArea>(call::x_of(offset), call::y_of(offset),
+                                  call::width(a), call::height(a));
     }
     constexpr widget_id_t widget_id() const {
       return {std::bit_cast<std::intptr_t>(&w)};
     }
-    constexpr zoom_factor_t zoom_factor() const requires(requires(widget& w2) { call::zoom_factor(w2); }) {
+    constexpr zoom_factor_t zoom_factor() const
+      requires(requires(widget &w2) { call::zoom_factor(w2); })
+    {
       return call::zoom_factor(w);
     }
   };
 
 public:
-
   template <typename TimePoint, typename QM, interpreted_events... events,
             widget_back_propagater BP>
   constexpr std::optional<std::remove_cvref_t<BP>>
   query(std::type_identity<TimePoint> tpi,
-        query_interpreted_events_t<QM, events...> const &q,
-        BP &&bp) {
+        query_interpreted_events_t<QM, events...> const &q, BP &&bp) {
     std::optional<std::remove_cvref_t<BP>> found;
     if constexpr (!std::is_empty_v<TSubs>) {
       call::for_each(
-          subcomponents(), [&found, qr = q.relative(call::top_left(call::area(*this))), &bp, tpi]<typename SW>(SW &&sw) {
+          subcomponents(), [&found, &q, &bp, tpi]<typename SW>(SW &&sw) {
             if constexpr ((has_handle<SW, interpreted_event<events, TimePoint>,
                                       BP> ||
                            ...)) {
               if (!found) {
-                found = sw.query(tpi, qr, bp.sub(sw.area()));
+                found = sw.query(tpi, q, bp.sub(sw.area()));
               }
             }
           });
@@ -1802,9 +1806,10 @@ public:
 };
 
 template <bounding_box B, typename T>
-basic_button_list_args(B const &, T &&) -> basic_button_list_args<
-    std::unwrap_ref_decay_t<T>,
-    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+basic_button_list_args(B const &, T &&)
+    -> basic_button_list_args<
+        std::unwrap_ref_decay_t<T>,
+        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
 template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;

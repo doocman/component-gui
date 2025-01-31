@@ -190,33 +190,36 @@ template <interpreted_events... evts>
 using subset_interpreted_events = subset_events<interpreted_events, evts...>;
 
 template <typename T>
-concept subset_input_event_c =
-    std::convertible_to<T, input_events> && requires() {
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            input_event_identity<input_events::system>{})
-      } -> std::convertible_to<bool>;
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            input_event_identity<input_events::mouse_move>{})
-      } -> std::convertible_to<bool>;
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            input_event_identity<input_events::mouse_button_up>{})
-      } -> std::convertible_to<bool>;
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            input_event_identity<input_events::mouse_button_down>{})
-      } -> std::convertible_to<bool>;
-    };
+concept subset_input_event_c = std::convertible_to<T, input_events> &&
+  requires()
+{
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        input_event_identity<input_events::system>{})
+  } -> std::convertible_to<bool>;
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        input_event_identity<input_events::mouse_move>{})
+  } -> std::convertible_to<bool>;
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        input_event_identity<input_events::mouse_button_up>{})
+  } -> std::convertible_to<bool>;
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        input_event_identity<input_events::mouse_button_down>{})
+  } -> std::convertible_to<bool>;
+};
 template <typename T>
 concept subset_interpreted_event_c =
-    std::convertible_to<T, interpreted_events> && requires() {
-      {
-        std::remove_cvref_t<T>::can_be_event(
-            interpreted_event_identity<interpreted_events::primary_click>{})
-      } -> std::convertible_to<bool>;
-    };
+    std::convertible_to<T, interpreted_events> &&
+  requires()
+{
+  {
+    std::remove_cvref_t<T>::can_be_event(
+        interpreted_event_identity<interpreted_events::primary_click>{})
+  } -> std::convertible_to<bool>;
+};
 
 namespace call {
 namespace impl {
@@ -603,8 +606,8 @@ template <typename Interpreter> struct state_interpreter_pair {
   }
 };
 template <typename Interpreter>
-constexpr auto _to_state(state_interpreter_pair<Interpreter> *sip)
-    -> decltype(&sip->state) {
+constexpr auto
+_to_state(state_interpreter_pair<Interpreter> *sip) -> decltype(&sip->state) {
   if (sip == nullptr) {
     return nullptr;
   } else {
@@ -624,63 +627,50 @@ template <typename WidgetT> struct query_result {
   constexpr explicit operator bool() const noexcept { return w_ != nullptr; }
 };
 
-template <typename>
-struct query_position;
-template <>
-struct query_position<void> {
-  static constexpr bool pass_position(auto&&...) noexcept { return true; }
-
-  static constexpr query_position relative(point_coordinate auto const& ) noexcept {
-    return {};
-  }
+template <typename> struct query_position;
+template <> struct query_position<void> {
+  static constexpr bool pass_position(auto &&...) noexcept { return true; }
 };
-template <point_coordinate T>
-struct query_position<T> {
+template <point_coordinate T> struct query_position<T> {
   T pos_{};
-  constexpr bool pass_position(widget_type_erasable auto const& w) const {
+  constexpr bool pass_position(widget_type_erasable auto const &w) const {
     return hit_box(call::area(w), pos_);
-  }
-  constexpr query_position relative(point_coordinate auto const& p) const {
-    return {sub(pos_, p)};
   }
 };
 
 template <typename Pos, typename Pred, typename OnFind, typename OnNoFind>
-requires (point_coordinate<Pos> || std::is_void_v<Pos>)
-struct _query_members : protected bp::empty_structs_optimiser<query_position<Pos>, Pred, OnFind, OnNoFind>{
+  requires(point_coordinate<Pos> || std::is_void_v<Pos>)
+struct _query_members
+    : protected bp::empty_structs_optimiser<query_position<Pos>, Pred, OnFind,
+                                            OnNoFind> {
 protected:
   static_assert(
       noexcept(std::declval<OnNoFind>()()),
       "The OnNoFind should be noexcept as it is called from a destructor!");
 
-  using _base_t = bp::empty_structs_optimiser<query_position<Pos>, Pred, OnFind, OnNoFind>;
+  using _base_t =
+      bp::empty_structs_optimiser<query_position<Pos>, Pred, OnFind, OnNoFind>;
   using qpos_t = query_position<Pos>;
   mutable bool any_found_{};
 
-  constexpr _base_t const& base() const {
-    return *this;
-  }
+  constexpr _base_t const &base() const { return *this; }
 
-  constexpr decltype(auto) qpos() const noexcept {
-    return get<0>(base());
-  }
-  constexpr decltype(auto) pred() const noexcept {
-    return get<1>(base());
-  }
-  constexpr decltype(auto) on_find() const noexcept {
-    return get<2>(base());
-  }
+  constexpr decltype(auto) qpos() const noexcept { return get<0>(base()); }
+  constexpr decltype(auto) pred() const noexcept { return get<1>(base()); }
+  constexpr decltype(auto) on_find() const noexcept { return get<2>(base()); }
   constexpr decltype(auto) on_no_find() const noexcept {
     return get<3>(base());
   }
 
 public:
-  constexpr _query_members(Pred p, OnFind f, OnNoFind no_f) requires(std::is_void_v<Pos>)
+  constexpr _query_members(Pred p, OnFind f, OnNoFind no_f)
+    requires(std::is_void_v<Pos>)
       : _base_t(nullptr, std::move(p), std::move(f), std::move(no_f)) {}
   template <typename P2>
-  requires (std::constructible_from<qpos_t, P2>)
-  constexpr _query_members(P2&& pos, Pred p, OnFind f, OnNoFind no_f)
-      : _base_t(std::forward<P2>(pos), std::move(p), std::move(f), std::move(no_f)) {}
+    requires(std::constructible_from<qpos_t, P2>)
+  constexpr _query_members(P2 &&pos, Pred p, OnFind f, OnNoFind no_f)
+      : _base_t(std::forward<P2>(pos), std::move(p), std::move(f),
+                std::move(no_f)) {}
 
   constexpr bool operator()(widget_type_erasable auto &&in) const {
     if (qpos().pass_position(in) && pred()(in)) {
@@ -690,19 +680,13 @@ public:
     }
     return false;
   }
-
-  constexpr _query_members relative(point_coordinate auto const& p) const {
-    return {qpos().relative(p), pred(), on_find(), on_no_find()};
-  }
-
 };
 
-template <
-    typename Members,
-    interpreted_events... events>
-class query_interpreted_events_t : public Members
-{
-  constexpr explicit query_interpreted_events_t(Members&& m) : Members(std::move(m)) {}
+template <typename Members, interpreted_events... events>
+class query_interpreted_events_t : public Members {
+  constexpr explicit query_interpreted_events_t(Members &&m)
+      : Members(std::move(m)) {}
+
 public:
   using Members::Members;
 
@@ -711,17 +695,15 @@ public:
       Members::on_no_find()();
     }
   }
-  constexpr query_interpreted_events_t relative(point_coordinate auto const& p) const {
-    return query_interpreted_events_t(Members::relative(p));
-  }
 };
 
 template <interpreted_events... events, typename Pred, typename OnFind,
           typename OnNoFind = bp::no_op_t>
   requires(std::predicate<Pred, dummy_widget const &>)
-constexpr query_interpreted_events_t<_query_members<void, std::remove_cvref_t<Pred>,
-                                     std::remove_cvref_t<OnFind>,
-                                     std::remove_cvref_t<OnNoFind>>, events...>
+constexpr query_interpreted_events_t<
+    _query_members<void, std::remove_cvref_t<Pred>, std::remove_cvref_t<OnFind>,
+                   std::remove_cvref_t<OnNoFind>>,
+    events...>
 query_interpreted_events(Pred &&p, OnFind &&f, OnNoFind &&nf = {}) {
   return {std::forward<Pred>(p), std::forward<OnFind>(f),
           std::forward<OnNoFind>(nf)};
@@ -729,12 +711,14 @@ query_interpreted_events(Pred &&p, OnFind &&f, OnNoFind &&nf = {}) {
 
 template <interpreted_events... events, point_coordinate Pos, typename OnFind,
           typename OnNoFind = bp::no_op_t>
-constexpr auto query_interpreted_events(Pos const &pos,
-                                        OnFind &&f, OnNoFind &&nf = {}) {
+constexpr auto query_interpreted_events(Pos const &pos, OnFind &&f,
+                                        OnNoFind &&nf = {}) {
   return query_interpreted_events_t<
-      _query_members<Pos, bp::pretend_predicate_t<true>, std::remove_cvref_t<OnFind>, std::remove_cvref_t<OnNoFind>>, events...>(
-      pos, bp::pretend_predicate<true>,
-      std::forward<OnFind>(f), std::forward<OnNoFind>(nf));
+      _query_members<Pos, bp::pretend_predicate_t<true>,
+                     std::remove_cvref_t<OnFind>,
+                     std::remove_cvref_t<OnNoFind>>,
+      events...>(pos, bp::pretend_predicate<true>, std::forward<OnFind>(f),
+                 std::forward<OnNoFind>(nf));
 }
 
 template <typename TimePoint = typename std::chrono::steady_clock::time_point,

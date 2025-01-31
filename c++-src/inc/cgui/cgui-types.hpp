@@ -387,9 +387,11 @@ using state_marker_t = decltype(call::state(std::declval<T const &>()));
 template <typename T>
 using all_states_t = all_states_in_marker_t<state_marker_t<T>>;
 template <typename T>
-concept stateful_aspect = requires(T const &t) {
-  call::state(t);
-} && requires() { typename all_states_in_marker<state_marker_t<T>>::type; };
+concept stateful_aspect = requires(T const &t) { call::state(t); } &&
+  requires()
+{
+  typename all_states_in_marker<state_marker_t<T>>::type;
+};
 template <typename T> constexpr auto all_states() noexcept {
   if constexpr (stateful_aspect<T>) {
     return all_states_t<T>{};
@@ -449,9 +451,10 @@ widget_render_args(TW, TH, TState &&)
 template <typename TW, typename TH>
 widget_render_args(TW, TH) -> widget_render_args<std::common_type_t<TW, TH>>;
 template <bounding_box B, typename TState>
-widget_render_args(B const &, TState &&) -> widget_render_args<
-    std::remove_cvref_t<decltype(call::width(std::declval<B>()))>,
-    std::remove_cvref_t<TState>>;
+widget_render_args(B const &, TState &&)
+    -> widget_render_args<
+        std::remove_cvref_t<decltype(call::width(std::declval<B>()))>,
+        std::remove_cvref_t<TState>>;
 
 template <typename T>
 concept canvas = requires(T const &tc) {

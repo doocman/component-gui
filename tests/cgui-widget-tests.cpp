@@ -787,13 +787,18 @@ struct dummy_trigger {
 
 TEST(Widget, QueryAndEvents3Layer) // NOLINT
 {
-  constexpr auto full_area = default_rect{{0, 0}, {16, 16}};
+  constexpr auto full_w = 24;
+  constexpr auto full_h = 32;
+  auto constexpr per_level_trim_x = 3;
+  auto constexpr per_level_trim_y = 4;
+  constexpr auto full_area = default_rect{{0, 0}, {full_w, full_h}};
   auto constexpr make_widget_builder = [=](int lvl, dummy_trigger &t) {
-    auto constexpr per_level_trim = 2;
-    auto tl = (lvl == 0) ? 0 : per_level_trim;
-    auto wh = 16 - lvl * per_level_trim * 2;
+    auto left = (lvl == 0) ? 0 : per_level_trim_x;
+    auto top = (lvl == 0) ? 0 : per_level_trim_y;
+    auto width = full_w - lvl * per_level_trim_x * 2;
+    auto height = full_h - lvl * per_level_trim_y * 2;
     return widget_builder()
-        .area(box_from_xywh<default_rect>(tl, tl, wh, wh))
+        .area(box_from_xywh<default_rect>(left, top, width, height))
         .event(std::ref(t));
   };
   std::array<dummy_trigger, 3> triggers{};
@@ -816,47 +821,48 @@ TEST(Widget, QueryAndEvents3Layer) // NOLINT
   auto b = basic_widget_back_propagater(
       box_from_xyxy<default_point_rect>(0, 0, 16, 16));
 
-  auto const click_w = [&](int pxy) {
-    return w.query(std::type_identity<std::chrono::steady_clock::time_point>{},
-                   query_interpreted_events<interpreted_events::primary_click>(
-                       default_point_coordinate(pxy, pxy),
-                       [pxy](auto &&wf) {
-                         call::handle(wf,
+  auto const click_w = [&](int px, int py) {
+    return w.query(
+        std::type_identity<std::chrono::steady_clock::time_point>{},
+        query_interpreted_events<interpreted_events::primary_click>(
+            default_point_coordinate(px, py),
+            [px, py](auto &&wf) {
+              call::handle(wf,
                            interpreted_event<interpreted_events::primary_click>(
-                               {}, default_point_coordinate(pxy, pxy)));
-                       }),
-                   b);
+                               {}, default_point_coordinate(px, py)));
+            }),
+        b);
   };
-  auto event_found = click_w(1);
+  auto event_found = click_w(1, 2);
   EXPECT_TRUE(event_found);
   EXPECT_FALSE(triggers[1].last_click);
   EXPECT_FALSE(triggers[2].last_click);
   ASSERT_TRUE(triggers[0].last_click);
-  EXPECT_THAT(*triggers[0].last_click, Eq(default_point_coordinate(1, 1)));
+  EXPECT_THAT(*triggers[0].last_click, Eq(default_point_coordinate(1, 2)));
 
   reset_triggers();
-  event_found = click_w(3);
+  event_found = click_w(4, 6);
   EXPECT_TRUE(event_found);
   EXPECT_FALSE(triggers[0].last_click);
   EXPECT_FALSE(triggers[2].last_click);
   ASSERT_TRUE(triggers[1].last_click);
-  EXPECT_THAT(*triggers[1].last_click, Eq(default_point_coordinate(1, 1)));
+  EXPECT_THAT(*triggers[1].last_click, Eq(default_point_coordinate(1, 2)));
 
   reset_triggers();
-  event_found = click_w(5);
+  event_found = click_w(7, 11);
   EXPECT_TRUE(event_found);
   EXPECT_FALSE(triggers[0].last_click);
   EXPECT_FALSE(triggers[1].last_click);
   ASSERT_TRUE(triggers[2].last_click);
-  EXPECT_THAT(*triggers[2].last_click, Eq(default_point_coordinate(1, 1)));
+  EXPECT_THAT(*triggers[2].last_click, Eq(default_point_coordinate(1, 3)));
 
   reset_triggers();
-  event_found = click_w(11);
+  event_found = click_w(13, 16);
   EXPECT_TRUE(event_found);
   EXPECT_FALSE(triggers[0].last_click);
   EXPECT_FALSE(triggers[1].last_click);
   ASSERT_TRUE(triggers[2].last_click);
-  EXPECT_THAT(*triggers[2].last_click, Eq(default_point_coordinate(7, 7)));
+  EXPECT_THAT(*triggers[2].last_click, Eq(default_point_coordinate(7, 8)));
 }
 
 } // namespace cgui::tests

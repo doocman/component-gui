@@ -99,15 +99,12 @@ struct event_counter {
 
   void reset() { event_types.clear(); }
   constexpr zoom_factor_t const &zoom_factor() const { return zf; }
-  constexpr widget_id_t widget_id() const noexcept {
-    return id_;
-  }
+  constexpr widget_id_t widget_id() const noexcept { return id_; }
 
-  template <typename T>
-  struct with_cb_t {
-    T& cb_;
-    event_counter& ec_;
-    constexpr void handle(auto const& e) const {
+  template <typename T> struct with_cb_t {
+    T &cb_;
+    event_counter &ec_;
+    constexpr void handle(auto const &e) const {
       cb_(e);
       ec_.handle(e);
     }
@@ -115,8 +112,7 @@ struct event_counter {
     constexpr auto zoom_factor() const { return ec_.zoom_factor(); }
     constexpr auto widget_id() const { return ec_.widget_id(); }
   };
-  template <typename T>
-  constexpr auto with_cb(T& cb) {
+  template <typename T> constexpr auto with_cb(T &cb) {
     return with_cb_t<T>(cb, *this);
   }
 };
@@ -197,24 +193,22 @@ public:
 
     template <typename CB = bp::no_op_t>
     constexpr auto get_query(CB &&cb = {}) {
-      return
-          [this,
-           cb]<typename QM, interpreted_events... evts>(
-              query_interpreted_events_t<QM, evts...> const &q) {
-            if (std::ranges::any_of(events_to_allow, [](auto &&e) {
-                  return ((e == evts) || ...);
-                })) {
-              CGUI_ASSERT(counter != nullptr);
-              q(counter->with_cb(cb)
-              //      , [cb](auto &dw, auto &&e) {
-              //  cb(e);
-              //  dw(e);
-              //}
-                );
-              return true;
-            }
-            return false;
-          };
+      return [this, cb]<typename QM, interpreted_events... evts>(
+                 query_interpreted_events_t<QM, evts...> const &q) {
+        if (std::ranges::any_of(events_to_allow, [](auto &&e) {
+              return ((e == evts) || ...);
+            })) {
+          CGUI_ASSERT(counter != nullptr);
+          q(counter->with_cb(cb)
+            //      , [cb](auto &dw, auto &&e) {
+            //  cb(e);
+            //  dw(e);
+            //}
+          );
+          return true;
+        }
+        return false;
+      };
     }
     constexpr zoom_factor_t const &zoom_factor() const { return zf_; }
   };
