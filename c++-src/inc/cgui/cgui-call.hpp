@@ -372,7 +372,6 @@ struct do_for_each {
              )
   constexpr void operator()(T &&t, TCB &&cb) const {
     auto tf = bp::as_forward<T>(t);
-    // auto cbf = bp::as_forward<TCB>(cb);
     auto cb_gen = [cbf = bp::as_forward<TCB>(cb)]<typename U, typename INT>(
                       U &&in, INT &&index) {
       bp::invoke_arg1_or_arg1_2(*cbf, std::forward<U>(in),
@@ -635,13 +634,9 @@ public:
 };
 
 constexpr decltype(auto) top_left_t::_fallback(auto const &b) {
-  // return tlbr_wh_conv(*b, l_x_t{}, t_y_t{});
   return fallback_coordinate(l_x_t::call(*b), t_y_t::call(*b));
 }
 constexpr decltype(auto) top_left_t::_fallback_mut(auto &&b, auto &&v) {
-  // auto val = _fallback(b);
-  //_do_set_x_of::call(val, _do_x_of::call(*v));
-  //_do_set_y_of::call(val, _do_y_of::call(*v));
   l_x_t::call(*b, _do_x_of::call(*v));
   t_y_t::call(*b, _do_y_of::call(*v));
 }
