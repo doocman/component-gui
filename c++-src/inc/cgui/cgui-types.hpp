@@ -24,6 +24,13 @@
 
 namespace cgui {
 
+struct widget_id_t {
+  std::intptr_t value = bp::lowest_possible;
+
+  constexpr bool operator==(widget_id_t const &) const noexcept = default;
+  constexpr auto operator<=>(widget_id_t const &) const noexcept = default;
+};
+
 template <typename T, typename... Ts>
 concept builder = requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {
   call::build(*t, *args...);

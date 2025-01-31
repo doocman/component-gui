@@ -123,6 +123,13 @@ public:
     return false;
   }
   constexpr auto &list() { return elements_; }
+
+  constexpr default_point_rect intrinsic_min_size() const {
+    return {
+        point_size_tag{},
+        default_rect{{0, 0},
+                     {1, static_cast<int>(element_size_ * ssize(elements_))}}};
+  }
 };
 template <typename T, typename State = widget_state_marker<int>>
 concept widget_list_constraint_c =

@@ -398,6 +398,10 @@ struct test_button_list {
            default_colour_t{bright, bright, bright, 255u});
     }
   }
+
+  [[nodiscard]] constexpr default_point_rect intrinsic_min_size() const {
+    return box_from_xywh<default_point_rect>(0, 0, sz, 1);
+  }
 };
 static_assert(radio_button::element<test_button_list>);
 
@@ -418,6 +422,7 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
                          },
                          [&deactivations, &current_element](int element) {
                            ++deactivations;
+                           EXPECT_THAT(element, Eq(current_element));
                            current_element = -1;
                          },
                          3})
@@ -445,6 +450,8 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
   EXPECT_THAT(activations, Eq(2));
   EXPECT_THAT(deactivations, Eq(1));
   EXPECT_THAT(current_element, Eq(1));
+
+  EXPECT_THAT(call::width(list.intrinsic_min_size()).value(), Eq(3));
 }
 
 TEST(Widget, RadioButtonListRender) // NOLINT
@@ -579,7 +586,10 @@ TEST(Widget, RadioButtonListRender) // NOLINT
 }
 
 struct dummy_vp_item {
+  struct dummy_event {};
   default_point_rect size{};
+  int dummy_events_received{};
+  std::optional<default_point_coordinate> click_point{};
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
     if (args.width() > point_unit(0) && args.height() > point_unit(0)) {
       call::draw_pixels(
@@ -597,6 +607,18 @@ struct dummy_vp_item {
     }
   }
   constexpr default_point_rect const &area() const noexcept { return size; }
+
+  template <bounding_box A, widget_back_propagater BP>
+  constexpr void handle(A const &, dummy_event const &, BP &&bp) {
+    ++dummy_events_received;
+    bp.rerender();
+  }
+  template <bounding_box A,
+            interpreted_event_types<interpreted_events::primary_click> E,
+            widget_back_propagater BP>
+  constexpr void handle(A const &, E const &event, BP &&) {
+    click_point = call::position(event);
+  }
 };
 
 TEST(Widget, ViewPortPan) // NOLINT
@@ -708,6 +730,33 @@ TEST(Widget, ViewPortZoom) // NOLINT
   EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
 }
 
+TEST(Widget, ViewPortZoomPassHandling) // NOLINT
+{
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr ext_area = default_rect{{0, 0}, {4, 4}};
+  auto item = dummy_vp_item{default_point_rect(ext_area)};
+  auto w = widget_builder()
+               .event(view_port_trigger::builder()
+                          .view(std::ref(item))
+                          .enable_zoom()
+                          .build())
+               .area(full_area)
+               .build();
+  auto rerender_area = w.handle(dummy_vp_item::dummy_event{});
+  EXPECT_THAT(item.dummy_events_received, Eq(1));
+  expect_box_equal(rerender_area.value(), full_area);
+  w.handle(interpreted_event<interpreted_events::primary_click>(
+      {}, default_point_coordinate{}));
+  ASSERT_TRUE(item.click_point.has_value());
+  EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{}));
+  w.handle(interpreted_event<interpreted_events::scroll>(
+      {}, default_point_coordinate{}, 1.f, 2.f));
+  w.handle(interpreted_event<interpreted_events::primary_click>(
+      {}, default_point_coordinate{}));
+  ASSERT_TRUE(item.click_point.has_value());
+  EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{1, 2}));
+}
+
 TEST(Widget, OnDestruct) // NOLINT
 {
   void *ptr_to_widget = nullptr;
@@ -724,6 +773,96 @@ TEST(Widget, OnDestruct) // NOLINT
     unused(w2);
   }
   EXPECT_THAT(ptr_to_widget, Eq(nullptr));
+}
+
+struct dummy_trigger {
+  std::optional<default_point_coordinate> last_click{};
+  constexpr void handle(
+      auto &&,
+      interpreted_event_types<interpreted_events::primary_click> auto const &e,
+      auto &&...) {
+    last_click = call::position(e);
+  }
+};
+
+TEST(Widget, QueryAndEvents3Layer) // NOLINT
+{
+  constexpr auto full_w = 24;
+  constexpr auto full_h = 32;
+  auto constexpr per_level_trim_x = 3;
+  auto constexpr per_level_trim_y = 4;
+  constexpr auto full_area = default_rect{{0, 0}, {full_w, full_h}};
+  auto constexpr make_widget_builder = [=](int lvl, dummy_trigger &t) {
+    auto left = (lvl == 0) ? 0 : per_level_trim_x;
+    auto top = (lvl == 0) ? 0 : per_level_trim_y;
+    auto width = full_w - lvl * per_level_trim_x * 2;
+    auto height = full_h - lvl * per_level_trim_y * 2;
+    return widget_builder()
+        .area(box_from_xywh<default_rect>(left, top, width, height))
+        .event(std::ref(t));
+  };
+  std::array<dummy_trigger, 3> triggers{};
+  auto const reset_triggers = [&] {
+    for (auto &t : triggers) {
+      t.last_click = std::nullopt;
+    }
+  };
+  auto w =
+      make_widget_builder(0, triggers[0])
+          .subcomponents(
+              make_widget_builder(1, triggers[1])
+                  .subcomponents(make_widget_builder(2, triggers[2]).build())
+                  .build())
+          .build();
+  static_assert(
+      has_handle<decltype(w),
+                 interpreted_event<interpreted_events::primary_click>>);
+
+  auto b = basic_widget_back_propagater(
+      box_from_xyxy<default_point_rect>(0, 0, 16, 16));
+
+  auto const click_w = [&](int px, int py) {
+    return w.query(
+        std::type_identity<std::chrono::steady_clock::time_point>{},
+        query_interpreted_events<interpreted_events::primary_click>(
+            default_point_coordinate(px, py),
+            [px, py](auto &&wf) {
+              call::handle(wf,
+                           interpreted_event<interpreted_events::primary_click>(
+                               {}, default_point_coordinate(px, py)));
+            }),
+        b);
+  };
+  auto event_found = click_w(1, 2);
+  EXPECT_TRUE(event_found);
+  EXPECT_FALSE(triggers[1].last_click);
+  EXPECT_FALSE(triggers[2].last_click);
+  ASSERT_TRUE(triggers[0].last_click);
+  EXPECT_THAT(*triggers[0].last_click, Eq(default_point_coordinate(1, 2)));
+
+  reset_triggers();
+  event_found = click_w(4, 6);
+  EXPECT_TRUE(event_found);
+  EXPECT_FALSE(triggers[0].last_click);
+  EXPECT_FALSE(triggers[2].last_click);
+  ASSERT_TRUE(triggers[1].last_click);
+  EXPECT_THAT(*triggers[1].last_click, Eq(default_point_coordinate(1, 2)));
+
+  reset_triggers();
+  event_found = click_w(7, 11);
+  EXPECT_TRUE(event_found);
+  EXPECT_FALSE(triggers[0].last_click);
+  EXPECT_FALSE(triggers[1].last_click);
+  ASSERT_TRUE(triggers[2].last_click);
+  EXPECT_THAT(*triggers[2].last_click, Eq(default_point_coordinate(1, 3)));
+
+  reset_triggers();
+  event_found = click_w(13, 16);
+  EXPECT_TRUE(event_found);
+  EXPECT_FALSE(triggers[0].last_click);
+  EXPECT_FALSE(triggers[1].last_click);
+  ASSERT_TRUE(triggers[2].last_click);
+  EXPECT_THAT(*triggers[2].last_click, Eq(default_point_coordinate(7, 8)));
 }
 
 } // namespace cgui::tests

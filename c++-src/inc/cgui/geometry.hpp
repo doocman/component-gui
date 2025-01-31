@@ -87,6 +87,12 @@ concept pixel_coord_ref = requires(bp::as_forward<T> t) {
 template <typename T, typename TVal>
 concept pixel_coord_mut = pixel_coord_ref<T, TVal> || pixel_coord_set<T, TVal>;
 
+/// @brief Concept for readable position.
+template <typename T>
+concept has_position = requires(bp::as_forward<T> t) {
+  { call::position(*t) } -> pixel_coord;
+};
+
 /// @brief Basic structure for representing pixel coordinates.
 template <typename T> struct basic_coordinate {
   T x; ///< X coordinate
@@ -99,6 +105,25 @@ template <typename T> struct basic_coordinate {
     return {.x = x, .y = y};
   }
 };
+
+template <typename T1, typename T2>
+  requires(std::equality_comparable_with<T1, T2>)
+constexpr bool operator==(basic_coordinate<T1> const &l,
+                          basic_coordinate<T2> const &r) {
+  return (l.x == r.x) && (l.y == r.y);
+}
+
+template <typename T1, typename T2>
+  requires(std::totally_ordered_with<T1, T2>)
+constexpr auto operator<=>(basic_coordinate<T1> const &l,
+                           basic_coordinate<T2> const &r) {
+  auto xcmp = l.x <=> r.x;
+  if (xcmp == 0) {
+    return l.y <=> r.y;
+  } else {
+    return xcmp;
+  }
+}
 
 using default_coordinate = basic_coordinate<int>;
 
@@ -297,6 +322,29 @@ constexpr P divide(P const &p, Div d) {
   } else {
     auto x = call::x_of(p) / d;
     auto y = call::y_of(p) / d;
+    return P(x, y);
+  }
+}
+
+/// @brief Multiplies the components of a vector by a scalar.
+/// @tparam P The type of input vector
+/// @tparam F The type of the factor.
+/// @param p The vector to be multiplied.
+/// @param f The scalar factor.
+/// @return Vector with all elements multiplied with f.
+template <pixel_coord P, typename F>
+  requires(
+      requires(P p, F f) { p *f; } ||
+      requires(P p, F f) {
+        call::x_of(p) * f;
+        call::y_of(p) * f;
+      })
+constexpr P multiply(P const &p, F const &f) {
+  if constexpr (requires() { p *f; }) {
+    return p * f;
+  } else {
+    auto x = call::x_of(p) * f;
+    auto y = call::y_of(p) * f;
     return P(x, y);
   }
 }
@@ -1010,8 +1058,8 @@ template <typename T> constexpr auto strip_unit(T const &t) {
 
 using default_pixel_rect = pixel_unit_t<default_rect>;
 using default_point_rect = point_unit_t<default_rect>;
-using default_pixel_coordinate = pixel_unit_t<default_coordinate>;
-using default_point_coordinate = point_unit_t<default_coordinate>;
+using default_pixel_coordinate = pixel_unit_t<basic_coordinate<int>>;
+using default_point_coordinate = point_unit_t<basic_coordinate<float>>;
 using default_pixel_size_wh = pixel_unit_t<default_size_wh>;
 using default_point_size_wh = point_unit_t<default_size_wh>;
 
@@ -1459,6 +1507,11 @@ template <typename ST, typename ST2, typename T, typename S, typename U>
 struct common_type<::cgui::autoconverting_pixelpoint_unit<ST, T, S>,
                    ::cgui::pixelpoint_unit<ST2, U>> {
   using type = ::cgui::pixelpoint_unit<ST2, common_type_t<T, U>>;
+};
+template <typename T, typename U>
+  requires(requires() { typename common_type<T, U>::type; })
+struct common_type<::cgui::basic_coordinate<T>, ::cgui::basic_coordinate<U>> {
+  using type = ::cgui::basic_coordinate<common_type_t<T, U>>;
 };
 } // namespace std
 
