@@ -546,10 +546,10 @@ TEST_F(GestureEventsTests, TouchPanAndZoom) // NOLINT
 TEST_F(GestureEventsTests, TouchPanLevels) {
   enable_all_events();
   auto to_test = default_event_interpreter<time_point_t>{};
-  int last_scroll_x{};
-  int total_scroll_x{};
-  int last_scroll_y{};
-  int total_scroll_y{};
+  float last_scroll_x{};
+  float total_scroll_x{};
+  float last_scroll_y{};
+  float total_scroll_y{};
   static_assert(can_be_event<
                 interpreted_events::scroll,
                 interpreted_event<interpreted_events::scroll, time_point_t>>());
@@ -586,13 +586,13 @@ TEST_F(GestureEventsTests, TouchPanLevels) {
   EXPECT_THAT(counter.event_types, ElementsAre());
   generate_pan(2, 0);
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
-  EXPECT_THAT(total_scroll_x, Eq(6));
-  EXPECT_THAT(total_scroll_y, Eq(0));
-  EXPECT_THAT(last_scroll_y, Eq(0));
+  EXPECT_THAT(total_scroll_x, FloatEq(6.f));
+  EXPECT_THAT(total_scroll_y, FloatEq(0.f));
+  EXPECT_THAT(last_scroll_y, FloatEq(0.f));
   generate_pan(2, 2);
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
-  EXPECT_THAT(total_scroll_x, Eq(8));
-  EXPECT_THAT(total_scroll_y, Eq(2));
+  EXPECT_THAT(total_scroll_x, FloatEq(8.f));
+  EXPECT_THAT(total_scroll_y, FloatEq(2.f));
 
   invoke_tt(default_touch_up_event{.pos = {10 + last_gen_x, 10 + last_gen_y},
                                    .finger_index = 0});

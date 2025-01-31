@@ -605,10 +605,8 @@ template <> struct extend_api<SDL_TouchFingerEvent> : sdl_event_extend_api {
   static constexpr int finger_index(SDL_TouchFingerEvent const &e) {
     return static_cast<int>(e.fingerID);
   }
-  static point_unit_t<basic_coordinate<int>>
-  position(SDL_TouchFingerEvent const &e) {
-    return denormalize_scaled<point_unit_t<basic_coordinate<int>>>(e.x, e.y,
-                                                                   e.windowID);
+  static default_point_coordinate position(SDL_TouchFingerEvent const &e) {
+    return denormalize_scaled<default_point_coordinate>(e.x, e.y, e.windowID);
   }
 };
 template <> struct extend_api<SDL_WindowEvent> : sdl_event_extend_api {
