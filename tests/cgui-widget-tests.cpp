@@ -750,11 +750,11 @@ TEST(Widget, ViewPortZoomPassHandling) // NOLINT
   ASSERT_TRUE(item.click_point.has_value());
   EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{}));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, 1.f, 1.f));
+      {}, default_point_coordinate{}, 1.f, 2.f));
   w.handle(interpreted_event<interpreted_events::primary_click>(
       {}, default_point_coordinate{}));
   ASSERT_TRUE(item.click_point.has_value());
-  EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{1, 1}));
+  EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{1, 2}));
 }
 
 TEST(Widget, OnDestruct) // NOLINT
