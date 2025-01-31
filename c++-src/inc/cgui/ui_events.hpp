@@ -987,7 +987,7 @@ _invoke_with_interpreted_event(Q &&q, point_coordinate auto const &pos,
                                TP const &tp, Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
   interpreter_widget_cache cached{};
-  q(query_interpreted_events<evt_type>(pos, [&]<typename W>(W &w) {
+  q(query_interpreted_events<evt_type>(pos, [&]<typename W>(W &&w) {
     CGUI_ASSERT(!cached); // called more than once!
     cached.reset(w);
     call::handle(w, event_t(tp, std::forward<Args>(args)...));
@@ -999,7 +999,7 @@ constexpr interpreter_widget_cache _invoke_with_interpreted_event(
     Q &&q, default_point_coordinate pos,
     interpreted_event<evt_types, TP> const &...events) {
   interpreter_widget_cache cached{};
-  q(query_interpreted_events<evt_types...>(pos, [&]<typename W>(W &w) {
+  q(query_interpreted_events<evt_types...>(pos, [&]<typename W>(W &&w) {
     CGUI_ASSERT(!cached); // called more than once!
     cached.reset(w);
     auto invoker = [&w]<typename E>(E const &e) {
@@ -1017,7 +1017,7 @@ constexpr bool send_to_cached_widget(Q &&q, TP tp,
                                      interpreter_widget_cache const &cw,
                                      Args &&...args) {
   using event_t = interpreted_event<evt_type, TP>;
-  return cw.template access<evt_type>(q, [&]<typename W>(W &w) {
+  return cw.template access<evt_type>(q, [&]<typename W>(W &&w) {
     call::handle(w, event_t(tp, std::forward<Args>(args)...));
   });
 }
@@ -1080,7 +1080,7 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
       using enum interpreted_events;
       q(query_interpreted_events<pointer_enter, pointer_hover>(
           pos,
-          [&]<typename W>(W &w) {
+          [&]<typename W>(W &&w) {
             if (!prev_widget.refers_to(w)) {
               if (prev_widget) {
                 send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
@@ -1128,7 +1128,7 @@ class primary_mouse_click_translator : _primary_mouse_click_translator_base {
       using enum interpreted_events;
       q(query_interpreted_events<pointer_enter, pointer_hover>(
           pos,
-          [&]<typename W>(W &w) {
+          [&]<typename W>(W &&w) {
             if (!prev_widget.refers_to(w)) {
               if (prev_widget) {
                 send_to_cached_widget<pointer_exit>(q, ts, prev_widget);
@@ -1319,7 +1319,7 @@ private:
           auto &[q, s, ks, conf] = d;
           if (ks.ctrl()) {
             q(query_interpreted_events<interpreted_events::zoom>(
-                call::position(e), [&]<typename W>(W &w) {
+                call::position(e), [&]<typename W>(W &&w) {
                   auto [orgx, orgy] = call::zoom_factor(w);
                   auto scale_mod =
                       std::pow(1.f + conf.zoom_scale, call::delta_y(e));
@@ -1484,7 +1484,7 @@ struct _touch_translator_base {
     };
     q(query_interpreted_events<interpreted_events::scroll,
                                interpreted_events::zoom>(
-        position, [&]<typename W>(W &w) {
+        position, [&]<typename W>(W &&w) {
           constexpr bool should_scroll =
               has_handle<W &, scroll_event_t> && is_scroller<T>;
           constexpr bool should_zoom =
@@ -1744,7 +1744,7 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
     q(query_interpreted_events<interpreted_events::pointer_enter,
                                interpreted_events::pointer_hold>(
         call::position(e),
-        [&]<typename W>(W &w) {
+        [&]<typename W>(W &&w) {
           auto tp = call::time_stamp(e);
           if (!org_w.refers_to(w)) {
             exit_widget(org_w, tp, q);
