@@ -619,7 +619,7 @@ struct dummy_vp_item {
   }
 };
 
-TEST(Widget, ViewPortPan) // NOLINT
+TEST(ViewPort, Pan) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
   auto constexpr ext_area = default_rect{{-1, -1}, {4, 4}};
@@ -665,7 +665,7 @@ TEST(Widget, ViewPortPan) // NOLINT
   EXPECT_THAT(g, ElementsAre(2, 2, 3, 3));
 }
 
-TEST(Widget, ViewPortSmallViewed) // NOLINT
+TEST(ViewPort, SmallViewed) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
   auto constexpr ext_area = default_rect{{-1, -1}, {0, 0}};
@@ -699,7 +699,7 @@ TEST(Widget, ViewPortSmallViewed) // NOLINT
   EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
 }
 
-TEST(Widget, ViewPortZoom) // NOLINT
+TEST(ViewPort, Zoom) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
   auto constexpr ext_area = default_rect{{0, 0}, {1, 1}};
@@ -728,7 +728,7 @@ TEST(Widget, ViewPortZoom) // NOLINT
   EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
 }
 
-TEST(Widget, ViewPortZoomPassHandling) // NOLINT
+TEST(ViewPort, ZoomPassHandling) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
   auto constexpr ext_area = default_rect{{0, 0}, {4, 4}};
@@ -775,7 +775,7 @@ struct dummy_vp_item_with_intrinsic {
   }
 };
 
-TEST(Widget, IntrinsicSizeOnConstruct) // NOLINT
+TEST(ViewPort, IntrinsicSizeOnConstruct) // NOLINT
 {
 
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
@@ -786,7 +786,7 @@ TEST(Widget, IntrinsicSizeOnConstruct) // NOLINT
   expect_box_equal(item.set_size, point_unit(ext_area));
 }
 
-TEST(Widget, IntrinsicSizeOnMutate) // NOLINT
+TEST(ViewPort, IntrinsicSizeOnMutate) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
   auto constexpr ext_area1 = default_rect{{1, 3}, {6, 9}};
@@ -799,7 +799,7 @@ TEST(Widget, IntrinsicSizeOnMutate) // NOLINT
   expect_box_equal(item.set_size, point_unit(ext_area2));
 }
 
-TEST(Widget, IntrinsicSizeOnHandle) // NOLINT
+TEST(ViewPort, IntrinsicSizeOnHandle) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
   auto constexpr ext_area1 = default_rect{{1, 3}, {6, 9}};
@@ -811,7 +811,7 @@ TEST(Widget, IntrinsicSizeOnHandle) // NOLINT
   expect_box_equal(item.set_size, point_unit(ext_area2));
 }
 
-TEST(Widget, UsingLargestOfIntrinsicAndActualSize) // NOLINT
+TEST(ViewPort, UsingLargestOfIntrinsicAndActualSize) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {5, 7}};
   auto constexpr ext_area = default_rect{{-1, -2}, {2, 3}};
@@ -819,9 +819,9 @@ TEST(Widget, UsingLargestOfIntrinsicAndActualSize) // NOLINT
   auto trig = view_port_trigger::builder().view(std::ref(item)).build();
   unused(trig);
   auto constexpr expected_area = box_from_xywh<default_point_rect>(
-      call::x_of(ext_area), call::y_of(ext_area), call::width(full_area),
+      call::l_x(ext_area), call::t_y(ext_area), call::width(full_area),
       call::height(full_area));
-  expect_box_equal(item.set_size, ext_area);
+  expect_box_equal(item.set_size, expected_area);
 }
 
 TEST(Widget, OnDestruct) // NOLINT
