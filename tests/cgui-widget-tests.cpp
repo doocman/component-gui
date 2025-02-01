@@ -811,6 +811,19 @@ TEST(Widget, IntrinsicSizeOnHandle) // NOLINT
   expect_box_equal(item.set_size, point_unit(ext_area2));
 }
 
+TEST(Widget, UsingLargestOfIntrinsicAndActualSize) // NOLINT
+{
+  auto constexpr full_area = default_rect{{0, 0}, {5, 7}};
+  auto constexpr ext_area = default_rect{{-1, -2}, {2, 3}};
+  auto item = dummy_vp_item_with_intrinsic{default_point_rect(ext_area), {}};
+  auto trig = view_port_trigger::builder().view(std::ref(item)).build();
+  unused(trig);
+  auto constexpr expected_area = box_from_xywh<default_point_rect>(
+      call::x_of(ext_area), call::y_of(ext_area), call::width(full_area),
+      call::height(full_area));
+  expect_box_equal(item.set_size, ext_area);
+}
+
 TEST(Widget, OnDestruct) // NOLINT
 {
   void *ptr_to_widget = nullptr;

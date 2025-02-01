@@ -129,7 +129,7 @@ public:
     return {
         point_size_tag{},
         default_rect{{0, 0},
-                     {1, static_cast<int>(element_size_ * ssize(elements_))}}};
+                     {128, static_cast<int>(element_size_ * ssize(elements_))}}};
   }
 };
 template <typename T, typename State = widget_state_marker<int>>
