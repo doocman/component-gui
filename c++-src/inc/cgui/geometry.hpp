@@ -1056,8 +1056,8 @@ template <typename T> constexpr auto strip_unit(T const &t) {
   }
 }
 
-using default_pixel_rect = pixel_unit_t<default_rect>;
-using default_point_rect = point_unit_t<default_rect>;
+using default_pixel_rect = pixel_unit_t<basic_rect<int>>;
+using default_point_rect = point_unit_t<basic_rect<int>>;
 using default_pixel_coordinate = pixel_unit_t<basic_coordinate<int>>;
 using default_point_coordinate = point_unit_t<basic_coordinate<float>>;
 using default_pixel_size_wh = pixel_unit_t<default_size_wh>;

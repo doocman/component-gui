@@ -13,6 +13,26 @@
 #include <cgui/ft_fonts.hpp>
 #include <cgui/sdl.hpp>
 
+constexpr auto gen_radio_buttons(auto &cached_font) {
+  return cgui::widget_builder()
+      .event(
+          cgui::radio_button_trigger()
+              .elements(cgui::dynamic::uni_sized_widget_list_builder().displays(
+                  cgui::display_per_state(cgui::fill_rect()),
+                  cgui::text_renderer(std::ref(cached_font))))
+              .build())
+      .build();
+}
+
+constexpr auto gen_viewed_widget(auto &&w) {
+  static_assert(cgui::view_port_trigger::sub_widget<decltype(w)>);
+  return cgui::widget_builder()
+      .event(cgui::view_port_trigger::builder()
+                 .view(std::forward<decltype(w)>(w))
+                 .build())
+      .build();
+}
+
 int main(int argc, char **argv) {
   try {
     auto sdl_context = build(cgui::sdl_context()).value();
@@ -53,64 +73,55 @@ int main(int argc, char **argv) {
               end_button.area(button_area);
               cgui::call::area(w, full_area);
             })
-            .widgets(
-                cgui::widget_builder()
-                    .event(
-                        cgui::radio_button_trigger()
-                            .elements(
-                                cgui::dynamic::uni_sized_widget_list_builder()
-                                    .displays(cgui::display_per_state(
-                                                  cgui::fill_rect()),
-                                              cgui::text_renderer(
-                                                  std::ref(cached_font))))
-                            .build())
-                    .build(),
-                cgui::widget_builder()
-                    .event(cgui::buttonlike_trigger(
-                        cgui::momentary_button()
-                            .click([&do_exit] { do_exit = true; })
-                            .build()))
-                    .display(cgui::text_renderer(std::ref(cached_font)))
-                    .build())
+            .widgets(gen_viewed_widget(gen_radio_buttons(cached_font)),
+                     cgui::widget_builder()
+                         .event(cgui::buttonlike_trigger(
+                             cgui::momentary_button()
+                                 .click([&do_exit] { do_exit = true; })
+                                 .build()))
+                         .display(cgui::text_renderer(std::ref(cached_font)))
+                         .build())
             .build(full_area);
     auto &[list, end_button] = gui.widgets();
-    list.event_component().mutate_elements([argc, argv, &end_button,
+    list.event_component().mutate_viewed([&](auto &&viewed) {
+      viewed.event_component().mutate_elements([argc, argv, &end_button,
 
-                                            &rerender_all](auto &elements) {
-      auto prototype = elements.display_prototype();
-      auto &[background, textr] = prototype;
-      using enum cgui::toggle_button_states;
-      get<relaxed_off>(background).colour() = {100, 40, 40, 255};
-      get<relaxed_on>(background).colour() = {40, 40, 100, 255};
-      get<hover_off>(background).colour() = {140, 100, 100, 255};
-      get<hover_on>(background).colour() = {100, 100, 140, 255};
-      get<hold_off>(background).colour() = {80, 10, 10, 255};
-      get<hold_on>(background).colour() = {10, 10, 80, 255};
-      textr.text_colour({255, 255, 255, 255});
-      decltype(auto) f_prototype = elements.function_prototype();
-      auto display_creator = [&prototype, &f_prototype, &end_button,
-                              &rerender_all,
-                              &dest = elements.list()](std::string_view text) {
-        auto disp = prototype;
-        std::get<1>(disp).set_text(text);
-        auto f = f_prototype;
-        f.get(cgui::radio_button::trigger_on{}) =
-            [&end_button, &rerender_all,
-             ftext = fmt::format("End program (last button clicked was {})",
-                                 text)] {
-              auto &[textrenderer] = end_button.displays();
-              textrenderer.set_text(ftext);
-              rerender_all = true;
-            };
-        dest.emplace_back(std::move(disp), std::move(f));
-      };
-      display_creator("This is a list");
-      display_creator("containing the");
-      display_creator("arguments from");
-      display_creator("main:");
-      for (int i = 0; i < argc; ++i) {
-        display_creator(argv[i]);
-      }
+                                                &rerender_all](auto &elements) {
+        auto prototype = elements.display_prototype();
+        auto &[background, textr] = prototype;
+        using enum cgui::toggle_button_states;
+        get<relaxed_off>(background).colour() = {100, 40, 40, 255};
+        get<relaxed_on>(background).colour() = {40, 40, 100, 255};
+        get<hover_off>(background).colour() = {140, 100, 100, 255};
+        get<hover_on>(background).colour() = {100, 100, 140, 255};
+        get<hold_off>(background).colour() = {80, 10, 10, 255};
+        get<hold_on>(background).colour() = {10, 10, 80, 255};
+        textr.text_colour({255, 255, 255, 255});
+        decltype(auto) f_prototype = elements.function_prototype();
+        auto display_creator = [&prototype, &f_prototype, &end_button,
+                                &rerender_all, &dest = elements.list()](
+                                   std::string_view text) {
+          auto disp = prototype;
+          std::get<1>(disp).set_text(text);
+          auto f = f_prototype;
+          f.get(cgui::radio_button::trigger_on{}) =
+              [&end_button, &rerender_all,
+               ftext = fmt::format("End program (last button clicked was {})",
+                                   text)] {
+                auto &[textrenderer] = end_button.displays();
+                textrenderer.set_text(ftext);
+                rerender_all = true;
+              };
+          dest.emplace_back(std::move(disp), std::move(f));
+        };
+        display_creator("This is a list");
+        display_creator("containing the");
+        display_creator("arguments from");
+        display_creator("main:");
+        for (int i = 0; i < argc; ++i) {
+          display_creator(argv[i]);
+        }
+      });
     });
     {
       auto &[etxt] = end_button.displays();

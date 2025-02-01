@@ -2165,17 +2165,13 @@ struct pan_args_t {};
 
 namespace view_port_trigger {
 
-template <typename T, typename TRender = dummy_renderer,
-          typename RenderArgs = widget_render_args<>>
-concept sub_widget =
-    has_render<T, TRender &&, RenderArgs const &> && requires(T const &t) {
-      { call::area(t) } -> point_rect;
-    };
+template <typename T, typename TRender = dummy_renderer>
+concept sub_widget = has_render<T, TRender &&> && requires(T const &t) {
+  { call::area(t) } -> point_rect;
+};
 
-template <renderer TRender = dummy_renderer,
-          render_args RenderArgs = widget_render_args<>>
-struct sub_widget_constraint {
-  template <sub_widget<TRender, RenderArgs> T>
+template <renderer TRender = dummy_renderer> struct sub_widget_constraint {
+  template <sub_widget<TRender> T>
   constexpr void operator()(T &&) const noexcept {}
 };
 
@@ -2239,13 +2235,24 @@ class impl : bp::empty_structs_optimiser<V> {
     }
   }
 
+  constexpr void set_viewed_size() {
+    if constexpr (requires(V &v) { call::intrinsic_min_size(v); }) {
+      decltype(auto) v = this->get_first();
+      call::area(v, call::intrinsic_min_size(v));
+    }
+  }
+
 public:
-  using _base_t::_base_t;
+  template <typename... Ts>
+    requires(std::constructible_from<_base_t, Ts...>)
+  constexpr explicit impl(Ts &&...args) : _base_t(std::forward<Ts>(args)...) {
+    set_viewed_size();
+  }
 
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
     call::render(
         this->get_first(),
-        r.translate(clamped_pan(pan_, call::width(args))).scale(scale_), args);
+        r.translate(clamped_pan(pan_, call::width(args))).scale(scale_));
   }
   template <bounding_box A, typename E, widget_back_propagater BP>
     requires(
@@ -2259,8 +2266,14 @@ public:
     if (!evt_switch()(event, std::forward<BP>(bp), area)) {
       if constexpr (has_handle<V &, A, E, BP>) {
         call::handle(this->get_first(), area, move_to_viewed(event), bp);
+        set_viewed_size();
       }
     }
+  }
+  constexpr void mutate_viewed(std::invocable<V &> auto &&mutater) {
+    decltype(auto) v = this->get_first();
+    mutater(v);
+    set_viewed_size();
   }
 };
 
@@ -2280,8 +2293,9 @@ public:
   constexpr explicit builder_impl(V2 &&v) : _base_t(std::forward<V2>(v)) {}
 
   constexpr auto build() && {
-    using v_t = decltype(build::return_or_build<sub_widget_constraint<>>(
-        std::move(*this).get_first()));
+    using v_t = bp::remove_temp_ref_t<
+        decltype(build::return_or_build<sub_widget_constraint<>>(
+            std::move(*this).get_first()))>;
     using result_t = impl<v_t, zoomable>;
     static_assert(sub_widget<v_t>);
     return result_t(build::return_or_build<sub_widget_constraint<>>(

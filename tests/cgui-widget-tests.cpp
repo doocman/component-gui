@@ -590,21 +590,19 @@ struct dummy_vp_item {
   default_point_rect size{};
   int dummy_events_received{};
   std::optional<default_point_coordinate> click_point{};
-  constexpr void render(renderer auto &&r, render_args auto &&args) const {
-    if (args.width() > point_unit(0) && args.height() > point_unit(0)) {
-      call::draw_pixels(
-          r, convert_pixelpoint<pixel_size_tag>(size, call::pixel_scale(r)),
-          [](auto &&b, auto &&cb) {
-            for (auto y : y_view(b)) {
-              for (auto x : x_view(b)) {
-                cb(default_pixel_coordinate{x, y},
-                   default_colour_t{
-                       static_cast<std::uint_least8_t>(x.value() + 1),
-                       static_cast<std::uint_least8_t>(y.value() + 1), 0, 255});
-              }
+  constexpr void render(renderer auto &&r) const {
+    call::draw_pixels(
+        r, convert_pixelpoint<pixel_size_tag>(size, call::pixel_scale(r)),
+        [](auto &&b, auto &&cb) {
+          for (auto y : y_view(b)) {
+            for (auto x : x_view(b)) {
+              cb(default_pixel_coordinate{x, y},
+                 default_colour_t{
+                     static_cast<std::uint_least8_t>(x.value() + 1),
+                     static_cast<std::uint_least8_t>(y.value() + 1), 0, 255});
             }
-          });
-    }
+          }
+        });
   }
   constexpr default_point_rect const &area() const noexcept { return size; }
 
@@ -755,6 +753,62 @@ TEST(Widget, ViewPortZoomPassHandling) // NOLINT
       {}, default_point_coordinate{}));
   ASSERT_TRUE(item.click_point.has_value());
   EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{1, 2}));
+}
+
+struct dummy_set_intrinsic_size {
+  default_point_rect new_size;
+};
+
+struct dummy_vp_item_with_intrinsic {
+  default_point_rect intrinsic_size{};
+  default_point_rect set_size{};
+
+  constexpr void render(renderer auto &&) const {}
+  constexpr default_point_rect const &intrinsic_min_size() const noexcept {
+    return intrinsic_size;
+  }
+  constexpr default_point_rect const &area() const noexcept { return set_size; }
+  constexpr void area(default_point_rect const &r) { set_size = r; }
+  template <bounding_box A, widget_back_propagater BP>
+  constexpr void handle(A &&, dummy_set_intrinsic_size const &e, BP &&) {
+    intrinsic_size = e.new_size;
+  }
+};
+
+TEST(Widget, IntrinsicSizeOnConstruct) // NOLINT
+{
+
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr ext_area = default_rect{{-1, -2}, {4, 5}};
+  auto item = dummy_vp_item_with_intrinsic{default_point_rect(ext_area), {}};
+  auto trig = view_port_trigger::builder().view(std::ref(item)).build();
+  unused(trig);
+  expect_box_equal(item.set_size, point_unit(ext_area));
+}
+
+TEST(Widget, IntrinsicSizeOnMutate) // NOLINT
+{
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr ext_area1 = default_rect{{1, 3}, {6, 9}};
+  auto item = dummy_vp_item_with_intrinsic{default_point_rect(ext_area1), {}};
+  auto trig = view_port_trigger::builder().view(std::ref(item)).build();
+  auto constexpr ext_area2 = default_rect{{2, 5}, {7, 11}};
+  trig.mutate_viewed([&](dummy_vp_item_with_intrinsic &v) {
+    v.intrinsic_size = point_unit(ext_area2);
+  });
+  expect_box_equal(item.set_size, point_unit(ext_area2));
+}
+
+TEST(Widget, IntrinsicSizeOnHandle) // NOLINT
+{
+  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr ext_area1 = default_rect{{1, 3}, {6, 9}};
+  auto item = dummy_vp_item_with_intrinsic{default_point_rect(ext_area1), {}};
+  auto trig = view_port_trigger::builder().view(std::ref(item)).build();
+  auto constexpr ext_area2 = default_rect{{-5, 6}, {-3, 136}};
+  trig.handle(full_area, dummy_set_intrinsic_size(point_unit(ext_area2)),
+              basic_widget_back_propagater<>(point_unit(full_area)));
+  expect_box_equal(item.set_size, point_unit(ext_area2));
 }
 
 TEST(Widget, OnDestruct) // NOLINT

@@ -79,6 +79,7 @@ public:
   }
   constexpr auto sub_accessor(std::size_t index) const {
     CGUI_ASSERT(index < size(elements_));
+    CGUI_ASSERT(false);
     return [index](bp::cvref_type<uni_sized_widget_list_impl> auto &&self,
                    auto &&cb) {
       CGUI_ASSERT(index < size(self.elements_));
@@ -185,17 +186,8 @@ public:
   using _base_t::_base_t;
 
   template <typename State = widget_state_marker<int>,
-            widget_list_builder_constraint_c<State>... T2s,
-            // typename ResG = build::args_to_group_t<
-            //     widget_list_builder_constraint<State>, T2s...>,
-            // typename ResT = uni_sized_widget_list_builder_impl<ResG,
-            // Functions> //
-
-            typename = void>
-  constexpr
-      // ResT //
-      auto //
-      displays(T2s &&...ds) && {
+            widget_list_builder_constraint_c<State>... T2s>
+  constexpr auto displays(T2s &&...ds) && {
     static_assert(
         (std::invocable<widget_list_builder_constraint<>, T2s> && ...));
     using res_g =
@@ -203,8 +195,6 @@ public:
     using res_t = uni_sized_widget_list_builder_impl<res_g, Functions>;
     return res_t(build::args_to_group(widget_list_builder_constraint{},
                                       std::forward<T2s>(ds)...));
-    // return ResT(build::args_to_group(widget_list_builder_constraint{},
-    //                                  std::forward<T2s>(ds)...));
   }
 
   template <typename State, State... states, typename... Triggers,
