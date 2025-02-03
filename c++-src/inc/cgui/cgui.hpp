@@ -670,9 +670,9 @@ public:
     }
   }
 
-  constexpr void render(renderer auto &&r) const {
-    auto w = call::width(area_);
-    auto h = call::height(area_);
+  constexpr void render(renderer auto &&r, size_wh auto const& wh) {
+    auto w = call::width(wh);
+    auto h = call::height(wh);
     auto arg = widget_render_args(w, h, state());
     auto render_callback = [&r, &arg]<typename TD>(TD &&display) {
       call::render(display, r, arg);
@@ -687,6 +687,11 @@ public:
                      [&r](auto &&sub_w) { sub_w.render(r.sub(sub_w.area())); });
     }
   }
+
+  [[deprecated]] constexpr void render(renderer auto&& r) const {
+    render(r, area());
+  }
+
   template <typename TEvt, widget_back_propagater TCallback>
   constexpr void handle(TEvt &&evt, TCallback &&display_callbacks)
     requires has_handle<TEventHandler, TArea const &, decltype(evt)> ||

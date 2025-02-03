@@ -296,9 +296,9 @@ TEST(TextRender, RefFace) // NOLINT
 }
 struct mock_face {
   MOCK_METHOD((expected<dummy_glyph, bool>), glyph, (char), (const));
-  inline pixel_unit_t<int> full_height() const { return {{}, 1}; }
-  inline pixel_unit_t<int> ascender() const { return {{}, 1}; }
-  inline pixel_unit_t<int> descender() const { return {{}, 1}; }
+  pixel_unit_t<int> full_height() const { return {{}, 1}; }
+  pixel_unit_t<int> ascender() const { return {{}, 1}; }
+  pixel_unit_t<int> descender() const { return {{}, 1}; }
 };
 TEST(TextRender, CachedGlyphs) // NOLINT
 {

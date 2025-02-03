@@ -20,10 +20,9 @@ TEST(WidgetBuilder, BuildRender) // NOLINT
   auto renderable = mock_renderable();
   EXPECT_CALL(renderable, do_render());
   auto w = widget_builder()
-               .area(default_rect{0, 0, 1, 1})
                .display(std::ref(renderable))
                .build();
-  call::render(w, dummy_renderer{});
+  call::render(w, dummy_renderer{}, default_point_size_wh({1, 1}));
 }
 
 TEST(SubFind, FindInTuple) // NOLINT

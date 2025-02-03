@@ -157,50 +157,60 @@ struct rerender_if_state {
 TEST(GuiContext, RerenderOutput) // NOLINT
 {
   auto w1b = widget_builder()
-                 .area(default_rect{{0, 0}, {1, 1}})
                  .event(int_as_event_handler{})
                  .display(rerender_if_state{0});
   auto w2b = widget_builder()
-                 .area(default_rect{{1, 0}, {2, 1}})
                  .event(int_as_event_handler{})
                  .display(rerender_if_state{1});
   auto w3b = widget_builder()
-                 .area(default_rect{{2, 0}, {3, 1}})
                  .event(int_as_event_handler{})
                  .display(rerender_if_state{0});
+
+  constexpr auto w1_area = default_point_rect({{0, 0}, {1, 1}});
+  constexpr auto w2_area = default_point_rect({{1, 0}, {2, 1}});
+  constexpr auto w3_area = default_point_rect({{2, 0}, {3, 1}});
+
   auto r = test_renderer({{0, 0}, {3, 1}});
   auto guic = gui_context_builder()
                   .widgets(std::move(w1b), std::move(w2b), std::move(w3b))
+                  .on_resize([&](size_wh auto const &, auto &&widgets) {
+                    auto &[w1, w2, w3] = widgets;
+                    w1.area(w1_area);
+                    w2.area(w2_area);
+                    w3.area(w3_area);
+                  })
                   .build({{0, 0}, {1, 1}});
   guic.render(r);
   auto rarea = guic.handle(1);
-  expect_box_equal(rarea, box_from_xyxy<default_pixel_rect>(1, 0, 2, 1));
+  expect_box_equal(rarea, w2_area);
   rarea = guic.handle(0);
-  EXPECT_TRUE(
-      box_includes_box(rarea, box_from_xyxy<default_point_rect>(0, 0, 1, 1)));
-  EXPECT_TRUE(
-      box_includes_box(rarea, box_from_xyxy<default_point_rect>(0, 0, 1, 1)));
+  EXPECT_TRUE(box_includes_box(rarea, w1_area));
 }
 TEST(GuiContext, InterpretMouseEvents) // NOLINT
 {
   int w1_calls{};
   int w2_calls{};
+  constexpr auto w1_area = default_point_rect({{0, 0}, {1, 1}});
+  constexpr auto w2_area = default_point_rect({{1, 1}, {2, 1}});
+
   auto ctx = gui_context_builder()
                  .widgets(widget_builder()
                               .display(display_per_state(fill_rect()))
                               .event(buttonlike_trigger(
                                   momentary_button()
                                       .click([&w1_calls] { ++w1_calls; })
-                                      .build()))
-                              .area(default_rect{0, 0, 1, 1}),
+                                      .build())),
                           widget_builder()
                               .display(display_per_state(fill_rect()))
                               .event(buttonlike_trigger(
                                   momentary_button()
                                       .click([&w2_calls] { ++w2_calls; })
-                                      .build()))
-                              .area(default_rect{1, 0, 2, 1}) //
-                          )
+                                      .build())))
+                 .on_resize([&](auto const &, auto &&ws) {
+                   auto &[w1, w2] = ws;
+                   w1.area(w1_area);
+                   w2.area(w2_area);
+                 })
                  .build({{0, 0}, {2, 1}});
   {
     auto &[w1, w2] = ctx.widgets();

@@ -758,6 +758,9 @@ public:
     requires(std::constructible_from<T, T2>)
   constexpr pixelpoint_unit(SizeTag, T2 &&v) : value_(std::forward<T2>(v)) {}
 
+  constexpr explicit pixelpoint_unit(T const& t) noexcept(std::is_nothrow_copy_constructible_v<T>) requires(std::copy_constructible<T>) : value_(t) {}
+  constexpr explicit pixelpoint_unit(T && t) noexcept(std::is_nothrow_move_constructible_v<T>) requires(std::move_constructible<T>) : value_(std::move(t)) {}
+
   static constexpr decltype(auto) x_of(bp::cvref_type<T> auto &&v,
                                        auto &&...args)
     requires(requires() { call::x_of(v, args...); })

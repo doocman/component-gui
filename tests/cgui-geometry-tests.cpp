@@ -25,7 +25,7 @@ TEST(XxWh, BasicXy2Wh) // NOLINT
 {
   int x{};
   int w{};
-  auto w2x = cgui::xxyy_xwyh_conv(x, w, wh2xy);
+  auto w2x = xxyy_xwyh_conv(x, w, wh2xy);
   EXPECT_THAT(int(w2x), Eq(0));
   w = 2;
   EXPECT_THAT(int(w2x), Eq(2));
@@ -39,7 +39,7 @@ TEST(XxWh, BasicWh2Xy) // NOLINT
 {
   int xl{};
   int xr{};
-  auto w2x = cgui::xxyy_xwyh_conv(xl, xr, xy2wh);
+  auto w2x = xxyy_xwyh_conv(xl, xr, xy2wh);
   EXPECT_THAT(int(w2x), Eq(0));
   xr = 2;
   EXPECT_THAT(int(w2x), Eq(2));
@@ -502,8 +502,8 @@ struct tlbr_static_set {
 } // namespace apitests
 } // namespace cgui::tests
 namespace cgui {
-using cgui::tests::apitests::access_of;
-using cgui::tests::apitests::access_type;
+using tests::apitests::access_of;
+using tests::apitests::access_type;
 template <tests::apitests::access_type at>
 struct extend_api<tests::apitests::xyxy_bbox<at>> {
   using _type = tests::apitests::xyxy_bbox<at>;
