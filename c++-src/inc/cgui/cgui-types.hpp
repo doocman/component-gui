@@ -190,6 +190,7 @@ concept widget_back_propagater =
     point_rect<TBox> && requires(T &t, TBox const &cbox) {
       t.rerender();
       t.rerender(cbox);
+      { t.current_area() } -> point_rect;
     };
 
 template <typename T, typename TBox = default_point_rect, typename U = T>

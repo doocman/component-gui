@@ -191,7 +191,7 @@ TEST(GuiContext, InterpretMouseEvents) // NOLINT
   int w1_calls{};
   int w2_calls{};
   constexpr auto w1_area = default_point_rect({{0, 0}, {1, 1}});
-  constexpr auto w2_area = default_point_rect({{1, 1}, {2, 1}});
+  constexpr auto w2_area = default_point_rect({{1, 0}, {2, 1}});
 
   auto ctx = gui_context_builder()
                  .widgets(widget_builder()
