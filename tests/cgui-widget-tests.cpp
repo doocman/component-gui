@@ -24,7 +24,7 @@ TEST(WidgetBuilder, BuildRender) // NOLINT
   auto w = widget_builder()
                .display(std::ref(renderable))
                .build();
-  call::render(w, dummy_renderer{}, default_point_size_wh({1, 1}));
+  call::render(w, dummy_renderer{}, default_point_size_wh(1, 1));
 }
 
 TEST(SubFind, FindInTuple) // NOLINT
@@ -129,7 +129,6 @@ TEST(WidgetBuilder, SetColour) // NOLINT
   using namespace dooc::tuple_literals;
 
   auto w = widget_builder()
-               .area(default_rect{})
                .display("text"_na = std::ref(m1), "fill"_na = std::ref(m2))
                .build();
   auto constexpr exp_m1c = default_colour_t{255, 0, 0, 255};
@@ -138,7 +137,7 @@ TEST(WidgetBuilder, SetColour) // NOLINT
   "fill"_from(w.displays()).colour(exp_m2c);
   expect_colour_eq(m1c, exp_m1c);
   expect_colour_eq(m2c, exp_m2c);
-  w.render(dummy_renderer{});
+  w.render(dummy_renderer{}, default_point_size_wh(1, 1));
 }
 
 TEST(WidgetBuilder, BuildWithState) // NOLINT
@@ -151,24 +150,20 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
   EXPECT_CALL(checkpoint, Call());
   EXPECT_CALL(state_aware_rend, do_render(Eq(1)));
   auto w = widget_builder()
-               .area(default_rect{0, 0, 1, 1})
-               //.state(int_states{})
                .event(int_as_event_handler{})
                .display(std::ref(state_aware_rend))
                .build();
-  w.render(dummy_renderer{});
+  w.render(dummy_renderer{}, default_point_size_wh(1, 1));
   w.handle(1);
   checkpoint.Call();
-  w.render(dummy_renderer{});
+  w.render(dummy_renderer{}, default_point_size_wh(1, 1));
   EXPECT_THAT(state_aware_rend.render_failed_type, IsEmpty());
 }
 
 TEST(WidgetBuilder, DisplayForEachState) // NOLINT
 {
   auto w = widget_builder()
-               .area(default_rect{0, 0, 1, 1})
                .event(int_as_event_handler{})
-               //.state(int_states{})
                .display(display_per_state(fill_rect{}))
                .build();
   auto &[per_state] = w.displays();
@@ -177,7 +172,7 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
 
   auto r = test_renderer({0, 0, 1, 1});
   auto sr = sub_renderer(r);
-  w.render(sr);
+  w.render(sr,default_point_size_wh(1, 1));
   ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
   auto &[red, green, blue, alpha] = r.drawn_pixels[0];
   EXPECT_THAT(red, Eq(255));
@@ -187,7 +182,7 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   r.drawn_pixels[0] = {};
   bounding_box auto new_area = w.handle(1);
   expect_box_equal(new_area, call::point_area(r));
-  w.render(sr);
+  w.render(sr,default_point_size_wh(1, 1));
   ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
   EXPECT_THAT(red, Eq(0));
   EXPECT_THAT(green, Eq(255));
@@ -239,7 +234,7 @@ TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
                  s2.area(b);
                })
                .build();
-  w.render(dummy_renderer{});
+  w.render(dummy_renderer{}, default_point_size_wh(3, 3));
 }
 
 TEST(Widget, BasicButton) // NOLINT

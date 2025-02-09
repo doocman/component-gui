@@ -669,7 +669,7 @@ public:
     }
   }
 
-  constexpr void render(renderer auto &&r, size_wh auto const& wh) {
+  constexpr void render(renderer auto &&r, point_size_wh auto const& wh) {
     auto w = call::width(wh);
     auto h = call::height(wh);
     auto arg = widget_render_args(w, h, state());
