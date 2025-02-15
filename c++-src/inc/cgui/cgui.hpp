@@ -108,6 +108,8 @@ public:
         nudge_down(nudge_right(relative_area_, call::x_of(v)), call::y_of(v)),
         offset_x_ - call::x_of(v), offset_y_ - call::y_of(v)};
   }
+
+  constexpr TB current_area() const { return {}; }
 };
 
 template <canvas T, pixel_rect TB, pixelpoint_scale Scale> class sub_renderer {
@@ -331,6 +333,10 @@ public:
   }
 
   constexpr auto offset() const { return full_area_.offset(); }
+
+  constexpr point_rect auto current_area() const {
+    return full_area_.current_area();
+  }
 };
 
 namespace impl {
@@ -484,8 +490,10 @@ public:
   constexpr gui_context<TArea, TOnResize, TW>
   build(TArea const &start_area) && {
     return {std::move(on_resize_),
-            build::build_group(impl::widget_display_constraint{},
-                               std::move(widgets_)),
+            transform_tuple_elements([] <typename W, typename ID> (W&& w) {
+              return sized_widget<W>(std::forward<W>(w));
+            }, build::build_group(impl::widget_display_constraint{},
+                               std::move(widgets_))),
             start_area};
   }
   template <bounding_box TArea = default_rect,
@@ -561,10 +569,11 @@ struct widget_no_event_handler {};
 
 template <typename T, point_rect A> class widget_ref_no_set_area {
   T *t_;
-  A const* a_;
+  A const *a_;
 
 public:
-  constexpr explicit widget_ref_no_set_area(T &t, A const& a) : t_(&t), a_(&a) {}
+  constexpr explicit widget_ref_no_set_area(T &t, A const &a)
+      : t_(&t), a_(&a) {}
 
   constexpr bounding_box decltype(auto) area() const { return *a_; }
 
@@ -580,11 +589,10 @@ public:
   }
 };
 
-template <typename TDisplay, typename TState,
-          typename TEventHandler, typename TSubs, typename TOnResize>
+template <typename TDisplay, typename TState, typename TEventHandler,
+          typename TSubs, typename TOnResize>
 class widget
     : bp::empty_structs_optimiser<TState, TEventHandler, TSubs, TOnResize> {
-  using display_state_callbacks_t = basic_widget_back_propagater<TArea>;
   using on_destruct_f_t =
       ignore_copy<bp::trivial_function<void(widget &&), sizeof(void *) * 3,
                                        alignof(void *)>, //
@@ -617,7 +625,7 @@ class widget
     call::for_each(display_, display_setter);
   }
 
-  constexpr void call_resize(point_rect auto const& r) {
+  constexpr void call_resize(point_rect auto const &r) {
     on_resize (*this)(widget_ref_no_set_area(*this, r), r);
   }
 
@@ -639,7 +647,6 @@ public:
       : base_t(std::forward<TS>(s), std::forward<TE>(e), std::forward<TSC>(sc),
                std::forward<TRSZ>(rsz)),
         display_(std::forward<TD>(d)) {
-    call_resize();
   }
 
   constexpr widget(widget const &) = default;
@@ -651,9 +658,9 @@ public:
     on_destruct_.value()(std::move(*this));
   }
 
-  constexpr widget& resize(point_rect auto const& r) {
-    call_resize();
-    if constexpr(requires(TEventHandler & e) { e.resize(r); }) {
+  constexpr widget &resize(point_rect auto const &r) {
+    call_resize(r);
+    if constexpr (requires(TEventHandler &e) { e.resize(r); }) {
       event_component().resize(r);
     }
     return *this;
@@ -669,7 +676,7 @@ public:
     }
   }
 
-  constexpr void render(renderer auto &&r, point_size_wh auto const& wh) {
+  constexpr void render(renderer auto &&r, point_size_wh auto const &wh) {
     auto w = call::width(wh);
     auto h = call::height(wh);
     auto arg = widget_render_args(w, h, state());
@@ -677,7 +684,9 @@ public:
       call::render(display, r, arg);
     };
     call::for_each(display_, std::move(render_callback));
-    if constexpr(requires() {typename std::remove_cvref_t<TEventHandler>::is_rendered; }) {
+    if constexpr (requires() {
+                    typename std::remove_cvref_t<TEventHandler>::is_rendered;
+                  }) {
       call::render(event_handler(*this), r, arg);
     }
     if constexpr (!std::is_empty_v<TSubs>) {
@@ -688,12 +697,17 @@ public:
 
   template <typename TEvt, widget_back_propagater TCallback>
   constexpr void handle(TEvt &&evt, TCallback &&display_callbacks)
-    requires has_handle<TEventHandler, TArea const &, decltype(evt)> ||
-             has_handle<TEventHandler, TArea const &, decltype(evt), TCallback>
+    requires has_handle<TEventHandler,
+                        decltype(display_callbacks.current_area()),
+                        decltype(evt)> ||
+             has_handle<TEventHandler,
+                        decltype(display_callbacks.current_area()),
+                        decltype(evt), TCallback>
   {
     auto const do_handle = [this, &evt, &display_callbacks] {
-      if constexpr (has_handle<TEventHandler, TArea const &, decltype(evt),
-                               TCallback>) {
+      if constexpr (has_handle<TEventHandler,
+                               decltype(display_callbacks.current_area()),
+                               decltype(evt), TCallback>) {
         call::handle(event_handler(*this), display_callbacks.current_area(),
                      std::forward<decltype(evt)>(evt), display_callbacks);
       } else {
@@ -712,10 +726,12 @@ public:
       do_handle();
     }
   }
-  constexpr bounding_box auto handle(auto &&evt, point_rect auto const& r)
-    requires has_handle<widget &, decltype(evt), display_state_callbacks_t &>
+  template <typename E, point_rect R>
+  constexpr bounding_box auto handle(E &&evt, R const &r)
+    requires has_handle<widget &, decltype(evt),
+                        basic_widget_back_propagater<R> &>
   {
-    display_state_callbacks_t display_callbacks(r);
+    basic_widget_back_propagater<R> display_callbacks(r);
     handle(std::forward<decltype(evt)>(evt), display_callbacks);
     return display_callbacks.result_area();
   }
@@ -767,8 +783,9 @@ private:
     constexpr auto area() const {
       auto offset = bp.offset();
       decltype(auto) a = bp.current_area();
-      return box_from_xywh<TArea>(call::x_of(offset), call::y_of(offset),
-                                  call::width(a), call::height(a));
+      return box_from_xywh<std::remove_cvref_t<decltype(a)>>(
+          call::x_of(offset), call::y_of(offset), call::width(a),
+          call::height(a));
     }
     constexpr widget_id_t widget_id() const {
       return {std::bit_cast<std::intptr_t>(&w)};
@@ -822,9 +839,8 @@ template <renderer TR> struct display_element_constraint {
   constexpr void operator()(display_component<TR> auto &&) const {}
 };
 
-template <typename TDisplay,
-          widget_states_aspect TState, typename TEventHandler, typename TSubs,
-          typename TOnResize>
+template <typename TDisplay, widget_states_aspect TState,
+          typename TEventHandler, typename TSubs, typename TOnResize>
 class widget_builder_impl {
   using state_wrapper = widget_state_wrapper<TState>;
   using state_arg_t = typename state_wrapper::template arg_t<point_unit_t<int>>;
@@ -838,7 +854,7 @@ class widget_builder_impl {
   TOnResize on_resize_;
 
 public:
-  static constexpr bool contract_fulfilled = bounding_box<TArea>;
+  static constexpr bool contract_fulfilled = true;
 
   constexpr widget_builder_impl() = default;
   template <typename TUs, typename TS, typename TE, typename TSC, typename TRSZ>
@@ -847,11 +863,11 @@ public:
              std::constructible_from<TEventHandler, TE &&> &&
              std::constructible_from<TSubs, TSC> &&
              std::constructible_from<TOnResize, TRSZ>)
-  constexpr widget_builder_impl(TUs &&displ, TS &&s, TE &&e,
-                                TSC &&sc, TRSZ &&rsz)
-      : displays_(std::forward<TUs>(displ)),
-        state_(std::forward<TS>(s)), event_(std::forward<TE>(e)),
-        subs_(std::forward<TSC>(sc)), on_resize_(std::forward<TRSZ>(rsz)) {}
+  constexpr widget_builder_impl(TUs &&displ, TS &&s, TE &&e, TSC &&sc,
+                                TRSZ &&rsz)
+      : displays_(std::forward<TUs>(displ)), state_(std::forward<TS>(s)),
+        event_(std::forward<TE>(e)), subs_(std::forward<TSC>(sc)),
+        on_resize_(std::forward<TRSZ>(rsz)) {}
 
   template <typename... TD2> constexpr auto display(TD2 &&...vs) && {
     using TRes = widget_builder_impl<
@@ -860,17 +876,12 @@ public:
     auto s = bp::as_forward(std::move(*this));
     return TRes{
         build::args_to_group(display_constraint_t{}, std::forward<TD2>(vs)...),
-        (*s).state_,
-        (*s).event_,
-        (*s).subs_,
-        (*s).on_resize_};
+        (*s).state_, (*s).event_, (*s).subs_, (*s).on_resize_};
   }
 
   auto build() &&
     requires contract_fulfilled
   {
-    static_assert(bounding_box<TArea>,
-                  "You must set an area to the widget before constructing it!");
     static_assert(contract_fulfilled);
     auto s = bp::as_forward(std::move(*this));
     using display_t = decltype(build::build_group(
@@ -888,18 +899,18 @@ public:
   }
 
   template <typename TE2, typename TRes = widget_builder_impl<
-                              TDisplay, TState,
-                              std::unwrap_ref_decay_t<TE2>, TSubs, TOnResize>>
+                              TDisplay, TState, std::unwrap_ref_decay_t<TE2>,
+                              TSubs, TOnResize>>
   TRes event(TE2 &&e) && {
     auto s = bp::as_forward<widget_builder_impl>(*this);
-    return TRes((*s).displays_, (*s).state_, std::forward<TE2>(e),
-                (*s).subs_, (*s).on_resize_);
+    return TRes((*s).displays_, (*s).state_, std::forward<TE2>(e), (*s).subs_,
+                (*s).on_resize_);
   }
 
   template <widget_display_args... Ts,
             typename TTuple = std::tuple<std::unwrap_ref_decay_t<Ts>...>,
-            typename TRes = widget_builder_impl<
-                TDisplay, TState, TEventHandler, TTuple, TOnResize>>
+            typename TRes = widget_builder_impl<TDisplay, TState, TEventHandler,
+                                                TTuple, TOnResize>>
   TRes subcomponents(Ts &&...args) && {
     auto s = bp::as_forward<widget_builder_impl>(*this);
     return TRes((*s).displays_, (*s).state_, (*s).event_,
@@ -910,14 +921,14 @@ public:
                             std::unwrap_ref_decay_t<T>>>
   TRes on_resize(T &&rsz) && {
     auto s = bp::as_forward<widget_builder_impl>(*this);
-    return TRes((*s).displays_, (*s).state_, (*s).event_,
-                (*s).subs_, std::forward<T>(rsz));
+    return TRes((*s).displays_, (*s).state_, (*s).event_, (*s).subs_,
+                std::forward<T>(rsz));
   }
 };
 
-constexpr widget_builder_impl<std::tuple<>,
-                              widget_mono_state, widget_no_event_handler,
-                              std::tuple<>, bp::no_op_t>
+constexpr widget_builder_impl<std::tuple<>, widget_mono_state,
+                              widget_no_event_handler, std::tuple<>,
+                              bp::no_op_t>
 widget_builder() {
   return {};
 }
@@ -1786,10 +1797,9 @@ public:
 };
 
 template <bounding_box B, typename T>
-basic_button_list_args(B const &, T &&)
-    -> basic_button_list_args<
-        std::unwrap_ref_decay_t<T>,
-        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+basic_button_list_args(B const &, T &&) -> basic_button_list_args<
+    std::unwrap_ref_decay_t<T>,
+    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
 template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;
@@ -1855,6 +1865,7 @@ template <radio_button::element TElements>
 class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
 public:
   using is_rendered = void;
+
 private:
   using base_t = bp::empty_structs_optimiser<TElements>;
   using state_marker_t = radio_button::state_marker_t;
@@ -2148,8 +2159,8 @@ struct pan_args_t {};
 
 namespace view_port_trigger {
 
-template <typename T, typename TRender = dummy_renderer>
-concept sub_widget = has_render<T, TRender &&>;
+template <typename T, typename TRender = dummy_renderer, typename Box = default_point_rect>
+concept sub_widget = has_render<T, TRender &&, Box const&>;
 
 template <renderer TRender = dummy_renderer> struct sub_widget_constraint {
   template <sub_widget<TRender> T>
@@ -2160,6 +2171,7 @@ template <typename V, bool zoomable>
 class impl : bp::empty_structs_optimiser<V> {
 public:
   using is_rendered = void;
+
 private:
   using _base_t = bp::empty_structs_optimiser<V>;
   constexpr decltype(auto) viewed_area() const {
@@ -2219,28 +2231,23 @@ private:
     }
   }
 
-  constexpr void set_viewed_size(point_rect auto const& area) {
+  constexpr void set_viewed_size(point_rect auto const &area) {
     if constexpr (requires(V &v) { call::intrinsic_min_size(v); }) {
       decltype(auto) v = this->get_first();
       point_rect auto const intr_a = call::intrinsic_min_size(v);
       auto w = std::max(call::width(area), call::width(intr_a));
       auto h = std::max(call::height(area), call::height(intr_a));
       call::area(v, box_from_xywh<std::remove_cvref_t<decltype(intr_a)>>(
-                        call::l_x(intr_a), call::t_y(intr_a),
-                        w,h
-                        ));
+                        call::l_x(intr_a), call::t_y(intr_a), w, h));
     }
   }
 
 public:
   template <typename... Ts>
     requires(std::constructible_from<_base_t, Ts...>)
-  constexpr explicit impl(Ts &&...args) : _base_t(std::forward<Ts>(args)...) {
-  }
+  constexpr explicit impl(Ts &&...args) : _base_t(std::forward<Ts>(args)...) {}
 
-  constexpr void resize(point_rect auto const& a) {
-    set_viewed_size(a);
-  }
+  constexpr void resize(point_rect auto const &a) { set_viewed_size(a); }
 
   constexpr void render(renderer auto &&r, render_args auto &&args) {
     call::render(

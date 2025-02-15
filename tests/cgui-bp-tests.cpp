@@ -5,6 +5,7 @@
 #include <cgui/std-backport/utility.hpp>
 #include <cgui/stl_extend.hpp>
 
+#include <dooc/named_args_tuple.hpp>
 #include <type_traits>
 
 #include <gmock/gmock.h>
@@ -30,6 +31,9 @@ TEST(TupleForEach, Order) // NOLINT
   tuple_for_each([&vals_res](auto a) { vals_res.emplace_back(a); }, vals);
   EXPECT_THAT(vals_res, ElementsAre(Eq(1), Eq(2), Eq(3)));
 }
+} // namespace cgui::tests
+namespace cgui::bp {
+using namespace ::testing;
 TEST(EtdExpected, Basics) // NOLINT
 {
   using namespace cgui::bp;
@@ -58,6 +62,8 @@ TEST(EtdExpected, VoidTypes) // NOLINT
   EXPECT_THAT(val.has_value(), Eq(false));
   EXPECT_THAT(val.error(), Eq(2));
 }
+} // namespace cgui::bp
+namespace cgui::tests {
 TEST(EtdEmptyBaseOptimiser, Empty) // NOLINT
 {
   EXPECT_THAT(sizeof(bp::empty_structs_optimiser<>), Eq(1));
@@ -180,6 +186,16 @@ TEST(EtdTrivialFunction, OperatorBool) // NOLINT
   EXPECT_FALSE(f);
   f = bp::no_op;
   EXPECT_TRUE(f);
+}
+
+TEST(TransformTupleElements, StdTuple) // NOLINT
+{
+  auto tin = std::tuple(1, 2);
+  auto tout = bp::transform_tuple_elements(
+      [](int in) { return static_cast<double>(in); }, tin);
+  static_assert(std::is_same_v<decltype(tout), std::tuple<double, double>>);
+  EXPECT_THAT(std::get<0>(tout), Eq(1.));
+  EXPECT_THAT(std::get<1>(tout), Eq(2.));
 }
 
 } // namespace cgui::tests

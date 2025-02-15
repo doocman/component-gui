@@ -115,7 +115,7 @@ struct mock_widget_resize {
   void area(bounding_box auto const &b) {
     do_resize(call::width(b.value()), call::height(b.value()));
   }
-  void render(auto &&) const {}
+  void render(auto &&...) const {}
 };
 
 template <typename T> struct ref_builder {
@@ -175,9 +175,9 @@ TEST(GuiContext, RerenderOutput) // NOLINT
                   .widgets(std::move(w1b), std::move(w2b), std::move(w3b))
                   .on_resize([&](size_wh auto const &, auto &&widgets) {
                     auto &[w1, w2, w3] = widgets;
-                    w1.area(w1_area);
-                    w2.area(w2_area);
-                    w3.area(w3_area);
+                    w1.resize(w1_area);
+                    w2.resize(w2_area);
+                    w3.resize(w3_area);
                   })
                   .build({{0, 0}, {1, 1}});
   guic.render(r);

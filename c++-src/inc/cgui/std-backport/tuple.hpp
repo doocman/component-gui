@@ -248,6 +248,13 @@ struct tuple_element_index<T, std::tuple<Ts...>> {
 template <typename T, typename U>
 constexpr auto tuple_element_index_v = tuple_element_index<T, U>::value;
 
+template <typename F, typename T>
+constexpr auto transform_tuple_elements(F&& f, T&& t) {
+  return std::apply([&f] <typename... Ts> (Ts&&... args) {
+    return std::tuple<std::invoke_result_t<F, Ts>...>(f(std::forward<Ts>(args))...);
+  }, std::forward<T>(t));
+}
+
 } // namespace cgui::bp
 
 #endif // COMPONENT_GUI_TUPLE_HPP

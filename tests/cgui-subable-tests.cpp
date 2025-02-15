@@ -52,6 +52,12 @@ TEST(RecursiveAreaNavigator, Nudger) // NOLINT
   EXPECT_THAT(y, Eq(1));
 }
 
+TEST(RecursiveAreaNavigator, CurrentAreaLvl0) // NOLINT
+{
+  auto nav = recursive_area_navigator({{0, 1}, {2, 3}});
+  expect_box_equal(nav.current_area(), default_rect{{0, 1}, {2, 3}});
+}
+
 TEST(BasicWidgetBackProp, MergeSub) // NOLINT
 {
   auto bp0 = basic_widget_back_propagater<>(
