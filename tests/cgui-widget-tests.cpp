@@ -154,7 +154,7 @@ TEST(WidgetBuilder, BuildWithState) // NOLINT
                .display(std::ref(state_aware_rend))
                .build();
   w.render(dummy_renderer{}, default_point_size_wh(1, 1));
-  w.handle(1);
+  w.handle(1, default_point_rect{{{0, 0}, {1, 1}}});
   checkpoint.Call();
   w.render(dummy_renderer{}, default_point_size_wh(1, 1));
   EXPECT_THAT(state_aware_rend.render_failed_type, IsEmpty());
@@ -180,7 +180,7 @@ TEST(WidgetBuilder, DisplayForEachState) // NOLINT
   EXPECT_THAT(blue, Eq(0));
   EXPECT_THAT(alpha, Eq(255));
   r.drawn_pixels[0] = {};
-  bounding_box auto new_area = w.handle(1);
+  bounding_box auto new_area = w.handle(1, default_point_rect{{{0, 0}, {1, 1}}});
   expect_box_equal(new_area, call::point_area(r));
   w.render(sr,default_point_size_wh(1, 1));
   ASSERT_THAT(r.drawn_pixels, SizeIs(Eq(1)));
@@ -201,17 +201,14 @@ TEST(WidgetBuilder, SubcomponentsResize) // NOLINT
         sc_area = a;
       });
   auto w = widget_builder()
-               .area(box_from_xyxy<default_point_rect>(0, 1, 3, 4))
                .subcomponents(std::ref(subw))
                .on_resize([](auto &&self, bounding_box auto const &new_area) {
                  self.subcomponent().area(new_area);
                })
                .build();
-  EXPECT_THAT(mock_calls, Eq(1)) << "Should be called once on creation";
-  expect_box_equal(sc_area, w.area());
-  w.area(box_from_xyxy<default_point_rect>(0, 2, 4, 5));
-  EXPECT_THAT(mock_calls, Eq(2));
-  expect_box_equal(sc_area, w.area());
+  w.resize(box_from_xyxy<default_point_rect>(0, 2, 4, 5));
+  EXPECT_THAT(mock_calls, Eq(1));
+  expect_box_equal(sc_area, box_from_xyxy<default_point_rect>(0, 2, 4, 5));
 }
 
 TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
@@ -226,7 +223,6 @@ TEST(WidgetBuilder, SubcomponentsRender) // NOLINT
     EXPECT_CALL(s2, do_render()).Times(1);
   }
   auto w = widget_builder()
-               .area(default_rect{{0, 0}, {3, 3}})
                .subcomponents(std::ref(s1), std::ref(s2))
                .on_resize([](auto &&self, bounding_box auto b) {
                  auto &[s1, s2] = self.subcomponents();
@@ -244,7 +240,6 @@ TEST(Widget, BasicButton) // NOLINT
   auto last_state = off;
   int calls{};
   auto w = widget_builder()
-               .area(default_rect{0, 0, 1, 1})
                .event(buttonlike_trigger(
                    momentary_button()
                        .click([&clicked, &calls](auto &&...) {
@@ -278,49 +273,50 @@ TEST(Widget, BasicButton) // NOLINT
     clicked = false;
     calls = 0;
   };
+  auto area = default_point_rect{{{0, 0}, {1, 1}}};
 
-  w.render(sr);
+  w.render(sr, area);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
 
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(0));
   EXPECT_THAT(last_state, Eq(off));
-  w.render(sr);
+  w.render(sr, area);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
   reset();
 
   w.handle(create_event<interpreted_events::pointer_hover>(
-      default_point_coordinate{}));
+      default_point_coordinate{}), default_point_rect{{{0, 0}, {1, 1}}});
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_state, Eq(hover));
-  w.render(sr);
+  w.render(sr, area);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
   reset();
 
   w.handle(create_event<interpreted_events::pointer_hold>(
-      default_point_coordinate{}));
+      default_point_coordinate{}), area);
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_state, Eq(hold));
-  w.render(sr);
+  w.render(sr, area);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(2, 0, 0, 255));
   reset();
 
   w.handle(create_event<interpreted_events::primary_click>(
-      default_point_coordinate{}));
+      default_point_coordinate{}), area);
   EXPECT_THAT(clicked, IsTrue());
   EXPECT_THAT(calls, Eq(2));
   EXPECT_THAT(last_state, Eq(hover));
-  w.render(sr);
+  w.render(sr, area);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(1, 0, 0, 255));
   reset();
 
-  w.handle(create_event<interpreted_events::pointer_exit>());
+  w.handle(create_event<interpreted_events::pointer_exit>(), area);
   EXPECT_THAT(clicked, IsFalse());
   EXPECT_THAT(calls, Eq(1));
   EXPECT_THAT(last_state, Eq(off));
-  w.render(sr);
+  w.render(sr, area);
   EXPECT_THAT((std::array{red, green, blue, alpha}), ElementsAre(0, 0, 0, 255));
   reset();
 }
@@ -328,8 +324,8 @@ TEST(Widget, BasicButton) // NOLINT
 TEST(Widget, ButtonSharedStateCallback) // NOLINT
 {
   int i{};
+  auto area = default_point_rect{{{0, 0}, {2, 2}}};
   auto w = widget_builder()
-               .area(default_rect{{0, 0}, {2, 2}})
                .event(buttonlike_trigger(momentary_button()
                                              .callback_state(std::ref(i))
                                              .click([](int &i_in) { ++i_in; })
@@ -337,7 +333,7 @@ TEST(Widget, ButtonSharedStateCallback) // NOLINT
                .build();
   EXPECT_THAT(i, Eq(0));
   w.handle(create_event<interpreted_events::primary_click>(
-      default_point_coordinate{}));
+      default_point_coordinate{}), area);
   EXPECT_THAT(i, Eq(1));
 }
 
@@ -409,7 +405,6 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
   auto constexpr full_area = box_from_xyxy<default_point_rect>(0, 0, 16, 10);
   auto list =
       widget_builder()
-          .area(full_area)
           .event(radio_button_trigger()
                      .elements(test_button_list{
                          [&activations, &current_element](int element) {
@@ -453,6 +448,7 @@ TEST(Widget, RadioButtonDecorator) // NOLINT
 TEST(Widget, RadioButtonListRender) // NOLINT
 {
   constexpr auto full_area = default_rect{{0, 0}, {3, 1}};
+  constexpr auto full_point_area = point_unit(full_area);
   constexpr auto state2bright = [](radio_button::element_state s) {
     return static_cast<std::uint_least8_t>(s);
   };
@@ -466,7 +462,6 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   auto exp_states = states;
   std::vector<std::pair<radio_button::element_state, int>> state_changes;
   auto list = widget_builder()
-                  .area(full_area)
                   .event(radio_button_trigger()
                              .elements(test_button_list{
                                  bp::no_op, bp::no_op, 3,
@@ -482,7 +477,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   auto rgba_sep = rend.individual_colours();
   auto &[r, g, b, a] = rgba_sep;
   auto do_render = [&] {
-    list.render(sr);
+    list.render(sr, full_point_area);
     rgba_sep = rend.individual_colours();
   };
 
@@ -492,7 +487,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
 
   using enum interpreted_events;
   auto re_area = call::handle(
-      list, create_event<pointer_hover>(default_point_coordinate{{0, 0}}));
+      list, create_event<pointer_hover>(default_point_coordinate{{0, 0}}), full_point_area);
   EXPECT_THAT(state_changes, ElementsAre(Pair(hover_off, 0)));
   exp_states[0] = hover_off;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
@@ -504,7 +499,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
 
   state_changes.clear();
   re_area = call::handle(
-      list, create_event<pointer_hover>(default_point_coordinate{{1, 0}}));
+      list, create_event<pointer_hover>(default_point_coordinate{{1, 0}}), full_point_area);
   EXPECT_THAT(state_changes,
               UnorderedElementsAre(Pair(relaxed_off, 0), Pair(hover_off, 1)));
   exp_states[0] = relaxed_off;
@@ -518,7 +513,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
 
   state_changes.clear();
   re_area = call::handle(
-      list, create_event<pointer_hold>(default_point_coordinate{{1, 0}}));
+      list, create_event<pointer_hold>(default_point_coordinate{{1, 0}}), full_point_area);
   EXPECT_THAT(state_changes, UnorderedElementsAre(Pair(hold_off, 1)));
   exp_states[0] = relaxed_off;
   exp_states[1] = hold_off;
@@ -531,7 +526,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
 
   state_changes.clear();
   re_area = call::handle(
-      list, create_event<primary_click>(default_point_coordinate{{1, 0}}));
+      list, create_event<primary_click>(default_point_coordinate{{1, 0}}), full_point_area);
   exp_states[0] = relaxed_off;
   exp_states[1] = hover_on;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
@@ -541,7 +536,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
   expect_box_equal(re_area, box_from_xyxy<default_point_rect>(1, 0, 2, 1));
 
-  click_widget(list, {});
+  click_widget(list, {}, full_point_area);
   exp_states[0] = hover_on;
   exp_states[1] = relaxed_off;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
@@ -550,7 +545,7 @@ TEST(Widget, RadioButtonListRender) // NOLINT
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 
-  re_area = call::handle(list, create_event<pointer_exit>());
+  re_area = call::handle(list, create_event<pointer_exit>(), full_point_area);
   exp_states[0] = relaxed_on;
   exp_states[1] = relaxed_off;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
@@ -562,17 +557,17 @@ TEST(Widget, RadioButtonListRender) // NOLINT
 
   exp_states[0] = hover_on;
   re_area = call::handle(
-      list, create_event<pointer_hold>(default_point_coordinate{{0, 0}}));
-  re_area = call::handle(list, create_event<pointer_exit>());
+      list, create_event<pointer_hold>(default_point_coordinate{{0, 0}}), full_point_area);
+  re_area = call::handle(list, create_event<pointer_exit>(), full_point_area);
   re_area = call::handle(
-      list, create_event<pointer_hover>(default_point_coordinate{{0, 0}}));
+      list, create_event<pointer_hover>(default_point_coordinate{{0, 0}}), full_point_area);
   EXPECT_THAT(states, ElementsAreArray(exp_states));
   do_render();
   EXPECT_THAT(r, ElementsAre(state2bright(hover_on), state2bright(relaxed_off),
                              state2bright(relaxed_off)));
   EXPECT_THAT(a, AllOf(SizeIs(3), Each(255u)));
 
-  click_widget(list);
+  click_widget(list, {}, full_point_area);
   exp_states[0] = hover_off;
   EXPECT_THAT(states, ElementsAreArray(exp_states));
   do_render();
@@ -583,13 +578,13 @@ TEST(Widget, RadioButtonListRender) // NOLINT
 
 struct dummy_vp_item {
   struct dummy_event {};
-  default_point_rect size{};
+  //default_point_rect size{};
   int dummy_events_received{};
   std::optional<default_point_coordinate> click_point{};
-  constexpr void render(renderer auto &&r) const {
+  constexpr void render(renderer auto &&r, point_rect auto&& area) const {
     std::print("Hello?\n");
     call::draw_pixels(
-        r, convert_pixelpoint<pixel_size_tag>(size, call::pixel_scale(r)),
+        r, convert_pixelpoint<pixel_size_tag>(area, call::pixel_scale(r)),
         [](auto &&b, auto &&cb) {
           for (auto y : y_view(b)) {
             for (auto x : x_view(b)) {
@@ -602,7 +597,7 @@ struct dummy_vp_item {
         });
   }
 
-  constexpr default_point_rect const &area() const noexcept { return size; }
+  //constexpr default_point_rect const &area() const noexcept { return size; }
 
   template <bounding_box A, widget_back_propagater BP>
   constexpr void handle(A const &, dummy_event const &, BP &&bp) {
@@ -620,11 +615,12 @@ struct dummy_vp_item {
 TEST(ViewPort, Pan) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr full_point_area = point_unit(full_area);
   auto constexpr ext_area = default_rect{{-1, -1}, {4, 4}};
-  auto item = dummy_vp_item{default_point_rect(ext_area)};
+  auto item = dummy_vp_item{};
+  static_assert(view_port_trigger::sub_widget<dummy_vp_item>);
   auto w = widget_builder()
                .event(view_port_trigger::builder().view(std::ref(item)).build())
-               .area(full_area)
                .build();
 
   auto rend = test_renderer{full_area};
@@ -633,30 +629,30 @@ TEST(ViewPort, Pan) // NOLINT
   auto &[r, g, b, a] = rgba_sep;
   auto do_render = [&] {
     std::ranges::fill(rend.drawn_pixels, default_colour_t{255, 255, 255, 0});
-    w.render(sr);
+    w.render(sr, full_point_area);
     rgba_sep = rend.individual_colours();
   };
   do_render();
   EXPECT_THAT(r, ElementsAre(1, 2, 1, 2));
   EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, 1.f, 0.f));
+      {}, default_point_coordinate{}, 1.f, 0.f), full_point_area);
   do_render();
   EXPECT_THAT(r, ElementsAre(2, 3, 2, 3));
   EXPECT_THAT(g, ElementsAre(1, 1, 2, 2));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, 0.f, 1.f));
+      {}, default_point_coordinate{}, 0.f, 1.f), full_point_area);
   do_render();
   EXPECT_THAT(r, ElementsAre(2, 3, 2, 3));
   EXPECT_THAT(g, ElementsAre(2, 2, 3, 3));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, 2.f, 0.f));
+      {}, default_point_coordinate{}, 2.f, 0.f), full_point_area);
   do_render();
   EXPECT_THAT(r, ElementsAre(3, 4, 3, 4))
       << "The scroll should not exceed past the size of the viewed item";
   EXPECT_THAT(g, ElementsAre(2, 2, 3, 3));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, -8.f, 0.f));
+      {}, default_point_coordinate{}, -8.f, 0.f), full_point_area);
   do_render();
   EXPECT_THAT(r, ElementsAre(0, 1, 0, 1))
       << "The scroll should not exceed past point zero of the view";
@@ -666,11 +662,11 @@ TEST(ViewPort, Pan) // NOLINT
 TEST(ViewPort, SmallViewed) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr full_point_area = point_unit(full_area);
   auto constexpr ext_area = default_rect{{-1, -1}, {0, 0}};
   auto item = dummy_vp_item{default_point_rect(ext_area)};
   auto w = widget_builder()
                .event(view_port_trigger::builder().view(std::ref(item)).build())
-               .area(full_area)
                .build();
 
   auto rend = test_renderer{full_area};
@@ -679,19 +675,19 @@ TEST(ViewPort, SmallViewed) // NOLINT
   auto &[r, g, b, a] = rgba_sep;
   auto do_render = [&] {
     std::ranges::fill(rend.drawn_pixels, default_colour_t{255, 255, 255, 0});
-    w.render(sr);
+    w.render(sr, full_point_area);
     rgba_sep = rend.individual_colours();
   };
   do_render();
   EXPECT_THAT(r, ElementsAre(0, 255, 255, 255));
   EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, 1.f, 1.f));
+      {}, default_point_coordinate{}, 1.f, 1.f), full_point_area);
   do_render();
   EXPECT_THAT(r, ElementsAre(0, 255, 255, 255));
   EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, -1.f, -1.f));
+      {}, default_point_coordinate{}, -1.f, -1.f), full_point_area);
   do_render();
   EXPECT_THAT(r, ElementsAre(0, 255, 255, 255));
   EXPECT_THAT(g, ElementsAre(0, 255, 255, 255));
@@ -700,6 +696,7 @@ TEST(ViewPort, SmallViewed) // NOLINT
 TEST(ViewPort, Zoom) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr full_point_area = point_unit(full_area);
   auto constexpr ext_area = default_rect{{0, 0}, {1, 1}};
   auto item = dummy_vp_item{default_point_rect(ext_area)};
   auto w = widget_builder()
@@ -707,10 +704,9 @@ TEST(ViewPort, Zoom) // NOLINT
                           .view(std::ref(item))
                           .enable_zoom()
                           .build())
-               .area(full_area)
                .build();
   w.handle(interpreted_event<interpreted_events::zoom>(
-      {}, default_point_coordinate{}, 2.f, 2.f));
+      {}, default_point_coordinate{}, 2.f, 2.f), full_point_area);
 
   auto rend = test_renderer{full_area};
   auto sr = sub_renderer(rend);
@@ -718,7 +714,7 @@ TEST(ViewPort, Zoom) // NOLINT
   auto &[r, g, b, a] = rgba_sep;
   auto do_render = [&] {
     std::ranges::fill(rend.drawn_pixels, default_colour_t{255, 255, 255, 0});
-    w.render(sr);
+    w.render(sr, full_point_area);
     rgba_sep = rend.individual_colours();
   };
   do_render();
@@ -729,6 +725,7 @@ TEST(ViewPort, Zoom) // NOLINT
 TEST(ViewPort, ZoomPassHandling) // NOLINT
 {
   auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr full_point_area = point_unit(full_area);
   auto constexpr ext_area = default_rect{{0, 0}, {4, 4}};
   auto item = dummy_vp_item{default_point_rect(ext_area)};
   auto w = widget_builder()
@@ -736,19 +733,18 @@ TEST(ViewPort, ZoomPassHandling) // NOLINT
                           .view(std::ref(item))
                           .enable_zoom()
                           .build())
-               .area(full_area)
                .build();
-  auto rerender_area = w.handle(dummy_vp_item::dummy_event{});
+  auto rerender_area = w.handle(dummy_vp_item::dummy_event{}, full_point_area);
   EXPECT_THAT(item.dummy_events_received, Eq(1));
   expect_box_equal(rerender_area.value(), full_area);
   w.handle(interpreted_event<interpreted_events::primary_click>(
-      {}, default_point_coordinate{}));
+      {}, default_point_coordinate{}), full_point_area);
   ASSERT_TRUE(item.click_point.has_value());
   EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{}));
   w.handle(interpreted_event<interpreted_events::scroll>(
-      {}, default_point_coordinate{}, 1.f, 2.f));
+      {}, default_point_coordinate{}, 1.f, 2.f), full_point_area);
   w.handle(interpreted_event<interpreted_events::primary_click>(
-      {}, default_point_coordinate{}));
+      {}, default_point_coordinate{}), full_point_area);
   ASSERT_TRUE(item.click_point.has_value());
   EXPECT_THAT(*item.click_point, Eq(default_point_coordinate{1, 2}));
 }
@@ -845,13 +841,20 @@ TEST(Widget, QueryAndEvents3Layer) // NOLINT
   auto constexpr per_level_trim_y = 4;
   constexpr auto full_area = default_rect{{0, 0}, {full_w, full_h}};
   auto constexpr make_widget_builder = [=](int lvl, dummy_trigger &t) {
+    return widget_builder()
+        .event(std::ref(t));
+  };
+  auto constexpr make_widget_area = [=] (int lvl) {
     auto left = (lvl == 0) ? 0 : per_level_trim_x;
     auto top = (lvl == 0) ? 0 : per_level_trim_y;
     auto width = full_w - lvl * per_level_trim_x * 2;
     auto height = full_h - lvl * per_level_trim_y * 2;
-    return widget_builder()
-        .area(box_from_xywh<default_rect>(left, top, width, height))
-        .event(std::ref(t));
+    return box_from_xywh<default_rect>(left, top, width, height);
+  };
+  auto constexpr make_on_resize = [=] (int lvl) {
+    return [=] (point_rect auto const&, auto&& widgets) {
+      widgets.resize(make_widget_area(lvl));
+    };
   };
   std::array<dummy_trigger, 3> triggers{};
   auto const reset_triggers = [&] {
@@ -864,11 +867,13 @@ TEST(Widget, QueryAndEvents3Layer) // NOLINT
           .subcomponents(
               make_widget_builder(1, triggers[1])
                   .subcomponents(make_widget_builder(2, triggers[2]).build())
+                  .on_resize(make_on_resize(1))
                   .build())
+          .on_resize(make_on_resize(0))
           .build();
   static_assert(
       has_handle<decltype(w),
-                 interpreted_event<interpreted_events::primary_click>>);
+                 interpreted_event<interpreted_events::primary_click>, default_point_rect>);
 
   auto b = basic_widget_back_propagater(
       box_from_xyxy<default_point_rect>(0, 0, 16, 16));

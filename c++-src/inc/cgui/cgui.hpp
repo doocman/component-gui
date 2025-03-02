@@ -2174,18 +2174,19 @@ public:
 
 private:
   using _base_t = bp::empty_structs_optimiser<V>;
-  constexpr decltype(auto) viewed_area() const {
-    return call::area(_base_t::get_first());
-  }
-
   default_point_coordinate pan_{};
   float scale_ = 1.f;
+  constexpr default_point_rect const& viewed_area(point_size_wh auto const& wh) const {
+    return box_from_xywh<default_point_rect>(call::x_of(pan_), call::y_of(pan_), call::width(wh), call::height(wh));
+  }
 
   constexpr default_point_coordinate
-  clamped_pan(default_point_coordinate p0, point_scalar auto const &w) const {
+  clamped_pan(default_point_coordinate p0, point_size_wh auto const& wh) const {
     using scalar_t = std::remove_cvref_t<decltype(call::x_of(p0))>;
-    auto lx = call::l_x(viewed_area());
-    auto ty = call::t_y(viewed_area());
+    auto lx = call::x_of(pan_);
+    auto ty = call::y_of(pan_);
+    auto w = call::width(wh);
+    auto h = call::height(wh);
     return {std::clamp<scalar_t>(
                 call::x_of(p0), lx,
                 std::max<scalar_t>(call::r_x(viewed_area()) - w, lx)),
