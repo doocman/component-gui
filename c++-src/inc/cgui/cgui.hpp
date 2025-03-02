@@ -1806,10 +1806,9 @@ public:
 };
 
 template <bounding_box B, typename T>
-basic_button_list_args(B const &, T &&)
-    -> basic_button_list_args<
-        std::unwrap_ref_decay_t<T>,
-        std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
+basic_button_list_args(B const &, T &&) -> basic_button_list_args<
+    std::unwrap_ref_decay_t<T>,
+    std::remove_cvref_t<decltype(call::width(std::declval<B const &>()))>>;
 template <typename TWH, typename T>
 basic_button_list_args(TWH const &, TWH const &, T &&)
     -> basic_button_list_args<std::unwrap_ref_decay_t<T>, TWH>;
@@ -2175,6 +2174,31 @@ template <renderer TRender = dummy_renderer> struct sub_widget_constraint {
   constexpr void operator()(T &&) const noexcept {}
 };
 
+template <typename T, typename F = decltype([](auto &&) {})>
+concept accessor = std::invocable<T, F>;
+
+template <typename ToAccess, point_rect A,
+          typename // std::invocable<ToAccess&>
+          Getter>
+class accessor_with_post_resize : Getter {
+  ToAccess *impl_;
+  A area_;
+
+  using viewed_t = std::invoke_result_t<Getter, ToAccess &>;
+
+public:
+  template <typename... Ts>
+    requires(std::constructible_from<Getter, Ts...>)
+  constexpr accessor_with_post_resize(ToAccess &ref, A const &area,
+                                      Ts &&...get_args) noexcept
+      : Getter(std::forward<Ts>(get_args)...), impl_(&ref), area_(area) {}
+
+  constexpr void operator()(std::invocable<viewed_t &> auto &&mutater) const {
+    mutater(Getter::operator()(*impl_));
+    impl_->on_resize(area_);
+  }
+};
+
 template <typename V, bool zoomable>
 class impl : bp::empty_structs_optimiser<V> {
   using _base_t = bp::empty_structs_optimiser<V>;
@@ -2235,26 +2259,43 @@ class impl : bp::empty_structs_optimiser<V> {
     }
   }
 
-  constexpr void set_viewed_size() {
+  constexpr void set_viewed_size(point_rect auto const &a) {
     if constexpr (requires(V &v) { call::intrinsic_min_size(v); }) {
       decltype(auto) v = this->get_first();
-      call::area(v, call::intrinsic_min_size(v));
+      auto const intr_min = call::intrinsic_min_size(v);
+      using w_t = std::common_type_t<decltype(call::width(intr_min)),
+                                     decltype(call::width(a))>;
+      using h_t = std::common_type_t<decltype(call::height(intr_min)),
+                                     decltype(call::height(a))>;
+      call::area(v,
+                 box_from_xywh<std::remove_const_t<decltype(intr_min)>>(
+                     call::l_x(intr_min), call::t_y(intr_min),
+                     std::max<w_t>(call::width(intr_min), call::width(a)),
+                     std::max<h_t>(call::height(intr_min), call::height(a))));
     }
   }
 
 public:
+  constexpr decltype(auto) _get_viewed_unchecked() { return this->get_first(); }
+
+private:
+  static constexpr auto for_accessor = [](auto &s) -> decltype(auto) {
+    return s._get_viewed_unchecked();
+  };
+
+public:
   template <typename... Ts>
     requires(std::constructible_from<_base_t, Ts...>)
-  constexpr explicit impl(Ts &&...args) : _base_t(std::forward<Ts>(args)...) {
-    set_viewed_size();
-  }
+  constexpr explicit impl(Ts &&...args) : _base_t(std::forward<Ts>(args)...) {}
 
   constexpr void render(renderer auto &&r, render_args auto &&args) const {
     call::render(
         this->get_first(),
         r.translate(clamped_pan(pan_, call::width(args))).scale(scale_));
   }
-  template <bounding_box A, typename E, widget_back_propagater BP>
+  constexpr void on_resize(point_rect auto const &a) { set_viewed_size(a); }
+
+  template <point_rect A, typename E, widget_back_propagater BP>
     requires(
 
         interpreted_event_types<E,
@@ -2266,14 +2307,15 @@ public:
     if (!evt_switch()(event, std::forward<BP>(bp), area)) {
       if constexpr (has_handle<V &, A, E, BP>) {
         call::handle(this->get_first(), area, move_to_viewed(event), bp);
-        set_viewed_size();
+        set_viewed_size(area);
       }
     }
   }
-  constexpr void mutate_viewed(std::invocable<V &> auto &&mutater) {
-    decltype(auto) v = this->get_first();
-    mutater(v);
-    set_viewed_size();
+
+  template <point_rect A>
+  constexpr auto accessor(A const &a)
+      -> accessor_with_post_resize<impl, A, decltype(for_accessor)> {
+    return {*this, a};
   }
 };
 

@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
                          .build())
             .build(full_area);
     auto &[list, end_button] = gui.widgets();
-    list.event_component().mutate_viewed([&](auto &&viewed) {
+    list.event_component().accessor(list.area())([&](auto &&viewed) {
       viewed.event_component().mutate_elements([argc, argv, &end_button,
 
                                                 &rerender_all](auto &elements) {

@@ -775,25 +775,14 @@ struct dummy_vp_item_with_intrinsic {
   }
 };
 
-TEST(ViewPort, IntrinsicSizeOnConstruct) // NOLINT
-{
-
-  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
-  auto constexpr ext_area = default_rect{{-1, -2}, {4, 5}};
-  auto item = dummy_vp_item_with_intrinsic{default_point_rect(ext_area), {}};
-  auto trig = view_port_trigger::builder().view(std::ref(item)).build();
-  unused(trig);
-  expect_box_equal(item.set_size, point_unit(ext_area));
-}
-
 TEST(ViewPort, IntrinsicSizeOnMutate) // NOLINT
 {
-  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr full_area = default_point_rect{{{0, 0}, {2, 2}}};
   auto constexpr ext_area1 = default_rect{{1, 3}, {6, 9}};
   auto item = dummy_vp_item_with_intrinsic{default_point_rect(ext_area1), {}};
   auto trig = view_port_trigger::builder().view(std::ref(item)).build();
   auto constexpr ext_area2 = default_rect{{2, 5}, {7, 11}};
-  trig.mutate_viewed([&](dummy_vp_item_with_intrinsic &v) {
+  trig.accessor(full_area)([&](dummy_vp_item_with_intrinsic &v) {
     v.intrinsic_size = point_unit(ext_area2);
   });
   expect_box_equal(item.set_size, point_unit(ext_area2));
@@ -801,19 +790,19 @@ TEST(ViewPort, IntrinsicSizeOnMutate) // NOLINT
 
 TEST(ViewPort, IntrinsicSizeOnHandle) // NOLINT
 {
-  auto constexpr full_area = default_rect{{0, 0}, {2, 2}};
+  auto constexpr full_area = default_point_rect{{{0, 0}, {2, 2}}};
   auto constexpr ext_area1 = default_rect{{1, 3}, {6, 9}};
   auto item = dummy_vp_item_with_intrinsic{default_point_rect(ext_area1), {}};
   auto trig = view_port_trigger::builder().view(std::ref(item)).build();
   auto constexpr ext_area2 = default_rect{{-5, 6}, {-3, 136}};
   trig.handle(full_area, dummy_set_intrinsic_size(point_unit(ext_area2)),
-              basic_widget_back_propagater<>(point_unit(full_area)));
+              basic_widget_back_propagater<>(full_area));
   expect_box_equal(item.set_size, point_unit(ext_area2));
 }
 
 TEST(ViewPort, UsingLargestOfIntrinsicAndActualSize) // NOLINT
 {
-  auto constexpr full_area = default_rect{{0, 0}, {5, 7}};
+  auto constexpr full_area = default_point_rect{{{0, 0}, {5, 7}}};
   auto constexpr ext_area = default_rect{{-1, -2}, {2, 3}};
   auto item = dummy_vp_item_with_intrinsic{default_point_rect(ext_area), {}};
   auto trig = view_port_trigger::builder().view(std::ref(item)).build();
@@ -821,6 +810,7 @@ TEST(ViewPort, UsingLargestOfIntrinsicAndActualSize) // NOLINT
   auto constexpr expected_area = box_from_xywh<default_point_rect>(
       call::l_x(ext_area), call::t_y(ext_area), call::width(full_area),
       call::height(full_area));
+  trig.on_resize(full_area);
   expect_box_equal(item.set_size, expected_area);
 }
 
