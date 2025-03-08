@@ -402,56 +402,109 @@ struct test_button_list {
   [[nodiscard]] constexpr default_point_rect intrinsic_min_size() const {
     return box_from_xywh<default_point_rect>(0, 0, sz, 1);
   }
+
+  constexpr auto accessor(point_rect auto const &, access_each_element_t) {
+    return [this](auto &&cb) {
+      for_each([&cb](element_t &&e, std::size_t) { cb(std::move(e)); });
+    };
+  }
 };
 static_assert(radio_button::element<test_button_list>);
 
-TEST(Widget, RadioButtonDecorator) // NOLINT
-{
-  int current_element = lowest_possible;
+struct RadioButtonTriggerTests : Test {
+  static auto constexpr full_area =
+      box_from_xyxy<default_point_rect>(0, 0, 16, 10);
+  int current_element = -1;
   int activations{};
   int deactivations{};
-  auto constexpr full_area = box_from_xyxy<default_point_rect>(0, 0, 16, 10);
-  auto list =
-      widget_builder()
-          .area(full_area)
-          .event(radio_button_trigger()
-                     .elements(test_button_list{
-                         [&activations, &current_element](int element) {
-                           ++activations;
-                           current_element = element;
-                         },
-                         [&deactivations, &current_element](int element) {
-                           ++deactivations;
-                           EXPECT_THAT(element, Eq(current_element));
-                           current_element = -1;
-                         },
-                         3})
-                     .build())
-          .build();
+  auto gen_list() {
+    return widget_builder()
+        .area(full_area)
+        .event(radio_button_trigger()
+                   .elements(test_button_list{
+                       [this](int element) {
+                         ++activations;
+                         current_element = element;
+                       },
+                       [this](int element) {
+                         ++deactivations;
+                         EXPECT_THAT(element, Eq(current_element));
+                         current_element = -1;
+                       },
+                       3})
+                   .build())
+        .build();
+  }
+};
+
+TEST_F(RadioButtonTriggerTests,
+       ActivateButtonTriggersActivationCallback) // NOLINT
+{
+  auto list = gen_list();
   // activate button 0
   auto backprop = basic_widget_back_propagater(full_area);
   click_widget(list, {}, backprop);
   EXPECT_THAT(activations, Eq(1));
   EXPECT_THAT(deactivations, Eq(0));
   EXPECT_THAT(current_element, Eq(0));
+}
+
+TEST_F(RadioButtonTriggerTests,
+       DeactivateButtonTriggersDeactivationCallback) // NOLINT
+{
+  auto list = gen_list();
+  // activate button 0
+  auto backprop = basic_widget_back_propagater(full_area);
+  click_widget(list, {}, backprop);
   // deactivate button 0
   click_widget(list, {}, backprop);
   EXPECT_THAT(activations, Eq(1));
   EXPECT_THAT(deactivations, Eq(1));
   EXPECT_THAT(current_element, Eq(-1));
+}
+
+TEST_F(RadioButtonTriggerTests, ClickOutsideOfWidgetsIsANoOp) // NOLINT
+{
+  auto list = gen_list();
+  // activate button 0
+  auto backprop = basic_widget_back_propagater(full_area);
   // click outside any subcomponents
   click_widget(list, {12, 0}, backprop);
-  EXPECT_THAT(activations, Eq(1));
-  EXPECT_THAT(deactivations, Eq(1));
+  EXPECT_THAT(activations, Eq(0));
+  EXPECT_THAT(deactivations, Eq(0));
   EXPECT_THAT(current_element, Eq(-1));
+}
+TEST_F(RadioButtonTriggerTests, ClickOnWidgetOneSetsElementToOne) // NOLINT
+{
+  auto list = gen_list();
+  // activate button 0
+  auto backprop = basic_widget_back_propagater(full_area);
 
   // activate button 1
   click_widget(list, {1, 7}, backprop);
-  EXPECT_THAT(activations, Eq(2));
-  EXPECT_THAT(deactivations, Eq(1));
+  EXPECT_THAT(activations, Eq(1));
+  EXPECT_THAT(deactivations, Eq(0));
   EXPECT_THAT(current_element, Eq(1));
 
   EXPECT_THAT(call::width(list.intrinsic_min_size()).value(), Eq(3));
+}
+TEST_F(RadioButtonTriggerTests,
+       UsesTheWrappedObjectsSizeAsIntrinsicSize) // NOLINT
+{
+  auto list = gen_list();
+  EXPECT_THAT(call::width(list.intrinsic_min_size()).value(), Eq(3));
+}
+TEST_F(RadioButtonTriggerTests,
+       CanAccessEachElementThroughAccessTrigger) // NOLINT
+{
+  auto list = gen_list();
+  std::vector<int> visited_indices{};
+  list.access_trigger(
+      [&visited_indices](test_button_list::element_t &&element) {
+        visited_indices.emplace_back(element.index);
+      },
+      access_each_element);
+  EXPECT_THAT(visited_indices, ElementsAre(0, 1, 2));
 }
 
 TEST(Widget, RadioButtonListRender) // NOLINT
@@ -920,6 +973,26 @@ TEST(Widget, QueryAndEvents3Layer) // NOLINT
   EXPECT_FALSE(triggers[1].last_click);
   ASSERT_TRUE(triggers[2].last_click);
   EXPECT_THAT(*triggers[2].last_click, Eq(default_point_coordinate(7, 8)));
+}
+
+struct dummy_accessable {
+  default_point_rect last_a{};
+  constexpr auto accessor(point_rect auto const &a) {
+    last_a = a;
+    return [this](auto &&f) { f(*this); };
+  }
+};
+
+TEST(Widget, AccessAnAccessor) // NOLINT
+{
+  auto constexpr full_area = default_point_rect{{{1, 2}, {3, 4}}};
+  auto w = widget_builder().event(dummy_accessable{}).area(full_area).build();
+  bool dummy_called{};
+  w.access_trigger([&dummy_called, full_area](dummy_accessable &a) {
+    dummy_called = true;
+    expect_box_equal(a.last_a, full_area);
+  });
+  EXPECT_TRUE(dummy_called);
 }
 
 } // namespace cgui::tests

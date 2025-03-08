@@ -1,3 +1,4 @@
+
 #ifndef COMPONENT_GUI_CGUI_HPP
 #define COMPONENT_GUI_CGUI_HPP
 
@@ -14,6 +15,7 @@
 #include <cgui/std-backport/array.hpp>
 #include <cgui/std-backport/ranges.hpp>
 #include <cgui/stl_extend.hpp>
+#include <cgui/tag_types.hpp>
 #include <cgui/ui_events.hpp>
 #include <cgui/widget_algorithm.hpp>
 
@@ -579,6 +581,13 @@ public:
   }
 };
 
+template <typename T, typename F = decltype([](auto &&) {})>
+concept accessor = std::invocable<T, F>;
+template <typename T, typename... Args>
+concept has_accessor = requires(T &&t, Args &&...args) {
+  { t.accessor(std::forward<Args>(args)...) } -> accessor;
+};
+
 template <pixel_or_point_rect_basic TArea, typename TDisplay, typename TState,
           typename TEventHandler, typename TSubs, typename TOnResize>
 class widget
@@ -731,10 +740,12 @@ public:
   {
     return std::get<0>(subcomponents());
   }
-  constexpr TEventHandler &event_component()
-    requires(!std::is_empty_v<TEventHandler>)
+  constexpr void access_trigger(auto &&f, auto &&...args)
+    requires(has_accessor<decltype(event_handler(*this)), TArea const &,
+                          decltype(args)...>)
   {
-    return event_handler(*this);
+    event_handler(*this).accessor(std::as_const(area()),
+                                  std::forward<decltype(args)>(args)...)(f);
   }
 
   constexpr void set_on_destruct(auto &&f) {
@@ -2112,6 +2123,14 @@ public:
   constexpr point_rect decltype(auto) intrinsic_min_size() const {
     return call::intrinsic_min_size(this->get_first());
   }
+
+  constexpr auto accessor(point_rect auto const &r, access_each_element_t tag)
+    requires(requires() {
+      { elements().accessor(r, tag) } -> cgui::accessor;
+    })
+  {
+    return elements().accessor(r, tag);
+  }
 };
 
 class subs_group {
@@ -2173,9 +2192,6 @@ template <renderer TRender = dummy_renderer> struct sub_widget_constraint {
   template <sub_widget<TRender> T>
   constexpr void operator()(T &&) const noexcept {}
 };
-
-template <typename T, typename F = decltype([](auto &&) {})>
-concept accessor = std::invocable<T, F>;
 
 template <typename ToAccess, point_rect A,
           typename // std::invocable<ToAccess&>

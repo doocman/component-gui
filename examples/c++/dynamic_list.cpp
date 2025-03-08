@@ -83,8 +83,9 @@ int main(int argc, char **argv) {
                          .build())
             .build(full_area);
     auto &[list, end_button] = gui.widgets();
-    list.event_component().accessor(list.area())([&](auto &&viewed) {
-      viewed.event_component().mutate_elements([argc, argv, &end_button,
+#if 0
+    list.access_trigger([&](auto &&viewed) {
+      viewed.access_trigger([argc, argv, &end_button,
 
                                                 &rerender_all](auto &elements) {
         auto prototype = elements.display_prototype();
@@ -121,8 +122,9 @@ int main(int argc, char **argv) {
         for (int i = 0; i < argc; ++i) {
           display_creator(argv[i]);
         }
-      });
+      }, access_each_element);
     });
+#endif
     {
       auto &[etxt] = end_button.displays();
       etxt.text_colour({255, 255, 255, 255});
