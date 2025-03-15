@@ -750,6 +750,7 @@ public:
     requires(std::constructible_from<T, T2, Ts...>)
   constexpr explicit(sizeof...(Ts) == 0) pixelpoint_unit(T2 &&v, Ts &&...args)
       : value_(std::forward<T2>(v), std::forward<Ts>(args)...) {}
+
   template <typename T2>
     requires(!std::constructible_from<T, T2> && same_unit_geometry_as<T2, T>)
   constexpr explicit pixelpoint_unit(T2 &&v) : value_(conv_value(v)) {}

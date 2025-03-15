@@ -8,8 +8,35 @@
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/tuple.hpp>
 #include <cgui/std-backport/utility.hpp>
+#include <cgui/geometry.hpp>
+#include <cgui/cgui-types.hpp>
+#include <cgui/widget_algorithm.hpp>
+#include <cgui/build_utility.hpp>
 
 namespace cgui::dynamic {
+class vertical_list_layout {
+  point_unit_t<int> element_height_;
+
+public:
+  explicit constexpr vertical_list_layout(point_unit_t<int> eh) noexcept
+      : element_height_(eh) {}
+  constexpr default_point_rect
+  area_for_index(int i,
+                 default_point_size_wh const &wrapped_area) const noexcept {
+    auto y_start = element_height_.value() * i;
+    return default_point_rect{{{0, y_start},
+                               {call::width(wrapped_area).value(),
+                                y_start + element_height_.value()}}};
+  }
+  constexpr std::ptrdiff_t
+  index_at(default_point_coordinate const &p,
+           default_point_size_wh const &) const noexcept {
+    auto index = static_cast<std::ptrdiff_t>(call::y_of(p).value() /
+                                             element_height_.value());
+    return index;
+  }
+};
+
 template <typename Displays, typename Functions>
 class uni_sized_widget_list_impl
     : bp::empty_structs_optimiser<Displays, Functions> {
@@ -173,10 +200,17 @@ concept is_list_function =
 template <typename... Ts> struct list_function_constraint {
   template <is_list_function<Ts...> T> constexpr void operator()(T &&) const {}
 };
-template <typename Displays, typename Functions>
+template <typename T, typename SWH =  default_point_size_wh, typename C = default_point_coordinate>
+concept is_layout = requires(T const& t, std::ptrdiff_t i, SWH const& swh, C const& c)
+{
+  { t.area_for_index(i, swh) } -> point_rect;
+  { t.index_at(c, swh)} -> std::convertible_to<std::ptrdiff_t>;
+};
+
+template <typename Displays, typename Functions, typename Layout>
 class uni_sized_widget_list_builder_impl
-    : bp::empty_structs_optimiser<Displays, Functions> {
-  using _base_t = bp::empty_structs_optimiser<Displays, Functions>;
+    : bp::empty_structs_optimiser<Displays, Functions, Layout> {
+  using _base_t = bp::empty_structs_optimiser<Displays, Functions, Layout>;
 
   constexpr _base_t &&moved_base() noexcept {
     return static_cast<_base_t &&>(*this);
@@ -192,23 +226,29 @@ public:
         (std::invocable<widget_list_builder_constraint<>, T2s> && ...));
     using res_g =
         build::args_to_group_t<widget_list_builder_constraint<State>, T2s...>;
-    using res_t = uni_sized_widget_list_builder_impl<res_g, Functions>;
+    using res_t = uni_sized_widget_list_builder_impl<res_g, Functions, Layout>;
     return res_t(build::args_to_group(widget_list_builder_constraint{},
                                       std::forward<T2s>(ds)...));
   }
+  template <is_layout L>
+  constexpr auto layout(L&& l) && {
+    using res_t = uni_sized_widget_list_builder_impl<Displays, Functions, std::remove_cvref_t<L>>;
+    return res_t(get<0>(moved_base()), get<1>(moved_base()), std::forward<L>(l));
+  }
 
-  template <typename State, State... states, typename... Triggers,
-            typename Marker = widget_state_marker<State, states...>,
-            typename ResT = uni_sized_widget_list_impl<
-                build::build_group_t<widget_list_constraint<Marker>, Displays,
-                                     all_states_in_marker_t<Marker>>,
-                build::build_group_t<list_function_constraint<Triggers...>,
-                                     Functions, triggers<Triggers...>>>>
-  constexpr ResT build(widget_states<State, states...>,
+  template <typename State, State... states, typename... Triggers>
+  requires(is_layout<Layout>)
+  constexpr auto build(widget_states<State, states...>,
                        triggers<Triggers...> trigs) {
-    return ResT(build::build_group(widget_list_constraint{},
+    using marker_t = widget_state_marker<State, states...>;
+    using res_t = uni_sized_widget_list_impl<
+                build::build_group_t<widget_list_constraint<marker_t>, Displays,
+                                     all_states_in_marker_t<marker_t>>,
+                build::build_group_t<list_function_constraint<Triggers...>,
+                                     Functions, triggers<Triggers...>>>;
+    return res_t(build::build_group(widget_list_constraint{},
                                    get<0>(moved_base()),
-                                   all_states_in_marker_t<Marker>{}),
+                                   all_states_in_marker_t<marker_t>{}),
                 build::build_group(list_function_constraint<Triggers...>{},
                                    get<1>(moved_base()), trigs));
   }
@@ -244,7 +284,7 @@ struct std_function_list_builder {
 };
 
 constexpr uni_sized_widget_list_builder_impl<std::tuple<>,
-                                             std_function_list_builder>
+                                             std_function_list_builder, std::tuple<>>
 uni_sized_widget_list_builder() {
   return {};
 }

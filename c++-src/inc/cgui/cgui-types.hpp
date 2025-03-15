@@ -712,6 +712,155 @@ constexpr default_colour_t &&to_default_colour(default_colour_t &&c) {
   return std::move(c);
 }
 
+template <typename TX, typename TY> class nudger {
+  TX x_;
+  TY y_;
+
+public:
+  constexpr nudger(TX x, TY y) : x_(x), y_(y) {}
+
+  constexpr pixel_coord auto operator()(auto &&in) const
+    requires(requires() {
+      nudge_down(in, y_);
+      nudge_right(in, x_);
+    })
+  {
+    return nudge_down(nudge_right(in, x_), y_);
+  }
+};
+
+template <bounding_box TB = default_rect> class recursive_area_navigator {
+  TB relative_area_;
+  using x_t = decltype(remove_unit_ref(call::l_x(relative_area_)));
+  using y_t = decltype(remove_unit_ref(call::t_y(relative_area_)));
+  x_t offset_x_{};
+  y_t offset_y_{};
+
+  template <bounding_box A2> friend class recursive_area_navigator;
+
+  constexpr recursive_area_navigator(TB const &b, x_t ox, y_t oy)
+      : relative_area_(b), offset_x_(ox), offset_y_(oy) {}
+
+public:
+  constexpr explicit recursive_area_navigator(TB const &b)
+      : relative_area_(b) {}
+  template <same_unit_geometry_as<TB> TB2 = TB>
+  constexpr recursive_area_navigator sub(TB2 const &b) const {
+    auto intersection = box_intersection<TB>(b, relative_area_);
+    if (valid_box(intersection)) {
+      return {nudge_up(nudge_left(intersection, call::l_x(b)), call::t_y(b)),
+              offset_x_ + call::l_x(b), offset_y_ + call::t_y(b)};
+    } else {
+      auto x = call::l_x(relative_area_);
+      auto y = call::t_y(relative_area_);
+      return {box_from_xyxy<TB>(x, y, x, y), offset_x_, offset_y_};
+    }
+  }
+  constexpr TB relative_area() const { return relative_area_; }
+  template <same_unit_geometry_as<TB> TB2 = TB, pixel_coord C>
+    requires(same_unit_as<C, TB>)
+  constexpr TB2 relative_area(TB2 b, C const &rel_point) const {
+    return box_from_xywh<TB2>(call::l_x(b) + offset_x_ - call::x_of(rel_point),
+                              call::t_y(b) + offset_y_ - call::y_of(rel_point),
+                              call::width(b), call::height(b));
+  }
+
+  template <same_unit_geometry_as<TB> TB2 = TB>
+  constexpr TB2 move_to_absolute(TB2 const &b) const {
+    return box_from_xywh<TB2>(call::l_x(b) + offset_x_,
+                              call::t_y(b) + offset_y_, call::width(b),
+                              call::height(b));
+  }
+  constexpr TB absolute_area() const {
+    return move_to_absolute(relative_area_);
+  }
+
+  constexpr default_coordinate offset() const
+    requires(!size_tagged<TB>)
+  {
+    return {offset_x_, offset_y_};
+  }
+  template <typename TB2 = TB, typename SizeTag = tag_t_of<TB2>,
+            typename ResultT = pixelpoint_unit<SizeTag, default_coordinate>>
+    requires(size_tagged<TB>)
+  constexpr ResultT offset() const {
+    return ResultT(offset_x_, offset_y_);
+  }
+
+  constexpr nudger<x_t, y_t> relative_to_absolute_nudger() const noexcept {
+    return {offset_x_, offset_y_};
+  }
+  template <same_unit_geometry_as<TB> A2>
+  constexpr explicit operator recursive_area_navigator<A2>() const {
+    return {copy_box<A2>(relative_area_), offset_x_, offset_y_};
+  }
+
+  template <pixel_coord V>
+    requires(same_unit_as<V, TB>)
+  constexpr recursive_area_navigator translate(V const &v) const {
+    return {
+        nudge_down(nudge_right(relative_area_, call::x_of(v)), call::y_of(v)),
+        offset_x_ - call::x_of(v), offset_y_ - call::y_of(v)};
+  }
+};
+
+template <point_rect TArea = point_unit_t<default_rect>>
+class basic_widget_back_propagater {
+  recursive_area_navigator<TArea> full_area_;
+  TArea to_rerender_{};
+
+  template <point_rect A2> friend class basic_widget_back_propagater;
+
+  explicit(false) constexpr basic_widget_back_propagater(
+      recursive_area_navigator<TArea> nav, TArea const &to_re = {})
+      : full_area_(nav), to_rerender_(to_re) {}
+
+public:
+  explicit constexpr basic_widget_back_propagater(TArea full_area)
+      : full_area_(full_area) {}
+
+  constexpr void rerender() { to_rerender_ = full_area_.relative_area(); }
+  constexpr void rerender(point_rect auto part_area) {
+    if (!empty_box(to_rerender_)) {
+      part_area = box_union(part_area, to_rerender_);
+    }
+    to_rerender_ = box_intersection(part_area, full_area_.relative_area());
+  }
+  constexpr TArea result_area() const {
+    return full_area_.move_to_absolute(to_rerender_);
+  }
+  constexpr TArea relative_position(point_coordinate auto const &p) const {
+    return full_area_.relative_area(to_rerender_, p);
+  }
+  constexpr bool empty_result() const { return empty_box(to_rerender_); }
+
+  template <bounding_box TA2 = TArea>
+  constexpr basic_widget_back_propagater sub(TA2 rel_area) const {
+    return {full_area_.sub(rel_area)};
+  }
+
+  template <bounding_box TA2 = TArea>
+  constexpr void merge_sub(basic_widget_back_propagater<TA2> const &s) {
+    if (!s.empty_result()) {
+      auto sub_area = s.relative_position(full_area_.offset());
+      rerender(sub_area);
+    }
+  }
+
+  template <typename A2>
+  constexpr explicit operator basic_widget_back_propagater<A2>() const {
+    return {static_cast<recursive_area_navigator<A2>>(full_area_),
+            copy_box<A2>(to_rerender_)};
+  }
+
+  template <point_rect TA2 = TArea>
+  constexpr point_rect auto move_to_absolute(TA2 const &rel_area) const {
+    return full_area_.move_to_absolute(rel_area);
+  }
+
+  constexpr auto offset() const { return full_area_.offset(); }
+};
+
 } // namespace cgui
 
 #endif // COMPONENT_GUI_CGUI_TYPES_HPP
