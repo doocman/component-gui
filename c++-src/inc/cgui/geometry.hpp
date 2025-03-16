@@ -1062,6 +1062,12 @@ using default_point_coordinate = point_unit_t<basic_coordinate<float>>;
 using default_pixel_size_wh = pixel_unit_t<default_size_wh>;
 using default_point_size_wh = point_unit_t<default_size_wh>;
 
+/// @brief Concept for readable position declared in point units.
+template <typename T>
+concept has_point_position = requires(bp::as_forward<T> t) {
+  { call::position(*t) } -> point_coordinate;
+};
+
 /// Generates a lazy view of all (integer) pointer between left and right x of
 /// b.
 constexpr auto x_view(bounding_box auto &&b) {

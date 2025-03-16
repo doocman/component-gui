@@ -1,11 +1,11 @@
 
-#include <cgui/dynamic.hpp>
+#include <cgui/list_layouts.hpp>
 
 #include <gmock/gmock.h>
 
 #include <cgui/cgui.hpp>
 
-namespace cgui::dynamic::tests {
+namespace cgui::tests {
 enum class my_button_states { on, off };
 struct trigger_on {};
 struct trigger_off {};
