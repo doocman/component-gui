@@ -194,8 +194,7 @@ TEST_F(UniformListWidget,
        SendPositionedDummyEventCalledWithCorrectAreaForSecondElement) {
   default_point_rect called_area{};
   auto l = default_builder().build();
-  l.add_item(dummy_element_t(
-      [&](default_point_rect const &) { }));
+  l.add_item(dummy_element_t([&](default_point_rect const &) {}));
   l.add_item(dummy_element_t(
       [&called_area](default_point_rect const &r) { called_area = r; }));
   l.handle(positioned_dummy_event{default_point_coordinate{{0, 1}}},

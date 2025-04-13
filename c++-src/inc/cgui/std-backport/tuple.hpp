@@ -138,23 +138,20 @@ struct empty_structs_optimiser_impl<tIndex, T, Ts...>
     return _this_t::get(*this, tag);
   }
 
-  // double parenthesis due to clang-format bug.
-  constexpr decltype(auto) get_first() &&
-      requires((tIndex == 0)) {
-        return _this_t::get(std::move(*this), index_constant<tIndex>{});
-      } constexpr decltype(auto) get_first() const &&
-        requires((tIndex == 0))
-  {
+  // clang-format off
+  constexpr decltype(auto) get_first() && requires(tIndex == 0) {
     return _this_t::get(std::move(*this), index_constant<tIndex>{});
   }
-  constexpr decltype(auto) get_first() &
-      requires((tIndex == 0)) {
-        return _this_t::get(*this, index_constant<tIndex>{});
-      } constexpr decltype(auto) get_first() const &
-        requires((tIndex == 0))
-  {
+  constexpr decltype(auto) get_first() const && requires(tIndex == 0) {
+    return _this_t::get(std::move(*this), index_constant<tIndex>{});
+  }
+  constexpr decltype(auto) get_first() & requires((tIndex == 0)) {
     return _this_t::get(*this, index_constant<tIndex>{});
   }
+  constexpr decltype(auto) get_first() const &  requires((tIndex == 0)) {
+    return _this_t::get(*this, index_constant<tIndex>{});
+  }
+  // clang-format on
 };
 
 template <std::size_t tI, typename T>

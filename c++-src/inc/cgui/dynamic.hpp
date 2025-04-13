@@ -5,13 +5,14 @@
 #include <ranges>
 #include <tuple>
 
+#include <cgui/build_utility.hpp>
+#include <cgui/cgui-types.hpp>
+#include <cgui/geometry.hpp>
+#include <cgui/list_layouts.hpp>
 #include <cgui/std-backport/concepts.hpp>
 #include <cgui/std-backport/tuple.hpp>
 #include <cgui/std-backport/utility.hpp>
-#include <cgui/geometry.hpp>
-#include <cgui/cgui-types.hpp>
 #include <cgui/widget_algorithm.hpp>
-#include <cgui/build_utility.hpp>
 
 namespace cgui::dynamic {
 
@@ -202,27 +203,28 @@ public:
     return res_t(build::args_to_group(widget_list_builder_constraint{},
                                       std::forward<T2s>(ds)...));
   }
-  template <is_layout L>
-  constexpr auto layout(L&& l) && {
-    using res_t = uni_sized_widget_list_builder_impl<Displays, Functions, std::remove_cvref_t<L>>;
-    return res_t(get<0>(moved_base()), get<1>(moved_base()), std::forward<L>(l));
+  template <is_layout L> constexpr auto layout(L &&l) && {
+    using res_t = uni_sized_widget_list_builder_impl<Displays, Functions,
+                                                     std::remove_cvref_t<L>>;
+    return res_t(get<0>(moved_base()), get<1>(moved_base()),
+                 std::forward<L>(l));
   }
 
   template <typename State, State... states, typename... Triggers>
-  requires(is_layout<Layout>)
+    requires(is_layout<Layout>)
   constexpr auto build(widget_states<State, states...>,
                        triggers<Triggers...> trigs) {
     using marker_t = widget_state_marker<State, states...>;
     using res_t = uni_sized_widget_list_impl<
-                build::build_group_t<widget_list_constraint<marker_t>, Displays,
-                                     all_states_in_marker_t<marker_t>>,
-                build::build_group_t<list_function_constraint<Triggers...>,
-                                     Functions, triggers<Triggers...>>>;
+        build::build_group_t<widget_list_constraint<marker_t>, Displays,
+                             all_states_in_marker_t<marker_t>>,
+        build::build_group_t<list_function_constraint<Triggers...>, Functions,
+                             triggers<Triggers...>>>;
     return res_t(build::build_group(widget_list_constraint{},
-                                   get<0>(moved_base()),
-                                   all_states_in_marker_t<marker_t>{}),
-                build::build_group(list_function_constraint<Triggers...>{},
-                                   get<1>(moved_base()), trigs));
+                                    get<0>(moved_base()),
+                                    all_states_in_marker_t<marker_t>{}),
+                 build::build_group(list_function_constraint<Triggers...>{},
+                                    get<1>(moved_base()), trigs));
   }
 };
 
@@ -255,8 +257,8 @@ struct std_function_list_builder {
   }
 };
 
-constexpr uni_sized_widget_list_builder_impl<std::tuple<>,
-                                             std_function_list_builder, std::tuple<>>
+constexpr uni_sized_widget_list_builder_impl<
+    std::tuple<>, std_function_list_builder, std::tuple<>>
 uni_sized_widget_list_builder() {
   return {};
 }

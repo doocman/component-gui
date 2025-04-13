@@ -1706,16 +1706,13 @@ using state_marker_t = make_widget_state_marker_sequence_t<
 using all_states_t = all_states_in_marker_t<state_marker_t>;
 using all_triggers_t = triggers<trigger_on, trigger_off>;
 
-template <typename T,
-          typename BP =
-              basic_widget_back_propagater<>>
+template <typename T, typename BP = basic_widget_back_propagater<>>
 concept can_trigger =
     has_handle<T, trigger_on, BP &&> && has_handle<T, trigger_off, BP &&>;
 
 template <typename T, typename TRender = dummy_renderer,
           typename Position = default_coordinate,
-          typename BP =
-              basic_widget_back_propagater<>>
+          typename BP = basic_widget_back_propagater<>>
 concept element =
     has_render<
         T, TRender,
@@ -1775,12 +1772,21 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   element_id_t hovered_element_ = highest_possible;
   bool mouse_down_{};
 
-  static constexpr decltype(auto) elements(auto &&self) noexcept {
-    using t = bp::copy_cvref_t<base_t, decltype(self)>;
-    return get<0>(static_cast<t>(self));
+  //  static constexpr decltype(auto) elements(auto &&self) noexcept {
+  //    using t = bp::copy_cvref_t<base_t, decltype(self)>;
+  //    return get<0>(static_cast<t&&>(self));
+  //  }
+  constexpr decltype(auto) elements() noexcept {
+    // return elements(*this);
+    // return base_t::template get<0>();//get<0>(static_cast<base_t&>(*this));
+    // return base_t::get_first();
+    return this->get_first();
   }
-  constexpr decltype(auto) elements() noexcept { return elements(*this); }
-  constexpr decltype(auto) elements() const noexcept { return elements(*this); }
+  constexpr decltype(auto) elements() const noexcept {
+    // return elements(*this);
+    // return base_t::template get<0>();
+    return this->get_first();
+  }
 
   constexpr void reset_active(widget_back_propagater auto &&back_prop,
                               bool is_hovered) {
@@ -1797,17 +1803,17 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   template <widget_back_propagater BP>
   constexpr void reset_hovered(BP &&back_prop) {
     if (hovered_element_ != static_cast<element_id_t>(highest_possible)) {
-      call::find_sub_id(
-          elements(), hovered_element_,
-          [this, &back_prop]<typename S>(S &&s, element_id_t const &i) {
-            using enum radio_button::element_state;
-            if constexpr (has_set_state<S, state_marker_t, BP>) {
-              call::set_state(s,
-                              state_marker_t(combine_toggled_hover_states(
-                                  i == current_element_, false, false)),
-                              std::forward<BP>(back_prop));
-            }
-          });
+      //      call::find_sub_id(
+      //          elements(), hovered_element_,
+      //          [this, &back_prop]<typename S>(S &&s, element_id_t const &i) {
+      //            using enum radio_button::element_state;
+      //            if constexpr (has_set_state<S, state_marker_t, BP>) {
+      //              call::set_state(s,
+      //                              state_marker_t(combine_toggled_hover_states(
+      //                                  i == current_element_, false, false)),
+      //                              std::forward<BP>(back_prop));
+      //            }
+      //          });
     }
   }
 
@@ -1908,20 +1914,22 @@ public:
                                           interpreted_events::pointer_hover,
                                           interpreted_events::pointer_hold,
                                           interpreted_events::primary_click>) {
-      if (!call::find_sub_at_location(elements(), call::position(evt),
-                                      [this, &back_prop, &evt]<typename Sub>(
-                                          Sub &&s, element_id_t index) {
-                                        this->intr_event_switch(back_prop, s,
-                                                                index)(
-                                            std::forward<Evt>(evt));
-                                      })) {
-        reset_hovered(back_prop);
-        hovered_element_ = highest_possible;
-        event_case<interpreted_events::pointer_hover>(
-            [this](auto &&...) { mouse_down_ = false; })(evt);
-        event_case<interpreted_events::pointer_hold>(
-            [this](auto &&...) { mouse_down_ = true; })(evt);
-      }
+      //      if (!call::find_sub_at_location(elements(), call::position(evt),
+      //                                      [this, &back_prop, &evt]<typename
+      //                                      Sub>(
+      //                                          Sub &&s, element_id_t index) {
+      //                                        this->intr_event_switch(back_prop,
+      //                                        s,
+      //                                                                index)(
+      //                                            std::forward<Evt>(evt));
+      //                                      })) {
+      //        reset_hovered(back_prop);
+      //        hovered_element_ = highest_possible;
+      //        event_case<interpreted_events::pointer_hover>(
+      //            [this](auto &&...) { mouse_down_ = false; })(evt);
+      //        event_case<interpreted_events::pointer_hold>(
+      //            [this](auto &&...) { mouse_down_ = true; })(evt);
+      //      }
     }
   }
 
@@ -1931,7 +1939,7 @@ public:
           return radio_button::state_marker_t(combine_toggled_hover_states(
               i == current_element_, i == hovered_element_, mouse_down_));
         });
-    call::render(elements(), std::forward<decltype(r)>(r), bargs);
+    // call::render(elements(), std::forward<decltype(r)>(r), bargs);
   }
   /// @brief Gets mutable access to elements object.
   ///

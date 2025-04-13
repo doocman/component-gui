@@ -26,7 +26,7 @@ def main():
 
     clang_format_path = args.clang_format
 
-    call_clang_format.run_clang_format(clang_format_path, directories, file_path, 18)
+    call_clang_format.run_clang_format(clang_format_path, directories, file_path, 19)
 
 
 if __name__ == "__main__":

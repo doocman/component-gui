@@ -64,4 +64,4 @@ TEST_F(VerticalListLayout, IndexAtLocTenAndElementHeightIsOne) // NOLINT
               Eq(1));
 }
 
-} // namespace cgui::dynamic::tests
+} // namespace cgui::tests

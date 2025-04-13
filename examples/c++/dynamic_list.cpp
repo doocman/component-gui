@@ -61,6 +61,7 @@ int main(int argc, char **argv) {
     bool rerender_all{};
     // TODO: Fix render-beyond-borders bug for button list.
 
+#if 0
     auto gui =
         cgui::gui_context_builder()
             .on_resize([](auto &&sz, auto &&ws) {
@@ -83,7 +84,6 @@ int main(int argc, char **argv) {
                          .build())
             .build(full_area);
     auto &[list, end_button] = gui.widgets();
-#if 0
     list.access_trigger([&](auto &&viewed) {
       viewed.access_trigger([argc, argv, &end_button,
 
@@ -124,7 +124,6 @@ int main(int argc, char **argv) {
         }
       }, access_each_element);
     });
-#endif
     {
       auto &[etxt] = end_button.displays();
       etxt.text_colour({255, 255, 255, 255});
@@ -164,6 +163,7 @@ int main(int argc, char **argv) {
       std::this_thread::sleep_until(next_run);
       next_run += run_interval;
     }
+#endif
 
     return EXIT_SUCCESS;
 

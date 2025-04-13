@@ -8,7 +8,10 @@ else ()
 endif ()
 
 message(STATUS "CGUI: download google fonts for examples")
-file(DOWNLOAD "https://github.com/google/fonts/raw/main/apache/robotoslab/RobotoSlab%5Bwght%5D.ttf" "${CMAKE_CURRENT_BINARY_DIR}/font.ttf")
+file(DOWNLOAD "https://github.com/google/fonts/raw/main/apache/robotoslab/RobotoSlab%5Bwght%5D.ttf" "${CMAKE_CURRENT_BINARY_DIR}/font.ttf" STATUS dl_status)
+if (NOT "${dl_status}" MATCHES " *0\;.*")
+    message(FATAL_ERROR "Failed to download font: ${dl_status}")
+endif ()
 cgui_embedd_binary("${CMAKE_CURRENT_BINARY_DIR}/font.ttf" cgui_example_font)
 target_link_libraries(cgui_embedded_cgui_example_font INTERFACE
         freetype::freetype
