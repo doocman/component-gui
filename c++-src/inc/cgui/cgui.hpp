@@ -1776,13 +1776,13 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   //    using t = bp::copy_cvref_t<base_t, decltype(self)>;
   //    return get<0>(static_cast<t&&>(self));
   //  }
-  constexpr decltype(auto) elements() noexcept {
+  constexpr bp::tuple_ref_t<0, base_t&> elements() noexcept {
     // return elements(*this);
     // return base_t::template get<0>();//get<0>(static_cast<base_t&>(*this));
     // return base_t::get_first();
     return this->get_first();
   }
-  constexpr decltype(auto) elements() const noexcept {
+  constexpr bp::tuple_ref_t<0, base_t const&> elements() const noexcept {
     // return elements(*this);
     // return base_t::template get<0>();
     return this->get_first();

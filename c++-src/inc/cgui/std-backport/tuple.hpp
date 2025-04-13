@@ -160,6 +160,8 @@ constexpr decltype(auto) get(T &&t) {
   return std::remove_cvref_t<T>::get(std::forward<T>(t), index_constant<tI>{});
 }
 } // namespace impl
+template <std::size_t tI, typename T>
+using tuple_ref_t = decltype(get<tI>(std::declval<T>()));
 } // namespace cgui::bp
 namespace std {
 template <std::size_t tI, typename... Ts>
