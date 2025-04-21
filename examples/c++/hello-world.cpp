@@ -3,84 +3,84 @@
 #include <iostream>
 #include <thread>
 
-#include <cgui/cgui.hpp>
-#include <cgui/embedded/cgui_example_font.hpp>
-#include <cgui/ft_fonts.hpp>
-#include <cgui/sdl.hpp>
+#include <asp/asp.hpp>
+#include <asp/embedded/asp_example_font.hpp>
+#include <asp/ft_fonts.hpp>
+#include <asp/sdl.hpp>
 
 int main(int, char **) {
   try {
-    auto sdl_context = build(cgui::sdl_context()).value();
+    auto sdl_context = build(asp::sdl_context()).value();
     auto video_subsystem = video(sdl_context).value();
     auto main_window =
         build(window(video_subsystem, "Window Title - Hello World", 1024,
-                     768)(cgui::sdl_window_resizable))
+                     768)(asp::sdl_window_resizable))
             .value();
 
     auto full_area = main_window.local_area();
 
-    auto text_library = cgui::ft_font_library::init().value();
+    auto text_library = asp::ft_font_library::init().value();
     auto dpi_info =
-        main_window.dpi().value_or(cgui::sdl_display_dpi{72.f, 72.f, 72.f});
-    auto text_font = cgui::ft_font_face::init(
-                         text_library, cgui::embedded::cgui_example_font(),
+        main_window.dpi().value_or(asp::sdl_display_dpi{72.f, 72.f, 72.f});
+    auto text_font = asp::ft_font_face::init(
+                         text_library, asp::embedded::asp_example_font(),
                          static_cast<FT_UInt>(dpi_info.vert),
                          static_cast<FT_UInt>(dpi_info.hori))
                          .value();
-    auto cached_font = cgui::cached_font(std::move(text_font));
+    auto cached_font = asp::cached_font(std::move(text_font));
 
     bool do_exit{};
     auto renderer = main_window.renderer().value();
 
     auto gui =
-        cgui::gui_context_builder()
-            .widgets(cgui::widget_builder().display(
-                         cgui::text_renderer(std::ref(cached_font))),
-                     cgui::widget_builder()
-                         .display(cgui::display_per_state(cgui::fill_rect()),
-                                  cgui::text_renderer(std::ref(cached_font)))
-                         .event(cgui::buttonlike_trigger(
-                             cgui::momentary_button{}
+        asp::gui_context_builder()
+            .widgets(asp::widget_builder().display(
+                         asp::text_renderer(std::ref(cached_font))),
+                     asp::widget_builder()
+                         .display(asp::display_per_state(asp::fill_rect()),
+                                  asp::text_renderer(std::ref(cached_font)))
+                         .event(asp::buttonlike_trigger(
+                             asp::momentary_button{}
                                  .click([&do_exit] { do_exit = true; })
                                  .build())),
-                     cgui::widget_builder()
-                         .display(cgui::fill_rect(),
-                                  cgui::display_per_state(cgui::text_renderer(
+                     asp::widget_builder()
+                         .display(asp::fill_rect(),
+                                  asp::display_per_state(asp::text_renderer(
                                       std::ref(cached_font))))
-                         .event(cgui::buttonlike_trigger(
-                             cgui::toggle_button_state().build())),
-                     cgui::widget_builder().display(
-                         cgui::text_renderer(std::ref(cached_font))) //
+                         .event(asp::buttonlike_trigger(
+                             asp::toggle_button_state().build())),
+                     asp::widget_builder().display(
+                         asp::text_renderer(std::ref(cached_font))) //
                      )
-            .on_resize([](cgui::size_wh auto const &sz, auto &&widgets) {
-              using namespace cgui;
+            .on_resize([](asp::size_wh auto const &sz, auto &&widgets) {
+              using namespace asp;
               auto &[hello_world_header, quit_button, random_toggle,
                      lorum_ipsum] = widgets;
-              auto full_area = cgui::box_from_xywh<default_point_rect>(
+              auto full_area = asp::box_from_xywh<default_point_rect>(
                   0, 0, call::width(sz), call::height(sz));
               hello_world_header.area(trim_from_above(
                   &full_area,
-                  std::min(cgui::call::height(full_area), point_unit(64))));
+                  std::min(asp::call::height(full_area), point_unit(64))));
               std::get<0>(hello_world_header.displays())
                   .set_text("Hello World!")
                   .text_colour({255, 255, 255, 255});
-              auto button_bar_area = cgui::trim_from_below(
+              auto button_bar_area = asp::trim_from_below(
                   &full_area,
-                  std::min(cgui::call::height(full_area), point_unit(128)));
+                  std::min(asp::call::height(full_area), point_unit(128)));
               {
                 auto &background = std::get<0>(quit_button.displays());
-                using enum cgui::momentary_button_states;
+                using enum asp::momentary_button_states;
                 get<off>(background).colour() = {40, 40, 40, 255};
                 get<hover>(background).colour() = {190, 190, 190, 255};
                 get<hold>(background).colour() = {63, 63, 63, 255};
               }
-              quit_button.area(cgui::trim_from_left(
-                  &button_bar_area, cgui::call::width(button_bar_area) / 2));
+              quit_button.area(asp::trim_from_left(
+                  &button_bar_area, asp::call::width(button_bar_area) / 2));
               random_toggle.area(button_bar_area);
               std::get<0>(random_toggle.displays()).colour() = {127, 0, 0, 255};
               {
                 auto &texts = std::get<1>(random_toggle.displays());
-                using enum cgui::toggle_button_states;
+                using enum asp::toggle_button_states;
                 get<relaxed_off>(texts).set_text("I'm a happy off'ed button");
                 get<hover_off>(texts).set_text("Don't you dare to click me!");
                 get<hold_off>(texts).set_text("You are clicking...");
@@ -121,22 +121,22 @@ int main(int, char **) {
 
     auto next_run = steady_clock::now() + run_interval;
     while (!do_exit) {
-      cgui::point_unit_t<SDL_Rect> to_rerender{};
-      while (cgui::poll_event(sdl_context, [&]<typename T>(T e) {
-               if constexpr (std::is_same_v<T, cgui::sdl_quit_event>) {
+      asp::point_unit_t<SDL_Rect> to_rerender{};
+      while (asp::poll_event(sdl_context, [&]<typename T>(T e) {
+               if constexpr (std::is_same_v<T, asp::sdl_quit_event>) {
                  do_exit = true;
-               } else if constexpr (cgui::has_handle<decltype(gui), T>) {
+               } else if constexpr (asp::has_handle<decltype(gui), T>) {
                  auto new_rerender = gui.handle(std::move(e));
-                 to_rerender = cgui::box_add(to_rerender, new_rerender);
+                 to_rerender = asp::box_add(to_rerender, new_rerender);
                }
-               cgui::unused(e);
+               asp::unused(e);
              }) != 0) {
       }
-      if (!cgui::empty_box(to_rerender)) {
+      if (!asp::empty_box(to_rerender)) {
         // This is not done automatically by the gui context as it could be used
         // to overlay a gui on top of other graphics (like a menu in a game).
         renderer.clear();
-        if (cgui::box_includes_box(to_rerender, main_window.area())) {
+        if (asp::box_includes_box(to_rerender, main_window.area())) {
           // This weird little thing is currently needed. It may be an error in
           // SDL3. A closer inspection is warranted. Follow issue at:
           // https://github.com/libsdl-org/SDL/issues/11401

@@ -1,7 +1,7 @@
 
-#include <cgui/embedded/@NAME@.hpp>
+#include <asp/embedded/@NAME@.hpp>
 
-namespace cgui::embedded {
+namespace asp::embedded {
 constexpr unsigned char @NAME@_data_[] = {
   @data_cpp@
 };

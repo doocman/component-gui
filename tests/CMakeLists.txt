@@ -1,43 +1,44 @@
 
-set(CGUI_TESTS_USE_PCH OFF CACHE BOOL "Set to true to enable precompiled headers for tests")
+set(ASP_TESTS_USE_PCH OFF CACHE BOOL "Set to true to enable precompiled headers for tests")
 
-add_library(_cgui_test_utils cgui_test_utils.cpp)
-target_include_directories(_cgui_test_utils PUBLIC "")
-target_link_libraries(_cgui_test_utils PUBLIC GTest::gmock cgui::cgui dooc::named_parameters)
-if (CGUI_TESTS_USE_PCH)
-    target_precompile_headers(_cgui_test_utils PUBLIC cgui_test_utils.hpp)
+add_library(_asp_test_utils asp_test_utils.cpp)
+target_include_directories(_asp_test_utils PUBLIC "")
+target_link_libraries(_asp_test_utils PUBLIC GTest::gmock asp::asp dooc::named_parameters)
+if (ASP_TESTS_USE_PCH)
+    target_precompile_headers(_asp_test_utils PUBLIC asp_test_utils.hpp)
 endif ()
 
-function(cgui_add_test FILE)
+function(asp_add_test FILE)
     string(REPLACE ".cpp" "" TEST "${FILE}")
     add_executable(${TEST} ${FILE})
 
     target_link_libraries(${TEST}
             PRIVATE
             GTest::gmock_main
-            cgui::cgui
+            asp::asp
             dooc::named_parameters
     )
 
     if (WIN32 AND ${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
         target_compile_options(${TEST} PRIVATE /bigobj)
     endif ()
-    if (CGUI_TESTS_USE_PCH)
-        target_precompile_headers(${TEST} REUSE_FROM _cgui_test_utils)
+    if (ASP_TESTS_USE_PCH)
+        target_precompile_headers(${TEST} REUSE_FROM _asp_test_utils)
         target_include_directories(${TEST} PRIVATE "")
     else ()
-        target_link_libraries(${TEST} PRIVATE _cgui_test_utils)
+        target_link_libraries(${TEST} PRIVATE _asp_test_utils)
     endif ()
 
     gtest_discover_tests(${TEST} DISCOVERY_MODE PRE_TEST)
 endfunction()
 
-cgui_add_test(cgui-bp-tests.cpp)
-cgui_add_test(cgui-events-tests.cpp)
-cgui_add_test(cgui-geometry-tests.cpp)
-cgui_add_test(cgui-subable-tests.cpp)
-cgui_add_test(cgui-tests.cpp)
-cgui_add_test(cgui-textrender-tests.cpp)
-cgui_add_test(cgui-widget-tests.cpp)
-cgui_add_test(cgui-layouts-tests.cpp)
-cgui_add_test(cgui-dynamic-list-tests.cpp)
+asp_add_test(asp-bp-tests.cpp)
+asp_add_test(asp-events-tests.cpp)
+asp_add_test(asp-geometry-tests.cpp)
+asp_add_test(asp-subable-tests.cpp)
+asp_add_test(asp-tests.cpp)
+asp_add_test(asp-textrender-tests.cpp)
+asp_add_test(asp-widget-tests.cpp)
+asp_add_test(asp-layouts-tests.cpp)
+asp_add_test(asp-dynamic-list-tests.cpp)
+asp_add_test(asp-basic-widgets-tests.cpp)

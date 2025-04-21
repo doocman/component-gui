@@ -1,10 +1,10 @@
 
-#ifndef CGUI_EMBEDDED@CGUI_GUARD@HPP_IN
-#define CGUI_EMBEDDED@CGUI_GUARD@HPP_IN
+#ifndef ASP_EMBEDDED@ASP_GUARD@HPP_IN
+#define ASP_EMBEDDED@ASP_GUARD@HPP_IN
 
 #include <span>
 
-namespace cgui::embedded {
+namespace asp::embedded {
 std::span<unsigned char const> @NAME@() noexcept;
 }
 

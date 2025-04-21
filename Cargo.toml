@@ -1,14 +1,14 @@
 [package]
-name = "component-gui"
+name = "aspect-gui"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "component_gui"
-path = "rust-src/cgui.rs"
+name = "aspect_gui"
+path = "rust-src/asp.rs"
 
 [[example]]
-name = "component-gui-hello-world"
+name = "aspect-gui-hello-world"
 path = "examples/rust/hello-world.rs"
 
 [dependencies.sdl2]
