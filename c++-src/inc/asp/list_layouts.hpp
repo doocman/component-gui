@@ -4,16 +4,17 @@
 
 #include <cstddef>
 
-#include <asp/asp-call.hpp>
+#include <asp/call.hpp>
 #include <asp/geometry.hpp>
 
 namespace asp {
-template <typename T, typename SWH =  default_point_size_wh, typename C = default_point_coordinate>
-concept is_layout = requires(T const& t, std::ptrdiff_t i, SWH const& swh, C const& c)
-{
-  { t.area_for_index(i, swh) } -> point_rect;
-  { t.index_at(c, swh)} -> std::convertible_to<std::ptrdiff_t>;
-};
+template <typename T, typename SWH = default_point_size_wh,
+          typename C = default_point_coordinate>
+concept is_layout =
+    requires(T const &t, std::ptrdiff_t i, SWH const &swh, C const &c) {
+      { t.area_for_index(i, swh) } -> point_rect;
+      { t.index_at(c, swh) } -> std::convertible_to<std::ptrdiff_t>;
+    };
 
 class vertical_list_layout {
   point_unit_t<int> element_height_;
@@ -36,6 +37,6 @@ public:
   }
 };
 
-} // namespace cgui
+} // namespace asp
 
 #endif // COMPONENT_GUI_ASP_LIST_LAYOUTS_HPP

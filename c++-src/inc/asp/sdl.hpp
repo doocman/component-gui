@@ -13,9 +13,9 @@
 
 #include <SDL3/SDL.h>
 
-#include <asp/asp-types.hpp>
 #include <asp/geometry.hpp>
 #include <asp/stl_extend.hpp>
+#include <asp/types.hpp>
 
 namespace asp {
 template <typename T, typename ValT> struct sdl_rect_extend_api {
@@ -399,7 +399,7 @@ class sdl_window_builder {
 
 public:
   ASP_CONSTEXPR_STRING_F sdl_window_builder(std::string t, int w, int h,
-                                             std::uint32_t flags = {})
+                                            std::uint32_t flags = {})
       : title_(std::move(t)), w_(w), h_(h), flags_(flags) {}
 
   template <sdl_window_flag_t... tFV>
@@ -569,7 +569,7 @@ template <> struct extend_api<SDL_MouseButtonEvent> : sdl_event_extend_api {
                                        input_events::mouse_button_down>
   event_type(SDL_MouseButtonEvent const &e) {
     ASP_ASSERT(e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
-                e.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+               e.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
     return {e.type == SDL_EVENT_MOUSE_BUTTON_UP
                 ? input_events::mouse_button_up
                 : input_events::mouse_button_down};

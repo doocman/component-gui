@@ -10,14 +10,14 @@
 #include <gmock/gmock.h>
 
 namespace asp::tests {
-static_assert(std::is_rvalue_reference_v<
-              decltype(asp::bp::details::expected_member<int, bool>::exp(
-                  std::declval<
-                      asp::bp::details::expected_member<int, bool> &&>()))>);
-static_assert(std::is_rvalue_reference_v<
-              decltype(asp::bp::details::expected_member<int, bool>::err(
-                  std::declval<
-                      asp::bp::details::expected_member<int, bool> &&>()))>);
+static_assert(
+    std::is_rvalue_reference_v<
+        decltype(asp::bp::details::expected_member<int, bool>::exp(
+            std::declval<asp::bp::details::expected_member<int, bool> &&>()))>);
+static_assert(
+    std::is_rvalue_reference_v<
+        decltype(asp::bp::details::expected_member<int, bool>::err(
+            std::declval<asp::bp::details::expected_member<int, bool> &&>()))>);
 
 using namespace ::testing;
 

@@ -11,11 +11,11 @@
 
 #include <asp/auto_ref.hpp>
 #include <asp/build_utility.hpp>
-#include <asp/types.hpp>
 #include <asp/std-backport/array.hpp>
 #include <asp/std-backport/ranges.hpp>
 #include <asp/stl_extend.hpp>
 #include <asp/tag_types.hpp>
+#include <asp/types.hpp>
 #include <asp/ui_events.hpp>
 #include <asp/widget_algorithm.hpp>
 
@@ -1776,13 +1776,13 @@ class radio_button_trigger_impl : bp::empty_structs_optimiser<TElements> {
   //    using t = bp::copy_cvref_t<base_t, decltype(self)>;
   //    return get<0>(static_cast<t&&>(self));
   //  }
-  constexpr bp::tuple_ref_t<0, base_t&> elements() noexcept {
+  constexpr bp::tuple_ref_t<0, base_t &> elements() noexcept {
     // return elements(*this);
     // return base_t::template get<0>();//get<0>(static_cast<base_t&>(*this));
     // return base_t::get_first();
     return this->get_first();
   }
-  constexpr bp::tuple_ref_t<0, base_t const&> elements() const noexcept {
+  constexpr bp::tuple_ref_t<0, base_t const &> elements() const noexcept {
     // return elements(*this);
     // return base_t::template get<0>();
     return this->get_first();

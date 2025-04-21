@@ -5,8 +5,8 @@
 
 #include <gmock/gmock.h>
 
-#include <asp/asp-types.hpp>
 #include <asp/list_layouts.hpp>
+#include <asp/types.hpp>
 #include <asp_test_utils.hpp>
 
 namespace asp {

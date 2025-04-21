@@ -1,7 +1,7 @@
 #ifndef COMPONENT_GUI_ASP_WIDGET_ALGORITHM_HPP
 #define COMPONENT_GUI_ASP_WIDGET_ALGORITHM_HPP
 
-#include <asp/asp-call.hpp>
+#include <asp/call.hpp>
 #include <asp/geometry.hpp>
 
 namespace asp {

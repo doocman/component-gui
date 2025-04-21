@@ -162,7 +162,7 @@ constexpr decltype(auto) get(T &&t) {
 } // namespace impl
 template <std::size_t tI, typename T>
 using tuple_ref_t = decltype(get<tI>(std::declval<T>()));
-} // namespace cgui::bp
+} // namespace asp::bp
 namespace std {
 template <std::size_t tI, typename... Ts>
 struct tuple_size<asp::bp::impl::empty_structs_optimiser_impl<tI, Ts...>>
@@ -177,8 +177,7 @@ template <std::size_t i, std::size_t tI, typename... Ts>
 struct tuple_element<
     i, asp::bp::impl::empty_structs_optimiser_impl<tI, Ts...> const> {
   using type = decltype(get<i>(
-      declval<
-          asp::bp::impl::empty_structs_optimiser_impl<tI, Ts...> const>()));
+      declval<asp::bp::impl::empty_structs_optimiser_impl<tI, Ts...> const>()));
 };
 } // namespace std
 namespace asp::bp {

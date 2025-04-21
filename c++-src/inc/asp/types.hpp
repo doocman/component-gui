@@ -861,7 +861,6 @@ public:
   constexpr auto offset() const { return full_area_.offset(); }
 };
 
-
 template <typename ToAccess, point_rect A,
           typename // std::invocable<ToAccess&>
           Getter>
@@ -884,11 +883,12 @@ public:
   }
 };
 
-template <typename ToAccess>
-class default_accessor {
-  ToAccess* impl_;
+template <typename ToAccess> class default_accessor {
+  ToAccess *impl_;
+
 public:
-  constexpr explicit default_accessor(ToAccess& impl) : impl_(std::addressof(impl)) {}
+  constexpr explicit default_accessor(ToAccess &impl)
+      : impl_(std::addressof(impl)) {}
 
   constexpr void operator()(std::invocable<ToAccess &> auto &&mutater) const {
     mutater(*impl_);

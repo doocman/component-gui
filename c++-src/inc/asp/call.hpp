@@ -16,7 +16,7 @@
 #include <asp/std-backport/tuple.hpp>
 #include <asp/std-backport/utility.hpp>
 
-#define ASP_CALL_CONCEPT(NAME)                                                \
+#define ASP_CALL_CONCEPT(NAME)                                                 \
   [[maybe_unused]] inline void NAME() {}                                       \
   template <typename T, typename... Ts>                                        \
   concept member_##NAME =                                                      \
@@ -62,8 +62,8 @@
       return call(std::forward<T>(t), std::forward<Ts>(args)...);              \
     }                                                                          \
   };
-#define ASP_CALL_CONCEPT_GETSET(NAME)                                         \
-  ASP_CALL_CONCEPT(NAME)                                                      \
+#define ASP_CALL_CONCEPT_GETSET(NAME)                                          \
+  ASP_CALL_CONCEPT(NAME)                                                       \
   template <typename T, typename TVal>                                         \
   concept has_##NAME##_assignable = has_assignable_get<T, _do_##NAME, TVal>;   \
   struct _do_set_##NAME {                                                      \
@@ -90,7 +90,7 @@
     }                                                                          \
   };
 
-#define ASP_CALL_BBOX_MEMBER(NAME, CONCEPT, MUTCONCEPT)                       \
+#define ASP_CALL_BBOX_MEMBER(NAME, CONCEPT, MUTCONCEPT)                        \
   static constexpr decltype(auto) _fallback(auto const &b);                    \
   static constexpr decltype(auto) _fallback_mut(auto &&b, auto &&v);           \
   template <typename T>                                                        \

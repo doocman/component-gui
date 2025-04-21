@@ -7,9 +7,9 @@
 #include <tuple>
 #include <variant>
 
-#include <asp/asp-call.hpp>
-#include <asp/asp-types.hpp>
+#include <asp/call.hpp>
 #include <asp/std-backport/utility.hpp>
+#include <asp/types.hpp>
 
 namespace asp {
 
@@ -376,8 +376,7 @@ template <input_events tEvt>
 constexpr bool is_asp_default_event_v<default_event<tEvt>> = true;
 
 template <typename T>
-concept is_asp_default_event_c =
-    is_asp_default_event_v<std::remove_cvref_t<T>>;
+concept is_asp_default_event_c = is_asp_default_event_v<std::remove_cvref_t<T>>;
 
 template <is_asp_default_event_c T>
   requires(requires(T &&t) { t.pos; })
@@ -1820,9 +1819,8 @@ template <typename TimePoint> class touch_translator : _touch_translator_base {
                       sv.down_position, call::position(e));
                 } else if constexpr (bp::same_as_any<S, zoom_t, scroll_t,
                                                      scroll_zoom_t>) {
-                  ASP_ASSERT(
-                      (sv.combo_state_index < std::ssize(self.states_) &&
-                       sv.combo_state_index >= 0));
+                  ASP_ASSERT((sv.combo_state_index < std::ssize(self.states_) &&
+                              sv.combo_state_index >= 0));
                   auto &s2 = self.states_[sv.combo_state_index];
                   s2.state = gesture_finished_t{};
                   send_to_cached_widget<interpreted_events::pointer_exit>(

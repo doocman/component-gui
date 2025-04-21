@@ -37,7 +37,7 @@ constexpr void unused(auto &&...) {}
 #define ASP_DEBUG_ONLY(...) __VA_ARGS__
 constexpr void
 asp_assert(auto &&val, std::string_view text = {},
-            std::source_location const &loc = std::source_location::current()) {
+           std::source_location const &loc = std::source_location::current()) {
   if (!val) [[unlikely]] {
     std::cerr << loc.file_name() << ':' << loc.line() << ": Assertion failed\n";
     if (!empty(text)) {

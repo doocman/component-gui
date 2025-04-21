@@ -29,7 +29,7 @@ function(asp_add_test FILE)
         target_link_libraries(${TEST} PRIVATE _asp_test_utils)
     endif ()
 
-    gtest_discover_tests(${TEST} DISCOVERY_MODE PRE_TEST)
+    gtest_discover_tests(${TEST} DISCOVERY_MODE ${ASP_TEST_DISCOVERY})
 endfunction()
 
 asp_add_test(asp-bp-tests.cpp)

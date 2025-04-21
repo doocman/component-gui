@@ -17,9 +17,9 @@
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
 
-#include <asp/asp-types.hpp>
 #include <asp/geometry.hpp>
 #include <asp/stl_extend.hpp>
+#include <asp/types.hpp>
 
 #define ASP_USE_BM_GLYPH 1
 

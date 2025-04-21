@@ -7,7 +7,7 @@
 #include <ranges>
 #include <type_traits>
 
-#include <asp/asp-call.hpp>
+#include <asp/call.hpp>
 #include <asp/std-backport/concepts.hpp>
 #include <asp/std-backport/limits.hpp>
 #include <asp/std-backport/type_traits.hpp>
@@ -334,13 +334,13 @@ constexpr P divide(P const &p, Div d) {
 /// @return Vector with all elements multiplied with f.
 template <pixel_coord P, typename F>
   requires(
-      requires(P p, F f) { p *f; } ||
+      requires(P p, F f) { p * f; } ||
       requires(P p, F f) {
         call::x_of(p) * f;
         call::y_of(p) * f;
       })
 constexpr P multiply(P const &p, F const &f) {
-  if constexpr (requires() { p *f; }) {
+  if constexpr (requires() { p * f; }) {
     return p * f;
   } else {
     auto x = call::x_of(p) * f;
@@ -556,7 +556,7 @@ struct point_size_tag {};
 
 template <typename T, typename V = int>
 concept pixelpoint_scale = requires(T const &t, V const &v) {
-  { v *t } -> std::convertible_to<std::remove_cvref_t<V>>;
+  { v * t } -> std::convertible_to<std::remove_cvref_t<V>>;
   { v / t } -> std::convertible_to<std::remove_cvref_t<V>>;
 };
 
@@ -764,7 +764,7 @@ public:
     requires(requires() { call::x_of(v, args...); })
   {}
 
-#define ASP_FWD_GETSET_(X)                                                    \
+#define ASP_FWD_GETSET_(X)                                                     \
   template <bp::cvref_type<this_t> U,                                          \
             typename OpRes = decltype(call::X(std::declval<U &&>().value())),  \
             typename OpResClean = std::remove_cvref_t<OpRes>>                  \
@@ -915,7 +915,7 @@ template <typename SizeTag, typename T>
 struct extend_api<pixelpoint_unit<SizeTag, T>> {
   using this_t = pixelpoint_unit<SizeTag, T>;
 
-#define ASP_BOX_INIT_FWD_(X)                                                  \
+#define ASP_BOX_INIT_FWD_(X)                                                   \
   template <typename... Ts,                                                    \
             typename TXY =                                                     \
                 std::common_type_t<decltype(_wrap_with_pixelpoint<SizeTag>(    \
@@ -1505,7 +1505,7 @@ template <typename ST, typename T, typename S, typename U, typename S2>
 struct common_type<::asp::autoconverting_pixelpoint_unit<ST, T, S>,
                    ::asp::autoconverting_pixelpoint_unit<ST, U, S2>> {
   using type = ::asp::autoconverting_pixelpoint_unit<ST, common_type_t<T, U>,
-                                                      common_type_t<S, S2>>;
+                                                     common_type_t<S, S2>>;
 };
 template <typename ST, typename ST2, typename T, typename S, typename U>
   requires(requires() { typename common_type<T, U>::type; })

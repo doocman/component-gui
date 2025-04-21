@@ -122,10 +122,10 @@ inline constexpr default_init_valued_t default_init_valued;
 } // namespace asp::bp
 
 namespace std {
-#define ASP_GEN_BP_COMMON_TYPE_(X)                                            \
+#define ASP_GEN_BP_COMMON_TYPE_(X)                                             \
   template <typename U>                                                        \
-    requires(std::convertible_to<::asp::bp::X, U>)                            \
-  struct common_type<::asp::bp::X, U> {                                       \
+    requires(std::convertible_to<::asp::bp::X, U>)                             \
+  struct common_type<::asp::bp::X, U> {                                        \
     using type = U;                                                            \
   };
 ASP_GEN_BP_COMMON_TYPE_(lowest_possible_t)

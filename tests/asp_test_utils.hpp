@@ -16,8 +16,7 @@ create_event(auto &&...args) {
       std::chrono::steady_clock::time_point{}, args...);
 }
 inline auto
-expect_colour_eq(asp::colour auto const &val,
-                 asp::colour auto const &expected,
+expect_colour_eq(asp::colour auto const &val, asp::colour auto const &expected,
                  std::source_location s = std::source_location::current()) {
   using namespace ::testing;
   auto [vr, vg, vb, va] = val;

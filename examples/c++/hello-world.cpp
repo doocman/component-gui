@@ -22,11 +22,11 @@ int main(int, char **) {
     auto text_library = asp::ft_font_library::init().value();
     auto dpi_info =
         main_window.dpi().value_or(asp::sdl_display_dpi{72.f, 72.f, 72.f});
-    auto text_font = asp::ft_font_face::init(
-                         text_library, asp::embedded::asp_example_font(),
-                         static_cast<FT_UInt>(dpi_info.vert),
-                         static_cast<FT_UInt>(dpi_info.hori))
-                         .value();
+    auto text_font =
+        asp::ft_font_face::init(text_library, asp::embedded::asp_example_font(),
+                                static_cast<FT_UInt>(dpi_info.vert),
+                                static_cast<FT_UInt>(dpi_info.hori))
+            .value();
     auto cached_font = asp::cached_font(std::move(text_font));
 
     bool do_exit{};
