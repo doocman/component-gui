@@ -17,6 +17,7 @@ function(asp_add_test FILE)
             GTest::gmock_main
             asp::asp
             dooc::named_parameters
+            mp-units::mp-units
     )
 
     if (WIN32 AND ${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)

@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.28)
 
 project(aspect-gui LANGUAGES CXX)
 
@@ -10,11 +10,6 @@ set(ASP_SDL_FETCH fetch CACHE STRING
 )
 set(_ASP_SDL_STATIC_DEFAULT OFF)
 
-include(FetchContent)
-
-include(cmake/findSDL.cmake)
-include(cmake/findDoocNP.cmake)
-include(cmake/findFreeType.cmake)
 include(cmake/embeddBinary.cmake)
 
 if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/local-cmake")
@@ -28,11 +23,10 @@ endfunction()
 if (PROJECT_IS_TOP_LEVEL)
     set(_ASP_SDL_STATIC_DEFAULT ON)
     set(_ASP_DEFAULT_EXAMPLES ON)
-    set(CMAKE_CXX_STANDARD 20)
+    set(CMAKE_CXX_STANDARD 23)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(_ASP_DEVELOP_DEFAULT ON)
     add_subdirectory(cmake-presets)
-    include(cmake/findFmt.cmake)
     function(asp_add_library NAME)
         add_library(${NAME} "${ARGN}")
         add_library(asp::${NAME} ALIAS ${NAME})
@@ -63,6 +57,14 @@ set(ASP_SDL_STATIC
         CACHE BOOL "")
 set(ASP_EXAMPLES ${_ASP_DEFAULT_EXAMPLES} CACHE BOOL "")
 set(ASP_DEVELOP ${_ASP_DEVELOP_DEFAULT} CACHE BOOL "")
+
+include(FetchContent)
+
+include(cmake/findSDL.cmake)
+include(cmake/findDoocNP.cmake)
+include(cmake/findFreeType.cmake)
+include(cmake/findFmt.cmake)
+include(cmake/findMpUnits.cmake)
 
 add_subdirectory(c++-src)
 

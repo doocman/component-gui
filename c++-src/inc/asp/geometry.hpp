@@ -167,15 +167,15 @@ constexpr T map_coord(U const &u, F &&f) {
 
 /// @brief Structure representing a default rectangular bounding box.
 template <typename T> struct basic_rect {
-  default_coordinate tl; ///< Top-left coordinate
-  default_coordinate br; ///< Bottom-right coordinate
+  basic_coordinate<T> tl; ///< Top-left coordinate
+  basic_coordinate<T> br; ///< Bottom-right coordinate
 
   /// @brief Creates a default_rect from given coordinates.
   /// @param x1 Left x-coordinate.
   /// @param y1 Top y-coordinate.
   /// @param x2 Right x-coordinate.
   /// @param y2 Bottom y-coordinate.
-  static constexpr basic_rect from_xyxy(int x1, int y1, int x2, int y2) {
+  static constexpr basic_rect from_xyxy(T x1, T y1, T x2, T y2) {
     return {{x1, y1}, {x2, y2}};
   }
 };

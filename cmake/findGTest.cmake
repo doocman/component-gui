@@ -1,6 +1,4 @@
 
-#if(NOT TARGET GMock::GMock)
-
 fetchcontent_declare(
         gtest
         GIT_REPOSITORY https://github.com/google/googletest.git
