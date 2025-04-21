@@ -7,20 +7,7 @@
 import mp_units;
 
 namespace asp::tests {
-namespace aq {
-using namespace mp_units;
-/*
-inline constexpr struct dim_abstract_pixel final : base_dimension<"APx"> {
-} dim_abstract_pixel;
-inline constexpr struct abstract_pixel final :
-    quantity_spec<dim_abstract_pixel> {} abstract_pixel;
-inline constexpr struct dim_logical_pixel final : base_dimension<"LPx"> {
-} dim_logical_pixel;
-inline constexpr struct logical_pixel final :
-    quantity_spec<dim_logical_pixel> {} logical_pixel;
-    */
-} // namespace aq
-// namespace display {
+
 inline constexpr struct point final
     : mp_units::named_unit<"point", mp_units::kind_of<mp_units::isq::length>> {
 } point;
@@ -33,9 +20,6 @@ inline constexpr auto point_width = mp_units::isq::width[point];
 inline constexpr auto point_height = mp_units::isq::height[point];
 inline constexpr auto point_per_pixel = point / pixel;
 inline constexpr auto pixel_per_point = pixel / point;
-//}
-
-// template <typename Wrapped>
 
 template <mp_units::Reference auto R, typename Rep = float>
 struct basic_rectangle {
@@ -99,5 +83,17 @@ TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT
   EXPECT_THAT(cache.command.colour.green, Eq(0));
   EXPECT_THAT(cache.command.colour.blue, Eq(0));
   EXPECT_THAT(cache.command.colour.alpha, Eq(127));
+}
+
+TEST(FillRect, InitialRenderCacheFillsWithCorrectArea) // NOLINT
+{
+  auto fr = fill_rectangle(default_colour_t(255, 0, 0, 127));
+  auto renderer = stub_renderer{};
+  auto rect = basic_rectangle<point>(mp_units::absolute<point_width>(1), mp_units::absolute<point_height>(5), 2 * point_width, 3 * point_height);
+  auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
+  EXPECT_THAT(cache.command.area.left_x, Eq(mp_units::absolute<pixel_width>(1)));
+  EXPECT_THAT(cache.command.area.top_y, Eq(mp_units::absolute<pixel_height>(5)));
+  EXPECT_THAT(cache.command.area.width, Eq(2 * pixel_width));
+  EXPECT_THAT(cache.command.area.height, Eq(3 * pixel_height));
 }
 } // namespace asp::tests
