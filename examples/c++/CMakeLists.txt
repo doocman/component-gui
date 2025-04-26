@@ -10,6 +10,8 @@ endif ()
 message(STATUS "ASP: download google fonts for examples")
 file(DOWNLOAD "https://github.com/google/fonts/raw/main/apache/robotoslab/RobotoSlab%5Bwght%5D.ttf" "${CMAKE_CURRENT_BINARY_DIR}/font.ttf"
         STATUS dl_status
+        EXPECTED_MD5 1992B9F2561AD462648CFF8052AFDB0A
+        SHOW_PROGRESS
 )
 if (NOT "${dl_status}" MATCHES " *0\;.*")
     message(FATAL_ERROR "Failed to download font: ${dl_status}")

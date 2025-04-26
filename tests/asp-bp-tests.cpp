@@ -9,7 +9,7 @@
 
 #include <gmock/gmock.h>
 
-namespace asp::tests {
+namespace asp::bp::tests {
 static_assert(
     std::is_rvalue_reference_v<
         decltype(asp::bp::details::expected_member<int, bool>::exp(
