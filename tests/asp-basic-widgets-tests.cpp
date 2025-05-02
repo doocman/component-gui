@@ -2,6 +2,7 @@
 #include <utility>
 
 #include <gmock/gmock.h>
+//#include <mp-units/compat_macros.h>
 
 #include <asp/types.hpp>
 #include <asp/call.hpp>
@@ -25,6 +26,7 @@ inline constexpr auto pixel_per_point = pixel / point;
 
 template <mp_units::Reference auto R, typename Rep = float>
 struct basic_rectangle {
+  static constexpr auto reference = R;
   using left_x_t =
   mp_units::quantity_point<mp_units::isq::width[R],
                            default_point_origin(mp_units::isq::width[R]), Rep>;
@@ -52,6 +54,17 @@ struct basic_rectangle {
   }
 };
 
+template <mp_units::Reference auto R, typename Rep, mp_units::Quantity Q>
+constexpr auto linear_map(basic_rectangle<R, Rep> const& v, Q const& mapping_factor) {
+  auto constexpr new_r = R * Q::reference;
+  return basic_rectangle<new_r, Rep>{
+    {v.l_x().quantity_from_zero() * mapping_factor, v.l_x().point_origin},
+    {v.t_y().quantity_from_zero() * mapping_factor, v.t_y().point_origin},
+    v.width() * mapping_factor,
+    v.height() * mapping_factor
+  };
+}
+
 template <typename Q, auto R>
 concept is_quantity = mp_units::Reference<decltype(R)> &&
                                mp_units::QuantityOf<std::remove_cvref_t<Q>, get_quantity_spec(R)> &&
@@ -62,7 +75,7 @@ concept is_quantity_point = mp_units::Reference<decltype(R)> &&
                                (std::remove_cvref_t<QP>::unit == get_unit(R));
 
 template <typename T, auto R>
-concept is_rectangle_with_unit = bounding_box<T> && requires(T&& t) {
+concept rectangle_with_unit = bounding_box<T> && requires(T&& t) {
   { call::l_x(t) } -> is_quantity_point<mp_units::isq::width[R]>;
   { call::t_y(t) } -> is_quantity_point<mp_units::isq::height[R]>;
   { call::width(t) } -> is_quantity<mp_units::isq::width[R]>;
@@ -80,6 +93,11 @@ struct stub_renderer {
     return {area, colour};
   }
 };
+
+constexpr rectangle_with_unit<pixel> auto to_pixel_rectangle(stub_renderer const&, rectangle_with_unit<point> auto const& pnt_rect) {
+  return linear_map(pnt_rect,  1 * pixel_per_point);
+}
+
 template <typename Renderer, typename Area> class simple_display_context {
   Renderer r_;
   Area a_;
@@ -89,11 +107,12 @@ public:
       : r_(std::forward<decltype(r)>(r)), a_(a) {}
   constexpr Renderer &renderer() { return r_; }
 
-  is_rectangle_with_unit<pixel> auto pixel_area() const noexcept {
-    if constexpr(is_rectangle_with_unit<Area, pixel>) {
+  rectangle_with_unit<pixel> auto pixel_area() const noexcept {
+    if constexpr(rectangle_with_unit<Area, pixel>) {
       return a_;
     } else {
-      return scale_rectangle(point_to_pixel(r_), a_);
+      //return scale_rectangle(point_to_pixel(r_), a_);
+      return to_pixel_rectangle(r_, a_);
     }
   }
 };
@@ -117,7 +136,7 @@ public:
 
 using namespace ::testing;
 
-static_assert(is_rectangle_with_unit<basic_rectangle<pixel>, pixel>);
+static_assert(rectangle_with_unit<basic_rectangle<pixel>, pixel>);
 
 TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT
 {
@@ -137,9 +156,9 @@ TEST(FillRect, InitialRenderCacheFillsWithCorrectArea) // NOLINT
   auto renderer = stub_renderer{};
   auto rect = basic_rectangle<point>(mp_units::absolute<point_width>(1), mp_units::absolute<point_height>(5), 2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
-  EXPECT_THAT(cache.command.area.left_x, Eq(mp_units::absolute<pixel_width>(1)));
-  EXPECT_THAT(cache.command.area.top_y, Eq(mp_units::absolute<pixel_height>(5)));
-  EXPECT_THAT(cache.command.area.width, Eq(2 * pixel_width));
-  EXPECT_THAT(cache.command.area.height, Eq(3 * pixel_height));
+  EXPECT_THAT(cache.command.area.l_x(), Eq(mp_units::absolute<pixel_width>(1)));
+  EXPECT_THAT(cache.command.area.t_y(), Eq(mp_units::absolute<pixel_height>(5)));
+  EXPECT_THAT(cache.command.area.width(), Eq(2 * pixel_width));
+  EXPECT_THAT(cache.command.area.height(), Eq(3 * pixel_height));
 }
 } // namespace asp::tests
