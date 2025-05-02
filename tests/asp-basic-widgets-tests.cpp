@@ -1,8 +1,10 @@
 
 #include <utility>
 
-#include <asp/types.hpp>
 #include <gmock/gmock.h>
+
+#include <asp/types.hpp>
+#include <asp/call.hpp>
 
 import mp_units;
 
@@ -23,14 +25,48 @@ inline constexpr auto pixel_per_point = pixel / point;
 
 template <mp_units::Reference auto R, typename Rep = float>
 struct basic_rectangle {
+  using left_x_t =
   mp_units::quantity_point<mp_units::isq::width[R],
-                           default_point_origin(mp_units::isq::width[R]), Rep>
-      left_x;
-  mp_units::quantity_point<mp_units::isq::height[R],
-                           default_point_origin(mp_units::isq::height[R]), Rep>
-      top_y;
-  mp_units::quantity<mp_units::isq::width[R], Rep> width;
-  mp_units::quantity<mp_units::isq::height[R], Rep> height;
+                           default_point_origin(mp_units::isq::width[R]), Rep>;
+  using top_y_t = mp_units::quantity_point<mp_units::isq::height[R],
+                           default_point_origin(mp_units::isq::height[R]), Rep>;
+  using width_t = mp_units::quantity<mp_units::isq::width[R], Rep>;
+  using height_t = mp_units::quantity<mp_units::isq::height[R], Rep>;
+  left_x_t left_x_;
+  top_y_t
+      top_y_;
+  width_t width_;
+  height_t height_;
+
+  constexpr auto&& l_x(this auto&& s) noexcept {
+    return std::forward<decltype(s)>(s).left_x_;
+  }
+  constexpr auto&& t_y(this auto&& s) noexcept {
+    return std::forward<decltype(s)>(s).top_y_;
+  }
+  constexpr auto&& width(this auto&& s) noexcept {
+    return std::forward<decltype(s)>(s).width_;
+  }
+  constexpr auto&& height(this auto&& s) noexcept {
+    return std::forward<decltype(s)>(s).height_;
+  }
+};
+
+template <typename Q, auto R>
+concept is_quantity = mp_units::Reference<decltype(R)> &&
+                               mp_units::QuantityOf<std::remove_cvref_t<Q>, get_quantity_spec(R)> &&
+                               (std::remove_cvref_t<Q>::unit == get_unit(R));
+template <typename QP, auto R>
+concept is_quantity_point = mp_units::Reference<decltype(R)> &&
+                               mp_units::QuantityPointOf<std::remove_cvref_t<QP>, get_quantity_spec(R)> &&
+                               (std::remove_cvref_t<QP>::unit == get_unit(R));
+
+template <typename T, auto R>
+concept is_rectangle_with_unit = bounding_box<T> && requires(T&& t) {
+  { call::l_x(t) } -> is_quantity_point<mp_units::isq::width[R]>;
+  { call::t_y(t) } -> is_quantity_point<mp_units::isq::height[R]>;
+  { call::width(t) } -> is_quantity<mp_units::isq::width[R]>;
+  { call::height(t) } -> is_quantity<mp_units::isq::height[R]>;
 };
 
 struct stub_renderer {
@@ -44,17 +80,26 @@ struct stub_renderer {
     return {area, colour};
   }
 };
-template <typename Renderer> class simple_display_context {
+template <typename Renderer, typename Area> class simple_display_context {
   Renderer r_;
+  Area a_;
 
 public:
-  constexpr simple_display_context(auto &&r, auto &&)
-      : r_(std::forward<decltype(r)>(r)) {}
+  constexpr simple_display_context(auto &&r, auto && a)
+      : r_(std::forward<decltype(r)>(r)), a_(a) {}
   constexpr Renderer &renderer() { return r_; }
+
+  is_rectangle_with_unit<pixel> auto pixel_area() const noexcept {
+    if constexpr(is_rectangle_with_unit<Area, pixel>) {
+      return a_;
+    } else {
+      return scale_rectangle(point_to_pixel(r_), a_);
+    }
+  }
 };
 template <typename R, typename A>
 simple_display_context(R &&, A &&)
-    -> simple_display_context<std::unwrap_ref_decay_t<R>>;
+    -> simple_display_context<std::unwrap_ref_decay_t<R>, std::unwrap_ref_decay_t<A>>;
 
 template <colour C> class fill_rectangle {
   C c_;
@@ -66,12 +111,13 @@ public:
   constexpr explicit fill_rectangle(C colour) : c_(colour) {}
   friend constexpr auto initial_render_cache(fill_rectangle const &fr,
                                              auto &&ctx) {
-    return render_cache_t{ctx.renderer().fill(
-        basic_rectangle<pixel>({}, {}, 1 * pixel, 1 * pixel), fr.c_)};
+    return render_cache_t{ctx.renderer().fill(ctx.pixel_area(), fr.c_)};
   }
 };
 
 using namespace ::testing;
+
+static_assert(is_rectangle_with_unit<basic_rectangle<pixel>, pixel>);
 
 TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT
 {
