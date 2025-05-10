@@ -182,4 +182,4 @@ TEST(EtdTrivialFunction, OperatorBool) // NOLINT
   EXPECT_TRUE(f);
 }
 
-} // namespace asp::tests
+} // namespace asp::bp::tests
