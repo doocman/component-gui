@@ -1,5 +1,6 @@
 
 #include <concepts>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -209,13 +210,88 @@ public:
     return render_cache_t{ctx.renderer().fill(ctx.pixel_area(), fr.c_)};
   }
   template <typename CMD>
-  constexpr render_cache_t<CMD> render(auto &&ctx, render_cache_t<CMD> &&c) {
+  constexpr render_cache_t<CMD> render(is_render_context auto &&ctx,
+                                       render_cache_t<CMD> &&c) {
     if (c.command.pixel_area() != ctx.pixel_area()) {
       return initial_render_cache(*this, ctx);
     }
     return std::move(c);
   }
 };
+
+template <typename T>
+concept is_widget = true;
+
+template <is_widget, is_widget> class background_t {
+public:
+  struct render_cache_t {};
+  constexpr background_t(auto &&, auto &&) {}
+
+  friend constexpr render_cache_t
+  initial_render_cache(background_t const &, is_render_context auto &&) {
+    return {};
+  }
+};
+
+template <is_widget F, is_widget B>
+background_t(F &&, B &&)
+    -> background_t<std::remove_cvref_t<F>, std::remove_cvref_t<B>>;
+
+template <auto call, typename... Ts> class pipe_to_invoke {
+  std::tuple<Ts...> args_;
+
+public:
+  constexpr explicit(sizeof...(Ts) == 1)
+      pipe_to_invoke(std::convertible_to<Ts> auto &&...args)
+      : args_(std::forward<decltype(args)>(args)...) {}
+  template <typename T, auto c, typename... Us>
+    requires(std::invocable<decltype(c), T, Us...>)
+  friend constexpr std::invoke_result_t<decltype(c), T, Us...>
+  operator|(T &&, pipe_to_invoke<c, Us...> &&);
+  template <typename T, auto c, typename... Us>
+    requires(std::invocable<decltype(c), T, Us...>)
+  friend constexpr std::invoke_result_t<decltype(c), T, Us...>
+  operator|(T &&, pipe_to_invoke<c, Us...> const &);
+};
+
+template <typename T, auto c, typename... Us>
+  requires(std::invocable<decltype(c), T, Us...>)
+constexpr std::invoke_result_t<decltype(c), T, Us...>
+operator|(T &&t, pipe_to_invoke<c, Us...> &&v) {
+#if __cpp_structured_bindings >= 202411L
+  auto &&[args...] = std::move(v).args_;
+  return c(std::forward<T>(t), std::forward<decltype(args)>(args)...);
+#else
+  return std::apply(
+      [&t](Us &&...vs) {
+        return c(std::forward<T>(t), std::forward<Us>(vs)...);
+      },
+      std::move(v).args_);
+#endif
+}
+template <typename T, auto c, typename... Us>
+  requires(std::invocable<decltype(c), T, Us...>)
+constexpr std::invoke_result_t<decltype(c), T, Us...>
+operator|(T &&t, pipe_to_invoke<c, Us...> const &v) {
+#if __cpp_structured_bindings >= 202411L
+  auto &&[args...] = v.args_;
+  return c(std::forward<T>(t), std::forward<decltype(args)>(args)...);
+#else
+  return std::apply(
+      [&t]<typename... Ts>(Ts &&...vs) {
+        return c(std::forward<T>(t), std::forward<Ts>(vs)...);
+      },
+      v.args_);
+#endif
+}
+
+inline constexpr auto background(is_widget auto &&bg) {
+  using bg_t = decltype(bg);
+  return pipe_to_invoke<[]<is_widget FG, is_widget BG>(FG &&fg, BG &&bg) {
+    return background_t(std::forward<FG>(fg), std::forward<BG>(bg));
+  },
+                        std::remove_cvref_t<bg_t>>(std::forward<bg_t>(bg));
+}
 
 using namespace ::testing;
 
@@ -283,5 +359,17 @@ TEST(FillRect, NewRenderCacheIsUpdatedWhenColourChanged) // NOLINT
   EXPECT_THAT(cache.command.colour().blue, Eq(0));
   EXPECT_THAT(cache.command.colour().green, Eq(255));
   EXPECT_THAT(cache.command.colour().alpha, Eq(127));
+}
+TEST(FillRectBackground, FillRectAndFillRect) // NOLINT
+{
+  auto c = fill_rectangle(default_colour_t(255, 0, 0, 255)) |
+           background(fill_rectangle(default_colour_t{0, 255, 0, 255}));
+  auto renderer = stub_renderer{};
+  auto rect = basic_rectangle<point>(mp_units::absolute<point_width>(1),
+                                     mp_units::absolute<point_height>(5),
+                                     2 * point_width, 3 * point_height);
+  auto cache = initial_render_cache(c, simple_display_context(renderer, rect));
+  FAIL()
+      << "Not yet implemented. Must test that the foreground takes 'priority'";
 }
 } // namespace asp::tests
