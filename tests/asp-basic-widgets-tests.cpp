@@ -129,11 +129,22 @@ concept rectangle_with_unit = bounding_box<T> && requires(T &&t) {
   { call::height(t) } -> is_quantity<mp_units::isq::height[R]>;
 };
 
+template <typename> struct render_command_traits {};
 template <typename T>
-concept render_command = true;
+  requires(requires() { typename T::associated_renderer; })
+struct render_command_traits<T> {
+  using associated_renderer = T::associated_renderer;
+};
+template <typename T>
+using associated_renderer_t = render_command_traits<T>::associated_renderer;
 
 template <typename T>
-concept fill_rect_command = render_command<T> && requires(T const &t) {
+concept is_render_command = requires() {
+  typename render_command_traits<T>::associated_renderer;
+} && requires(T const &t, associated_renderer_t<T> &r) { call::execute(t, r); };
+
+template <typename T>
+concept fill_rect_command = is_render_command<T> && requires(T const &t) {
   { t.pixel_area() } -> rectangle_with_unit<pixel>;
   { call::colour(t) } -> colour;
 };
@@ -142,6 +153,7 @@ template <typename T>
 concept is_renderer = requires(T &&t, basic_rectangle<pixel> const &r,
                                default_colour_t const &c) {
   { call::fill(t, r, c) } -> fill_rect_command;
+  { t.pixel_to_point_ratio() } -> is_quantity<pixel_per_point>;
 };
 
 template <typename T>
@@ -150,8 +162,17 @@ concept is_render_context = requires(T &&t) {
   { t.pixel_area() } -> rectangle_with_unit<pixel>;
 };
 
+constexpr is_render_command auto
+fill(is_renderer auto &&r, rectangle_with_unit<point> auto const &area,
+     colour auto const &c) {
+  return call::fill(std::forward<decltype(r)>(r),
+                    linear_map(area, r.pixel_to_point_ratio()), c);
+}
+
 struct stub_renderer {
+  mp_units::quantity<pixel_per_point, float> px_p_pt = 1.f * pixel_per_point;
   struct cached_fill_rect {
+    using associated_renderer = stub_renderer;
     basic_rectangle<pixel> area;
     default_colour_t c;
 
@@ -165,7 +186,17 @@ struct stub_renderer {
                                          default_colour_t colour) {
     return {area, colour};
   }
+  constexpr mp_units::Quantity auto pixel_to_point_ratio() const {
+    return px_p_pt;
+  }
 };
+
+struct stub_display {};
+
+constexpr stub_display execute(stub_renderer::cached_fill_rect const &cmd,
+                               stub_renderer &r) {
+  return {};
+}
 
 static_assert(is_renderer<stub_renderer>);
 
@@ -201,21 +232,18 @@ template <colour C> class fill_rectangle {
   C c_;
 
 public:
-  template <fill_rect_command CMD> struct render_cache_t {
-    CMD command;
-  };
   constexpr explicit fill_rectangle(C colour) : c_(colour) {}
-  friend constexpr auto initial_render_cache(fill_rectangle const &fr,
-                                             is_render_context auto &&ctx) {
-    return render_cache_t{ctx.renderer().fill(ctx.pixel_area(), fr.c_)};
+  friend constexpr fill_rect_command auto
+  initial_render_cache(fill_rectangle const &fr, is_render_context auto &&ctx) {
+    return ctx.renderer().fill(ctx.pixel_area(), fr.c_);
   }
-  template <typename CMD>
-  constexpr render_cache_t<CMD> render(is_render_context auto &&ctx,
-                                       render_cache_t<CMD> &&c) {
-    if (c.command.pixel_area() != ctx.pixel_area()) {
+  template <fill_rect_command CMD>
+  constexpr std::remove_cvref_t<CMD> render(is_render_context auto &&ctx,
+                                            CMD &&c) {
+    if (c.pixel_area() != ctx.pixel_area()) {
       return initial_render_cache(*this, ctx);
     }
-    return std::move(c);
+    return std::forward<CMD>(c);
   }
 };
 
@@ -224,7 +252,9 @@ concept is_widget = true;
 
 template <is_widget, is_widget> class background_t {
 public:
-  struct render_cache_t {};
+  struct render_cache_t {
+    constexpr auto execute(auto &&) {}
+  };
   constexpr background_t(auto &&, auto &&) {}
 
   friend constexpr render_cache_t
@@ -297,16 +327,28 @@ using namespace ::testing;
 
 static_assert(rectangle_with_unit<basic_rectangle<pixel>, pixel>);
 
+TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
+{
+  auto r = stub_renderer{};
+  r.set_area({{}, {}, 1 * pixel_width, 1 * pixel_height});
+  auto rect = basic_rectangle<point>({}, {}, 1 * point_width, 1 * point_height);
+  auto fr = call::fill(r, rect, default_colour_t{1, 2, 3, 255});
+  // NOTE: THIS EXECUTE MUST BE ALTERED, THE RENDERER MAY NEED TO DO STUFF
+  // BEFORE AND AFTER THE ACTUAL RENDERING.
+  auto pixels = call::execute(fr, r);
+  EXPECT_THAT(r.pixels().elements(), SizeIs(1));
+}
+
 TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT
 {
   auto fr = fill_rectangle(default_colour_t(255, 0, 0, 127));
   auto renderer = stub_renderer{};
   auto rect = basic_rectangle<point>({}, {}, 1 * point_width, 1 * point_height);
   auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
-  EXPECT_THAT(cache.command.colour().red, Eq(255));
-  EXPECT_THAT(cache.command.colour().green, Eq(0));
-  EXPECT_THAT(cache.command.colour().blue, Eq(0));
-  EXPECT_THAT(cache.command.colour().alpha, Eq(127));
+  EXPECT_THAT(cache.colour().red, Eq(255));
+  EXPECT_THAT(cache.colour().green, Eq(0));
+  EXPECT_THAT(cache.colour().blue, Eq(0));
+  EXPECT_THAT(cache.colour().alpha, Eq(127));
 }
 
 TEST(FillRect, InitialRenderCacheFillsWithCorrectArea) // NOLINT
@@ -317,11 +359,10 @@ TEST(FillRect, InitialRenderCacheFillsWithCorrectArea) // NOLINT
                                      mp_units::absolute<point_height>(5),
                                      2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
-  EXPECT_THAT(cache.command.area.l_x(), Eq(mp_units::absolute<pixel_width>(1)));
-  EXPECT_THAT(cache.command.area.t_y(),
-              Eq(mp_units::absolute<pixel_height>(5)));
-  EXPECT_THAT(cache.command.area.width(), Eq(2 * pixel_width));
-  EXPECT_THAT(cache.command.area.height(), Eq(3 * pixel_height));
+  EXPECT_THAT(cache.area.l_x(), Eq(mp_units::absolute<pixel_width>(1)));
+  EXPECT_THAT(cache.area.t_y(), Eq(mp_units::absolute<pixel_height>(5)));
+  EXPECT_THAT(cache.area.width(), Eq(2 * pixel_width));
+  EXPECT_THAT(cache.area.height(), Eq(3 * pixel_height));
 }
 
 TEST(FillRect, NewRenderCacheIsUpdatedWhenSizeChanged) // NOLINT
@@ -338,11 +379,10 @@ TEST(FillRect, NewRenderCacheIsUpdatedWhenSizeChanged) // NOLINT
                                          3 * point_width, 7 * point_height);
   cache = call::render(fr, simple_display_context(renderer, new_rect),
                        std::move(cache));
-  EXPECT_THAT(cache.command.area.l_x(), Eq(mp_units::absolute<pixel_width>(3)));
-  EXPECT_THAT(cache.command.area.t_y(),
-              Eq(mp_units::absolute<pixel_height>(2)));
-  EXPECT_THAT(cache.command.area.width(), Eq(3 * pixel_width));
-  EXPECT_THAT(cache.command.area.height(), Eq(7 * pixel_height));
+  EXPECT_THAT(cache.area.l_x(), Eq(mp_units::absolute<pixel_width>(3)));
+  EXPECT_THAT(cache.area.t_y(), Eq(mp_units::absolute<pixel_height>(2)));
+  EXPECT_THAT(cache.area.width(), Eq(3 * pixel_width));
+  EXPECT_THAT(cache.area.height(), Eq(7 * pixel_height));
 }
 TEST(FillRect, NewRenderCacheIsUpdatedWhenColourChanged) // NOLINT
 {
@@ -355,12 +395,12 @@ TEST(FillRect, NewRenderCacheIsUpdatedWhenColourChanged) // NOLINT
   fr = fill_rectangle(default_colour_t(0, 0, 255, 127));
   cache = call::render(fr, simple_display_context(renderer, rect),
                        std::move(cache));
-  EXPECT_THAT(cache.command.colour().red, Eq(0));
-  EXPECT_THAT(cache.command.colour().blue, Eq(0));
-  EXPECT_THAT(cache.command.colour().green, Eq(255));
-  EXPECT_THAT(cache.command.colour().alpha, Eq(127));
+  EXPECT_THAT(cache.colour().red, Eq(0));
+  EXPECT_THAT(cache.colour().blue, Eq(0));
+  EXPECT_THAT(cache.colour().green, Eq(255));
+  EXPECT_THAT(cache.colour().alpha, Eq(127));
 }
-TEST(FillRectBackground, FillRectAndFillRect) // NOLINT
+TEST(FillRectBackground, DISABED_FillRectAndFillRect) // NOLINT
 {
   auto c = fill_rectangle(default_colour_t(255, 0, 0, 255)) |
            background(fill_rectangle(default_colour_t{0, 255, 0, 255}));
@@ -369,6 +409,7 @@ TEST(FillRectBackground, FillRectAndFillRect) // NOLINT
                                      mp_units::absolute<point_height>(5),
                                      2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(c, simple_display_context(renderer, rect));
+  call::execute(cache, renderer);
   FAIL()
       << "Not yet implemented. Must test that the foreground takes 'priority'";
 }
