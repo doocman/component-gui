@@ -129,6 +129,13 @@ concept rectangle_with_unit = bounding_box<T> && requires(T &&t) {
   { call::height(t) } -> is_quantity<mp_units::isq::height[R]>;
 };
 
+template <typename T>
+concept has_executing_renderer =
+    requires(T &&t) { call::executing_renderer(std::forward<T>(t)); };
+template <typename T>
+using executing_renderer_t =
+    decltype(call::executing_renderer(std::declval<T>()));
+
 template <typename> struct render_command_traits {};
 template <typename T>
   requires(requires() { typename T::associated_renderer; })
@@ -139,9 +146,13 @@ template <typename T>
 using associated_renderer_t = render_command_traits<T>::associated_renderer;
 
 template <typename T>
-concept is_render_command = requires() {
-  typename render_command_traits<T>::associated_renderer;
-} && requires(T const &t, associated_renderer_t<T> &r) { call::execute(t, r); };
+concept is_render_command =
+    requires() { typename render_command_traits<T>::associated_renderer; } &&
+    has_executing_renderer<
+        typename render_command_traits<T>::associated_renderer> &&
+    requires(T const &t, executing_renderer_t<associated_renderer_t<T>> &r) {
+      call::execute(t, r);
+    };
 
 template <typename T>
 concept fill_rect_command = is_render_command<T> && requires(T const &t) {
@@ -171,6 +182,12 @@ fill(is_renderer auto &&r, rectangle_with_unit<point> auto const &area,
 
 struct stub_renderer {
   mp_units::quantity<pixel_per_point, float> px_p_pt = 1.f * pixel_per_point;
+  struct executor {
+    std::vector<default_colour> raw_results_ = {{}};
+    constexpr auto get_access() {
+      return mdspan<default_colour, std::extent<std::size_t, std::dynamic_extent, std::dynamic_extent>>(1, 1);
+    }
+  };
   struct cached_fill_rect {
     using associated_renderer = stub_renderer;
     basic_rectangle<pixel> area;
@@ -189,12 +206,18 @@ struct stub_renderer {
   constexpr mp_units::Quantity auto pixel_to_point_ratio() const {
     return px_p_pt;
   }
+  constexpr executor executing_renderer(basic_rectangle<pixel, int> const&) const {
+    return {};
+  }
+  constexpr executor executing_renderer() const {
+    return executing_renderer({{}, {}, 1 * pixel_width, 1 * pixel_height});
+  }
 };
 
 struct stub_display {};
 
 constexpr stub_display execute(stub_renderer::cached_fill_rect const &cmd,
-                               stub_renderer &r) {
+                               stub_renderer::executor &r) {
   return {};
 }
 
@@ -330,13 +353,14 @@ static_assert(rectangle_with_unit<basic_rectangle<pixel>, pixel>);
 TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
 {
   auto r = stub_renderer{};
-  r.set_area({{}, {}, 1 * pixel_width, 1 * pixel_height});
+  //r.set_area({{}, {}, 1 * pixel_width, 1 * pixel_height});
   auto rect = basic_rectangle<point>({}, {}, 1 * point_width, 1 * point_height);
   auto fr = call::fill(r, rect, default_colour_t{1, 2, 3, 255});
   // NOTE: THIS EXECUTE MUST BE ALTERED, THE RENDERER MAY NEED TO DO STUFF
   // BEFORE AND AFTER THE ACTUAL RENDERING.
-  auto pixels = call::execute(fr, r);
-  EXPECT_THAT(r.pixels().elements(), SizeIs(1));
+  auto exe = r.executing_renderer(basic_rectangle<pixel, int>({}, {}, 1 * pixel_width, 1 * pixel_height));
+  auto pixels = call::execute(fr, exe);
+  EXPECT_THAT(exe.pixels().count(), Eq(1));
 }
 
 TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT

@@ -320,6 +320,7 @@ ASP_CALL_CONCEPT(glyph)
 ASP_CALL_CONCEPT(text_colour)
 ASP_CALL_CONCEPT(colour)
 ASP_CALL_CONCEPT(execute)
+ASP_CALL_CONCEPT(executing_renderer)
 ASP_CALL_CONCEPT(find_sub)
 ASP_CALL_CONCEPT(find_sub_id)
 ASP_CALL_CONCEPT(find_sub_at_location)
@@ -741,6 +742,7 @@ inline constexpr impl::_do_set_displayed set_displayed;
 inline constexpr impl::_do_text_colour text_colour;
 inline constexpr impl::_do_colour colour;
 inline constexpr impl::_do_execute execute;
+inline constexpr impl::_do_executing_renderer executing_renderer;
 
 /// Get or set left x (x = 0). May use the other geometric functions to achieve
 /// the desired result. Width and right x are undetermined after using this to
