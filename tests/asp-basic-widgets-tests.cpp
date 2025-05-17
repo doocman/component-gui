@@ -1,15 +1,21 @@
 
 #include <concepts>
+#include <mdspan>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 
 #include <gmock/gmock.h>
 
+#include <mp-units/concepts.h>
+#include <mp-units/framework.h>
+#include <mp-units/math.h>
+#include <mp-units/systems/isq.h>
+
 #include <asp/call.hpp>
 #include <asp/types.hpp>
 
-import mp_units;
+//import mp_units;
 
 namespace asp::tests {
 
@@ -121,13 +127,19 @@ concept is_quantity_point =
     mp_units::QuantityPointOf<std::remove_cvref_t<QP>, get_quantity_spec(R)> &&
     (std::remove_cvref_t<QP>::unit == get_unit(R));
 
+#define ASP_NO_CONST(X) decltype(X){}
+
 template <typename T, auto R>
-concept rectangle_with_unit = bounding_box<T> && requires(T &&t) {
-  { call::l_x(t) } -> is_quantity_point<mp_units::isq::width[R]>;
-  { call::t_y(t) } -> is_quantity_point<mp_units::isq::height[R]>;
-  { call::width(t) } -> is_quantity<mp_units::isq::width[R]>;
-  { call::height(t) } -> is_quantity<mp_units::isq::height[R]>;
+concept rectangle_with_unit = bounding_box<std::remove_cvref_t<T>> && requires(T &&t) {
+  { call::l_x(t) } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::width[R])>;
+  { call::t_y(t) } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::height[R])>;
+  { call::width(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::width[R])>;
+  { call::height(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::height[R])>;
 };
+
+static_assert(is_quantity_point<mp_units::quantity_point<decltype(mp_units::isq::width[pixel]){}>
+    , decltype(mp_units::isq::width[pixel]){}>);
+static_assert(rectangle_with_unit<basic_rectangle<pixel>, pixel>);
 
 template <typename T>
 concept has_executing_renderer =
@@ -185,7 +197,10 @@ struct stub_renderer {
   struct executor {
     std::vector<default_colour_t> raw_results_ = {{}};
     constexpr auto get_access() {
-      return mdspan<default_colour_t, std::extent<std::size_t, std::dynamic_extent, std::dynamic_extent>>(1, 1);
+      return std::mdspan(raw_results_.data(), 1, 1);
+    }
+    constexpr auto pixels(this auto&& self) requires(std::is_lvalue_reference_v<decltype(self)>) {
+      return std::mdspan(self.raw_results_.data(), 1, 1);
     }
   };
   struct cached_fill_rect {
@@ -348,8 +363,6 @@ inline constexpr auto background(is_widget auto &&bg) {
 
 using namespace ::testing;
 
-static_assert(rectangle_with_unit<basic_rectangle<pixel>, pixel>);
-
 TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
 {
   auto r = stub_renderer{};
@@ -360,7 +373,8 @@ TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
   // BEFORE AND AFTER THE ACTUAL RENDERING.
   auto exe = r.executing_renderer(basic_rectangle<pixel, int>({}, {}, 1 * pixel_width, 1 * pixel_height));
   auto pixels = call::execute(fr, exe);
-  EXPECT_THAT(exe.pixels().count(), Eq(1));
+  EXPECT_THAT(exe.pixels().size(), Eq(1));
+  EXPECT_THAT((exe.pixels()[0, 0]), Eq(default_colour_t{1, 2, 3, 255}));
 }
 
 TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT
