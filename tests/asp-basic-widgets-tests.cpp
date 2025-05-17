@@ -183,9 +183,9 @@ fill(is_renderer auto &&r, rectangle_with_unit<point> auto const &area,
 struct stub_renderer {
   mp_units::quantity<pixel_per_point, float> px_p_pt = 1.f * pixel_per_point;
   struct executor {
-    std::vector<default_colour> raw_results_ = {{}};
+    std::vector<default_colour_t> raw_results_ = {{}};
     constexpr auto get_access() {
-      return mdspan<default_colour, std::extent<std::size_t, std::dynamic_extent, std::dynamic_extent>>(1, 1);
+      return mdspan<default_colour_t, std::extent<std::size_t, std::dynamic_extent, std::dynamic_extent>>(1, 1);
     }
   };
   struct cached_fill_rect {
