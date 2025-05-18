@@ -5,11 +5,13 @@
 #include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <iterator>
 #include <optional>
 #include <ranges>
 #include <ratio>
 #include <tuple>
 #include <utility>
+#include <format>
 
 #include <asp/std-backport/algorithm.hpp>
 #include <asp/std-backport/concepts.hpp>
@@ -64,6 +66,8 @@ concept colour = requires(T &&t) {
 
 template <typename T> struct basic_colour_t {
   T red, green, blue, alpha;
+
+  constexpr bool operator==(basic_colour_t const&) const noexcept = default;
 };
 template <typename T> struct basic_rgb_t {
   T r, g, b;
@@ -78,6 +82,13 @@ template <typename T> struct basic_rgb_t {
   }
   static constexpr T alpha(auto &&) { return std::numeric_limits<T>::max(); }
 };
+
+template  <typename T, typename S>
+requires(requires(S& s, T const& t) { s << t; })
+constexpr S& operator<<(S& stream, basic_colour_t<T> const& c) {
+  std::format_to(std::ostreambuf_iterator<char>(stream), "{}", c);
+  return stream;
+}
 
 using default_colour_t = basic_colour_t<std::uint_least8_t>;
 using default_rgb_t = basic_rgb_t<std::uint_least8_t>;
@@ -896,5 +907,23 @@ public:
 };
 
 } // namespace asp
+
+namespace std {
+  template <typename T>
+  struct formatter<asp::basic_colour_t<T>, char> {
+    
+    template<class ParseContext>
+    constexpr ParseContext::iterator parse(ParseContext& ctx)
+    {
+        return ctx.begin();
+    }
+    
+    template<class FmtContext>
+    FmtContext::iterator format(asp::basic_colour_t<T> const& c, FmtContext& ctx) const
+    {
+      return format_to(ctx.out(), "[R: {}, G: {}, B: {}, A: {}]", c.red, c.green, c.blue, c.alpha);
+    }
+  };
+}
 
 #endif // COMPONENT_GUI_ASP_TYPES_HPP

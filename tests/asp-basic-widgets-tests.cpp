@@ -1,9 +1,9 @@
 
 #include <concepts>
-#include <mdspan>
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <ranges>
 
 #include <gmock/gmock.h>
 
@@ -186,54 +186,81 @@ concept is_render_context = requires(T &&t) {
 };
 
 constexpr is_render_command auto
-fill(is_renderer auto &&r, rectangle_with_unit<point> auto const &area,
-     colour auto const &c) {
+fill(auto &&r, rectangle_with_unit<point> auto const &area,
+     colour auto const &c) requires(requires() { call::fill(std::forward<decltype(r)>(r),
+      linear_map(area, r.pixel_to_point_ratio()), c); }) {
   return call::fill(std::forward<decltype(r)>(r),
                     linear_map(area, r.pixel_to_point_ratio()), c);
 }
 
 struct stub_renderer {
   mp_units::quantity<pixel_per_point, float> px_p_pt = 1.f * pixel_per_point;
-  struct executor {
+  class executor {
+    std::make_signed_t<std::size_t> columns_{1};
+    std::make_signed_t<std::size_t> rows_{1};
     std::vector<default_colour_t> raw_results_ = {{}};
-    constexpr auto get_access() {
-      return std::mdspan(raw_results_.data(), 1, 1);
+
+    constexpr std::make_signed_t<std::size_t> calc_size() const noexcept {
+      return columns_ * rows_;
     }
-    constexpr auto pixels(this auto&& self) requires(std::is_lvalue_reference_v<decltype(self)>) {
-      return std::mdspan(self.raw_results_.data(), 1, 1);
+
+  public:
+    constexpr executor(mp_units::quantity<pixel_width, int> width, mp_units::quantity<pixel_height, int> height)
+     : columns_(width.numerical_value_in(pixel)), rows_(height.numerical_value_in(pixel)), raw_results_(calc_size()) {}
+
+    
+    constexpr default_colour_t const& operator[](is_quantity<pixel> auto const& x, is_quantity<pixel> auto const& y) const& noexcept {
+      auto i = columns_ * y.numerical_value_in(pixel) + x.numerical_value_in(pixel);
+      return raw_results_.at(i);
+    }
+    constexpr default_colour_t& operator[](is_quantity<pixel> auto const& x, is_quantity<pixel> auto const& y) &noexcept {
+      auto i = columns_ * y.numerical_value_in(pixel) + x.numerical_value_in(pixel);
+      return raw_results_.at(i);
+    }
+    constexpr std::size_t size() const noexcept { return raw_results_.size(); }
+    constexpr std::size_t extend(std::size_t e) const noexcept {
+      switch(e) {
+        case 0 : return columns_;
+        case 1 : return rows_;
+        default: return 0u;
+      }
     }
   };
   struct cached_fill_rect {
     using associated_renderer = stub_renderer;
-    basic_rectangle<pixel> area;
+    basic_rectangle<pixel, std::int_least32_t> area;
     default_colour_t c;
 
-    constexpr basic_rectangle<pixel> pixel_area() const noexcept {
+    constexpr basic_rectangle<pixel, std::int_least32_t> pixel_area() const noexcept {
       return area;
     }
     constexpr default_colour_t colour() const noexcept { return c; }
   };
 
-  static constexpr cached_fill_rect fill(basic_rectangle<pixel> const &area,
+  static constexpr cached_fill_rect fill(basic_rectangle<pixel, std::int_least32_t> const &area,
                                          default_colour_t colour) {
     return {area, colour};
   }
   constexpr mp_units::Quantity auto pixel_to_point_ratio() const {
     return px_p_pt;
   }
-  constexpr executor executing_renderer(basic_rectangle<pixel, int> const&) const {
-    return {};
+  constexpr executor executing_renderer(basic_rectangle<pixel, int> const& r) const {
+    return {call::width(r), call::height(r)};
   }
   constexpr executor executing_renderer() const {
     return executing_renderer({{}, {}, 1 * pixel_width, 1 * pixel_height});
   }
 };
 
-struct stub_display {};
-
-constexpr stub_display execute(stub_renderer::cached_fill_rect const &cmd,
+constexpr void execute(stub_renderer::cached_fill_rect const &cmd,
                                stub_renderer::executor &r) {
-  return {};
+                                auto a = cmd.pixel_area();
+  
+  for(auto y : std::views::iota(call::t_y(a).quantity_from_zero().numerical_value_in(pixel), call::b_y(a).quantity_from_zero().numerical_value_in(pixel))) {
+    for(auto x : std::views::iota(call::l_x(a).quantity_from_zero().numerical_value_in(pixel), call::r_x(a).quantity_from_zero().numerical_value_in(pixel))) {
+      r[x * pixel_width, y * pixel_height] = cmd.colour();
+    }
+  }
 }
 
 static_assert(is_renderer<stub_renderer>);
@@ -363,6 +390,13 @@ inline constexpr auto background(is_widget auto &&bg) {
 
 using namespace ::testing;
 
+TEST(StubRenderer, CreateRendererWithSize2x1) // NOLINT
+{
+  auto r = stub_renderer{};
+  auto exe = r.executing_renderer(basic_rectangle<pixel, int>({}, {}, 2 * pixel_width, 1 * pixel_height));
+  EXPECT_THAT(exe.extend(0), Eq(2));
+}
+
 TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
 {
   auto r = stub_renderer{};
@@ -373,8 +407,8 @@ TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
   // BEFORE AND AFTER THE ACTUAL RENDERING.
   auto exe = r.executing_renderer(basic_rectangle<pixel, int>({}, {}, 1 * pixel_width, 1 * pixel_height));
   auto pixels = call::execute(fr, exe);
-  EXPECT_THAT(exe.pixels().size(), Eq(1));
-  EXPECT_THAT((exe.pixels()[0, 0]), Eq(default_colour_t{1, 2, 3, 255}));
+  EXPECT_THAT(exe.size(), Eq(1));
+  EXPECT_THAT((exe[0, 0]), Eq(default_colour_t{1, 2, 3, 255}));
 }
 
 TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT
