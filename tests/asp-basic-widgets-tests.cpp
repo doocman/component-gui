@@ -130,21 +130,44 @@ constexpr auto linear_map(basic_rectangle<R, Rep> const &v,
       v.width() * mapping_factor, v.height() * mapping_factor);
 }
 
+template <typename T>
+concept has_unit = requires() { std::remove_cvref_t<T>::unit; };
+template <typename T, auto U>
+concept has_unit_of = has_unit<T> && std::remove_cvref_t<T>::unit == U;
 template <typename Q, auto R>
 concept is_quantity =
     mp_units::Reference<decltype(R)> &&
     mp_units::QuantityOf<std::remove_cvref_t<Q>, get_quantity_spec(R)> &&
-    (std::remove_cvref_t<Q>::unit == get_unit(R));
+        has_unit_of<Q, get_unit(R)>;;
 template <typename QP, auto R>
 concept is_quantity_point =
     mp_units::Reference<decltype(R)> &&
     mp_units::QuantityPointOf<std::remove_cvref_t<QP>, get_quantity_spec(R)> &&
-    (std::remove_cvref_t<QP>::unit == get_unit(R));
+    has_unit_of<QP, get_unit(R)>;
 
 #define ASP_NO_CONST(X) decltype(X){}
 
+template <typename T, auto... Constraints>
+concept satisfy_all = (std::invocable<decltype(Constraints), T> && ...);
+
+template <typename T, auto... Constraints>
+concept is_quantity_point_satisfying = mp_units::QuantityPoint<std::remove_cvref_t<T>> && satisfy_all<T, Constraints...>;
+
+template <typename T, auto... Constraints>
+concept is_quantity_satisfying = mp_units::Quantity<std::remove_cvref_t<T>> && satisfy_all<T, Constraints...>;
+
+template <typename T, auto... Constraints>
+concept is_rectangle_satisfying = bounding_box<std::remove_cvref_t<T>> && requires(T&& t) {
+  { call::l_x(t) } -> is_quantity_point_satisfying<Constraints...>;
+  { call::t_y(t) } -> is_quantity_point_satisfying<Constraints...>;
+  { call::width(t) } -> is_quantity_satisfying<Constraints...>;
+  { call::height(t) } -> is_quantity_satisfying<Constraints...>;
+};
+
 template <typename T, auto R>
-concept rectangle_with_unit = bounding_box<std::remove_cvref_t<T>> && requires(T &&t) {
+concept rectangle_with_unit = bounding_box<std::remove_cvref_t<T>>
+                              && is_rectangle_satisfying<T, [] (has_unit_of<get_unit(pixel)> auto) {}>
+                              && requires(T &&t) {
   { call::l_x(t) } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::width[R])>;
   { call::t_y(t) } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::height[R])>;
   { call::width(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::width[R])>;
@@ -188,9 +211,9 @@ concept fill_rect_command = is_render_command<T> && requires(T const &t) {
 
 template <typename T>
 concept is_renderer = requires(T &&t, basic_rectangle<pixel, std::int_least32_t> const &r,
-                               default_colour_t const &c) {
+                               default_colour_t const &c, basic_rectangle<point, std::int_least32_t> const& point_box) {
   { call::fill(t, r, c) } -> fill_rect_command;
-  { t.pixel_to_point_ratio() } -> is_quantity<pixel_per_point>;
+  { call::to_pixel(t, point_box) } -> is_box_satisfying<[] (is_integer auto) {}, [] (is_unit<pixel> auto) {}>;
 };
 
 template <typename T>
@@ -202,7 +225,7 @@ concept is_render_context = requires(T &&t) {
 constexpr is_render_command auto
 fill(auto &&r, rectangle_with_unit<point> auto const &area,
      colour auto const &c) requires(requires() { call::fill(std::forward<decltype(r)>(r),
-      linear_map(area, r.pixel_to_point_ratio()), c); }) {
+      call::to_pixel(r, area), c); }) {
   return call::fill(std::forward<decltype(r)>(r),
                     linear_map(area, r.pixel_to_point_ratio()), c);
 }
