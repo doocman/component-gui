@@ -32,7 +32,7 @@ inline constexpr auto point_height = mp_units::isq::height[point];
 inline constexpr auto point_per_pixel = point / pixel;
 inline constexpr auto pixel_per_point = pixel / point;
 
-template <mp_units::Reference auto R, typename Rep = float>
+template <mp_units::Reference auto R, typename Rep>
 struct basic_rectangle {
   static constexpr auto reference = R;
   using left_x_t =
@@ -88,10 +88,24 @@ constexpr bool equals_all_of(T const &t, Ts const &...ts) noexcept {
   return ((t == ts) && ...);
 }
 
+template <typename T, typename... Ts>
+concept same_as_any_of = (std::same_as<T, Ts> || ...);
+
+template <typename T>
+concept is_integer = std::integral<T> && !same_as_any_of<T, bool, char, char8_t, char16_t, char32_t, wchar_t>;
+
+template <typename... Ts>
+concept all_is_integers = (is_integer<Ts> && ...);
+template <typename... Ts>
+concept all_is_floats = (std::floating_point<Ts> && ...);
+
+template <typename... Ts>
+concept all_is_either_integers_or_flaots = all_is_integers<Ts...> || all_is_floats<Ts...>;
+
 template <mp_units::QuantityPoint QX, mp_units::QuantityPoint QY,
           mp_units::Quantity W, mp_units::Quantity H>
-  requires(equals_all_of(QX::unit, QY::unit, W::unit, H::unit))
-basic_rectangle(QX, QY, W, H) -> basic_rectangle<QX::unit>;
+  requires(equals_all_of(QX::unit, QY::unit, W::unit, H::unit) && all_is_integers<typename QX::rep,typename QY::rep,typename W::rep,typename H::rep>)
+basic_rectangle(QX, QY, W, H) -> basic_rectangle<QX::unit, std::common_type_t<typename QX::rep,typename  QY::rep,typename  W::rep, typename H::rep>>;
 
 template <mp_units::Reference auto R, typename Rep, typename... Ts>
   requires(requires(Ts &&...args) {
@@ -139,7 +153,7 @@ concept rectangle_with_unit = bounding_box<std::remove_cvref_t<T>> && requires(T
 
 static_assert(is_quantity_point<mp_units::quantity_point<decltype(mp_units::isq::width[pixel]){}>
     , decltype(mp_units::isq::width[pixel]){}>);
-static_assert(rectangle_with_unit<basic_rectangle<pixel>, pixel>);
+static_assert(rectangle_with_unit<basic_rectangle<pixel, int>, pixel>);
 
 template <typename T>
 concept has_executing_renderer =
@@ -173,7 +187,7 @@ concept fill_rect_command = is_render_command<T> && requires(T const &t) {
 };
 
 template <typename T>
-concept is_renderer = requires(T &&t, basic_rectangle<pixel> const &r,
+concept is_renderer = requires(T &&t, basic_rectangle<pixel, std::int_least32_t> const &r,
                                default_colour_t const &c) {
   { call::fill(t, r, c) } -> fill_rect_command;
   { t.pixel_to_point_ratio() } -> is_quantity<pixel_per_point>;
@@ -401,7 +415,7 @@ TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
 {
   auto r = stub_renderer{};
   //r.set_area({{}, {}, 1 * pixel_width, 1 * pixel_height});
-  auto rect = basic_rectangle<point>({}, {}, 1 * point_width, 1 * point_height);
+  auto rect = basic_rectangle<point, int>({}, {}, 1 * point_width, 1 * point_height);
   auto fr = call::fill(r, rect, default_colour_t{1, 2, 3, 255});
   // NOTE: THIS EXECUTE MUST BE ALTERED, THE RENDERER MAY NEED TO DO STUFF
   // BEFORE AND AFTER THE ACTUAL RENDERING.
@@ -415,7 +429,7 @@ TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT
 {
   auto fr = fill_rectangle(default_colour_t(255, 0, 0, 127));
   auto renderer = stub_renderer{};
-  auto rect = basic_rectangle<point>({}, {}, 1 * point_width, 1 * point_height);
+  auto rect = basic_rectangle<point, float>({}, {}, 1 * point_width, 1 * point_height);
   auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
   EXPECT_THAT(cache.colour().red, Eq(255));
   EXPECT_THAT(cache.colour().green, Eq(0));
@@ -427,7 +441,7 @@ TEST(FillRect, InitialRenderCacheFillsWithCorrectArea) // NOLINT
 {
   auto fr = fill_rectangle(default_colour_t(255, 0, 0, 127));
   auto renderer = stub_renderer{};
-  auto rect = basic_rectangle<point>(mp_units::absolute<point_width>(1),
+  auto rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(1),
                                      mp_units::absolute<point_height>(5),
                                      2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
@@ -441,12 +455,12 @@ TEST(FillRect, NewRenderCacheIsUpdatedWhenSizeChanged) // NOLINT
 {
   auto fr = fill_rectangle(default_colour_t(0, 255, 0, 127));
   auto renderer = stub_renderer{};
-  auto init_rect = basic_rectangle<point>(mp_units::absolute<point_width>(1),
+  auto init_rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(1),
                                           mp_units::absolute<point_height>(5),
                                           2 * point_width, 3 * point_height);
   auto cache =
       initial_render_cache(fr, simple_display_context(renderer, init_rect));
-  auto new_rect = basic_rectangle<point>(mp_units::absolute<point_width>(3),
+  auto new_rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(3),
                                          mp_units::absolute<point_height>(2),
                                          3 * point_width, 7 * point_height);
   cache = call::render(fr, simple_display_context(renderer, new_rect),
@@ -460,7 +474,7 @@ TEST(FillRect, NewRenderCacheIsUpdatedWhenColourChanged) // NOLINT
 {
   auto fr = fill_rectangle(default_colour_t(0, 255, 0, 127));
   auto renderer = stub_renderer{};
-  auto rect = basic_rectangle<point>(mp_units::absolute<point_width>(1),
+  auto rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(1),
                                      mp_units::absolute<point_height>(5),
                                      2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
@@ -477,7 +491,7 @@ TEST(FillRectBackground, DISABED_FillRectAndFillRect) // NOLINT
   auto c = fill_rectangle(default_colour_t(255, 0, 0, 255)) |
            background(fill_rectangle(default_colour_t{0, 255, 0, 255}));
   auto renderer = stub_renderer{};
-  auto rect = basic_rectangle<point>(mp_units::absolute<point_width>(1),
+  auto rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(1),
                                      mp_units::absolute<point_height>(5),
                                      2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(c, simple_display_context(renderer, rect));
