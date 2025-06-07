@@ -1,9 +1,9 @@
 
 #include <concepts>
+#include <ranges>
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <ranges>
 
 #include <gmock/gmock.h>
 
@@ -15,7 +15,7 @@
 #include <asp/call.hpp>
 #include <asp/types.hpp>
 
-//import mp_units;
+// import mp_units;
 
 namespace asp::tests {
 
@@ -32,8 +32,7 @@ inline constexpr auto point_height = mp_units::isq::height[point];
 inline constexpr auto point_per_pixel = point / pixel;
 inline constexpr auto pixel_per_point = pixel / point;
 
-template <mp_units::Reference auto R, typename Rep>
-struct basic_rectangle {
+template <mp_units::Reference auto R, typename Rep> struct basic_rectangle {
   static constexpr auto reference = R;
   using left_x_t =
       mp_units::quantity_point<mp_units::isq::width[R],
@@ -92,7 +91,9 @@ template <typename T, typename... Ts>
 concept same_as_any_of = (std::same_as<T, Ts> || ...);
 
 template <typename T>
-concept is_integer = std::integral<T> && !same_as_any_of<T, bool, char, char8_t, char16_t, char32_t, wchar_t>;
+concept is_integer =
+    std::integral<T> &&
+    !same_as_any_of<T, bool, char, char8_t, char16_t, char32_t, wchar_t>;
 
 template <typename... Ts>
 concept all_is_integers = (is_integer<Ts> && ...);
@@ -100,35 +101,18 @@ template <typename... Ts>
 concept all_is_floats = (std::floating_point<Ts> && ...);
 
 template <typename... Ts>
-concept all_is_either_integers_or_flaots = all_is_integers<Ts...> || all_is_floats<Ts...>;
+concept all_is_either_integers_or_floats =
+    all_is_integers<Ts...> || all_is_floats<Ts...>;
 
 template <mp_units::QuantityPoint QX, mp_units::QuantityPoint QY,
           mp_units::Quantity W, mp_units::Quantity H>
-  requires(equals_all_of(QX::unit, QY::unit, W::unit, H::unit) && all_is_integers<typename QX::rep,typename QY::rep,typename W::rep,typename H::rep>)
-basic_rectangle(QX, QY, W, H) -> basic_rectangle<QX::unit, std::common_type_t<typename QX::rep,typename  QY::rep,typename  W::rep, typename H::rep>>;
-
-template <mp_units::Reference auto R, typename Rep, typename... Ts>
-  requires(requires(Ts &&...args) {
-    basic_rectangle(std::forward<Ts>(args)...);
-  })
-constexpr bounding_box auto deduce_alternative(basic_rectangle<R, Rep> const &,
-                                               Ts &&...args) {
-  return basic_rectangle(std::forward<Ts>(args)...);
-}
-
-// TODO: Make this generic, only the 'deduce_alternative'-function must exist
-// explicitly for each type-instance.
-template <mp_units::Reference auto R, typename Rep, mp_units::Quantity Q>
-constexpr auto linear_map(basic_rectangle<R, Rep> const &v,
-                          Q const &mapping_factor) {
-  return deduce_alternative(
-      v,
-      mp_units::quantity_point(v.l_x().quantity_from_zero() * mapping_factor,
-                               v.l_x().point_origin),
-      mp_units::quantity_point(v.t_y().quantity_from_zero() * mapping_factor,
-                               v.t_y().point_origin),
-      v.width() * mapping_factor, v.height() * mapping_factor);
-}
+  requires(equals_all_of(QX::unit, QY::unit, W::unit, H::unit) &&
+           all_is_integers<typename QX::rep, typename QY::rep, typename W::rep,
+                           typename H::rep>)
+basic_rectangle(QX, QY, W, H)
+    -> basic_rectangle<QX::unit,
+                       std::common_type_t<typename QX::rep, typename QY::rep,
+                                          typename W::rep, typename H::rep>>;
 
 template <typename T>
 concept has_unit = requires() { std::remove_cvref_t<T>::unit; };
@@ -138,45 +122,93 @@ template <typename Q, auto R>
 concept is_quantity =
     mp_units::Reference<decltype(R)> &&
     mp_units::QuantityOf<std::remove_cvref_t<Q>, get_quantity_spec(R)> &&
-        has_unit_of<Q, get_unit(R)>;;
+    has_unit_of<Q, get_unit(R)>;
 template <typename QP, auto R>
 concept is_quantity_point =
     mp_units::Reference<decltype(R)> &&
     mp_units::QuantityPointOf<std::remove_cvref_t<QP>, get_quantity_spec(R)> &&
     has_unit_of<QP, get_unit(R)>;
 
-#define ASP_NO_CONST(X) decltype(X){}
+#define ASP_NO_CONST(X)                                                        \
+  decltype(X) {}
 
-template <typename T, auto... Constraints>
-concept satisfy_all = (std::invocable<decltype(Constraints), T> && ...);
-
-template <typename T, auto... Constraints>
-concept is_quantity_point_satisfying = mp_units::QuantityPoint<std::remove_cvref_t<T>> && satisfy_all<T, Constraints...>;
-
-template <typename T, auto... Constraints>
-concept is_quantity_satisfying = mp_units::Quantity<std::remove_cvref_t<T>> && satisfy_all<T, Constraints...>;
-
-template <typename T, auto... Constraints>
-concept is_rectangle_satisfying = bounding_box<std::remove_cvref_t<T>> && requires(T&& t) {
-  { call::l_x(t) } -> is_quantity_point_satisfying<Constraints...>;
-  { call::t_y(t) } -> is_quantity_point_satisfying<Constraints...>;
-  { call::width(t) } -> is_quantity_satisfying<Constraints...>;
-  { call::height(t) } -> is_quantity_satisfying<Constraints...>;
+template <typename T, typename... Args>
+concept direct_invocable = requires(T &&t, Args &&...args) {
+  std::forward<T>(t)(std::forward<Args>(args)...);
 };
+
+template <typename T, auto... Constraints>
+concept satisfy_all =
+#if 1
+    (requires(T &&t) { decltype(Constraints){}(std::forward<T>(t)); } && ...);
+#else
+    (direct_invocable<decltype(Constraints), T> && ...);
+#endif
+
+template <typename T, auto... Constraints>
+concept is_quantity_point_satisfying =
+    mp_units::QuantityPoint<std::remove_cvref_t<T>> &&
+    satisfy_all<T, Constraints...>;
+
+template <typename T, auto... Constraints>
+concept is_quantity_satisfying = mp_units::Quantity<std::remove_cvref_t<T>> &&
+                                 satisfy_all<T, Constraints...>;
+template <typename T>
+concept has_rep = requires() { typename std::remove_cvref_t<T>::rep; };
+template <typename T, auto... Constraints>
+concept rep_satisfy =
+    has_rep<T> && (direct_invocable<decltype(Constraints),
+                                    typename std::remove_cvref_t<T>::rep> &&
+                   ...);
+
+template <typename T, auto... Constraints>
+concept is_rectangle_satisfying =
+    bounding_box<std::remove_cvref_t<T>> && requires(T &&t) {
+      { call::l_x(t) } -> is_quantity_point_satisfying<Constraints...>;
+      { call::t_y(t) } -> is_quantity_point_satisfying<Constraints...>;
+      { call::width(t) } -> is_quantity_satisfying<Constraints...>;
+      { call::height(t) } -> is_quantity_satisfying<Constraints...>;
+    };
 
 template <typename T, auto R>
-concept rectangle_with_unit = bounding_box<std::remove_cvref_t<T>>
-                              && is_rectangle_satisfying<T, [] (has_unit_of<get_unit(pixel)> auto) {}>
-                              && requires(T &&t) {
-  { call::l_x(t) } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::width[R])>;
-  { call::t_y(t) } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::height[R])>;
-  { call::width(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::width[R])>;
-  { call::height(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::height[R])>;
-};
+concept rectangle_with_unit =
+    bounding_box<std::remove_cvref_t<T>> && requires(T &&t) {
+      {
+        call::l_x(t)
+      } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::width[R])>;
+      {
+        call::t_y(t)
+      } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::height[R])>;
+      { call::width(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::width[R])>;
+      {
+        call::height(t)
+      } -> is_quantity<ASP_NO_CONST(mp_units::isq::height[R])>;
+    };
 
-static_assert(is_quantity_point<mp_units::quantity_point<decltype(mp_units::isq::width[pixel]){}>
-    , decltype(mp_units::isq::width[pixel]){}>);
+template <typename T>
+concept rep_is_integer =
+    has_rep<T> && is_integer<typename std::remove_cvref_t<T>::rep>;
+
+template <typename T>
+concept is_rectangle_with_integer_rep =
+    bounding_box<std::remove_cvref_t<T>> && requires(T &&t) {
+      { call::l_x(t) } -> rep_is_integer;
+      { call::t_y(t) } -> rep_is_integer;
+      { call::width(t) } -> rep_is_integer;
+      { call::height(t) } -> rep_is_integer;
+    };
+template <typename T>
+concept is_int_pixel_rectangle =
+    is_rectangle_with_integer_rep<T> && rectangle_with_unit<T, pixel>;
+
+static_assert(is_quantity_point<
+              mp_units::quantity_point<decltype(mp_units::isq::width[pixel]){}>,
+              decltype(mp_units::isq::width[pixel]){}>);
 static_assert(rectangle_with_unit<basic_rectangle<pixel, int>, pixel>);
+// static_assert(has_unit_of<basic_rectangle<point, float>, point>);
+static_assert(
+    has_unit_of<mp_units::quantity_point<mp_units::isq::width[pixel]>, pixel>);
+static_assert(rectangle_with_unit<basic_rectangle<point, float>, point>);
 
 template <typename T>
 concept has_executing_renderer =
@@ -210,11 +242,15 @@ concept fill_rect_command = is_render_command<T> && requires(T const &t) {
 };
 
 template <typename T>
-concept is_renderer = requires(T &&t, basic_rectangle<pixel, std::int_least32_t> const &r,
-                               default_colour_t const &c, basic_rectangle<point, std::int_least32_t> const& point_box) {
-  { call::fill(t, r, c) } -> fill_rect_command;
-  { call::to_pixel(t, point_box) } -> is_box_satisfying<[] (is_integer auto) {}, [] (is_unit<pixel> auto) {}>;
-};
+concept is_renderer =
+    requires(T &&t, basic_rectangle<pixel, std::int_least32_t> const &r,
+             default_colour_t const &c,
+             basic_rectangle<point, std::int_least32_t> const &point_box) {
+      { call::fill(t, r, c) } -> fill_rect_command;
+      {
+        call::to_pixel(t, point_box)
+      } -> is_int_pixel_rectangle;
+    };
 
 template <typename T>
 concept is_render_context = requires(T &&t) {
@@ -224,10 +260,13 @@ concept is_render_context = requires(T &&t) {
 
 constexpr is_render_command auto
 fill(auto &&r, rectangle_with_unit<point> auto const &area,
-     colour auto const &c) requires(requires() { call::fill(std::forward<decltype(r)>(r),
-      call::to_pixel(r, area), c); }) {
+     colour auto const &c)
+  requires(requires() {
+    call::fill(std::forward<decltype(r)>(r), call::to_pixel(r, area), c);
+  })
+{
   return call::fill(std::forward<decltype(r)>(r),
-                    linear_map(area, r.pixel_to_point_ratio()), c);
+                    call::to_pixel(r, area), c);
 }
 
 struct stub_renderer {
@@ -242,24 +281,34 @@ struct stub_renderer {
     }
 
   public:
-    constexpr executor(mp_units::quantity<pixel_width, int> width, mp_units::quantity<pixel_height, int> height)
-     : columns_(width.numerical_value_in(pixel)), rows_(height.numerical_value_in(pixel)), raw_results_(calc_size()) {}
+    constexpr executor(mp_units::quantity<pixel_width, int> width,
+                       mp_units::quantity<pixel_height, int> height)
+        : columns_(width.numerical_value_in(pixel)),
+          rows_(height.numerical_value_in(pixel)), raw_results_(calc_size()) {}
 
-    
-    constexpr default_colour_t const& operator[](is_quantity<pixel> auto const& x, is_quantity<pixel> auto const& y) const& noexcept {
-      auto i = columns_ * y.numerical_value_in(pixel) + x.numerical_value_in(pixel);
+    constexpr default_colour_t const &
+    operator[](is_quantity<pixel> auto const &x,
+               is_quantity<pixel> auto const &y) const & noexcept {
+      auto i =
+          columns_ * y.numerical_value_in(pixel) + x.numerical_value_in(pixel);
       return raw_results_.at(i);
     }
-    constexpr default_colour_t& operator[](is_quantity<pixel> auto const& x, is_quantity<pixel> auto const& y) &noexcept {
-      auto i = columns_ * y.numerical_value_in(pixel) + x.numerical_value_in(pixel);
+    constexpr default_colour_t &
+    operator[](is_quantity<pixel> auto const &x,
+               is_quantity<pixel> auto const &y) & noexcept {
+      auto i =
+          columns_ * y.numerical_value_in(pixel) + x.numerical_value_in(pixel);
       return raw_results_.at(i);
     }
     constexpr std::size_t size() const noexcept { return raw_results_.size(); }
     constexpr std::size_t extend(std::size_t e) const noexcept {
-      switch(e) {
-        case 0 : return columns_;
-        case 1 : return rows_;
-        default: return 0u;
+      switch (e) {
+      case 0:
+        return columns_;
+      case 1:
+        return rows_;
+      default:
+        return 0u;
       }
     }
   };
@@ -268,45 +317,85 @@ struct stub_renderer {
     basic_rectangle<pixel, std::int_least32_t> area;
     default_colour_t c;
 
-    constexpr basic_rectangle<pixel, std::int_least32_t> pixel_area() const noexcept {
+    constexpr basic_rectangle<pixel, std::int_least32_t>
+    pixel_area() const noexcept {
       return area;
     }
     constexpr default_colour_t colour() const noexcept { return c; }
   };
 
-  static constexpr cached_fill_rect fill(basic_rectangle<pixel, std::int_least32_t> const &area,
-                                         default_colour_t colour) {
+  static constexpr cached_fill_rect
+  fill(basic_rectangle<pixel, std::int_least32_t> const &area,
+       default_colour_t colour) {
     return {area, colour};
   }
   constexpr mp_units::Quantity auto pixel_to_point_ratio() const {
     return px_p_pt;
   }
-  constexpr executor executing_renderer(basic_rectangle<pixel, int> const& r) const {
+  constexpr executor
+  executing_renderer(basic_rectangle<pixel, int> const &r) const {
     return {call::width(r), call::height(r)};
   }
   constexpr executor executing_renderer() const {
     return executing_renderer({{}, {}, 1 * pixel_width, 1 * pixel_height});
   }
+  constexpr basic_rectangle<pixel, int>
+  to_pixel(rectangle_with_unit<point> auto const &rect) const {
+    auto to_pixel_impl = [this]<typename S, typename Pnt>(this S &&self,
+                                                          Pnt const &point) {
+      if constexpr (mp_units::Quantity<Pnt>) {
+        auto pix_val = point * pixel_to_point_ratio();
+        return static_cast<int>(
+                   std::lround(pix_val.numerical_value_in(pixel))) *
+               pixel;
+      } else {
+        auto pix_val = self(point.quantity_from_zero());
+        return mp_units::quantity_point(pix_val, point.point_origin);
+      }
+    };
+    return {to_pixel_impl(call::l_x(rect)), to_pixel_impl(call::t_y(rect)),
+            to_pixel_impl(call::width(rect)),
+            to_pixel_impl(call::height(rect))};
+  }
 };
 
 constexpr void execute(stub_renderer::cached_fill_rect const &cmd,
-                               stub_renderer::executor &r) {
-                                auto a = cmd.pixel_area();
-  
-  for(auto y : std::views::iota(call::t_y(a).quantity_from_zero().numerical_value_in(pixel), call::b_y(a).quantity_from_zero().numerical_value_in(pixel))) {
-    for(auto x : std::views::iota(call::l_x(a).quantity_from_zero().numerical_value_in(pixel), call::r_x(a).quantity_from_zero().numerical_value_in(pixel))) {
+                       stub_renderer::executor &r) {
+  auto a = cmd.pixel_area();
+
+  for (auto y : std::views::iota(
+           call::t_y(a).quantity_from_zero().numerical_value_in(pixel),
+           call::b_y(a).quantity_from_zero().numerical_value_in(pixel))) {
+    for (auto x : std::views::iota(
+             call::l_x(a).quantity_from_zero().numerical_value_in(pixel),
+             call::r_x(a).quantity_from_zero().numerical_value_in(pixel))) {
       r[x * pixel_width, y * pixel_height] = cmd.colour();
     }
   }
 }
 
+static_assert(requires(stub_renderer const &sr,
+                       basic_rectangle<point, float> const &rect) {
+  sr.to_pixel(rect);
+});
+// static_assert(rep_satisfy<mp_units::quantity<pixel, int>&, [] (is_integer
+// auto) {}>);
+// static_assert(rep_satisfy<mp_units::quantity_point<mp_units::isq::width[pixel],
+// default_point_origin(pixel), int>&, [] (is_integer auto) {}>);
+// static_assert(rep_satisfy<mp_units::quantity_point<mp_units::isq::width[pixel],
+// default_point_origin(pixel), int>&&, [] (is_integer auto) {}>);
+// static_assert(rep_satisfy<mp_units::quantity_point<mp_units::isq::width[pixel],
+// default_point_origin(pixel), int> const, [] (is_integer auto) {}>);
+// static_assert(direct_invocable<decltype([] (rep_satisfy<[] (/*is_integer*/
+// auto&&...){}>
+//                                            auto&&...) {}),
+//                                            mp_units::quantity_point<mp_units::isq::width[pixel],
+//                                            default_point_origin(pixel),
+//                                            int>&>);
+// static_assert(satisfy_all<mp_units::quantity_point<mp_units::isq::width[pixel],
+// default_point_origin(pixel), int>&, [] (rep_satisfy<[] (is_integer auto){}>
+// auto&&) {}>);
 static_assert(is_renderer<stub_renderer>);
-
-constexpr rectangle_with_unit<pixel> auto
-to_pixel_rectangle(stub_renderer const &,
-                   rectangle_with_unit<point> auto const &pnt_rect) {
-  return linear_map(pnt_rect, 1 * pixel_per_point);
-}
 
 template <is_renderer Renderer, typename Area> class simple_display_context {
   Renderer r_;
@@ -321,7 +410,7 @@ public:
     if constexpr (rectangle_with_unit<Area, pixel>) {
       return a_;
     } else {
-      return to_pixel_rectangle(r_, a_);
+      return call::to_pixel(r_, a_);
     }
   }
 };
@@ -430,29 +519,30 @@ using namespace ::testing;
 TEST(StubRenderer, CreateRendererWithSize2x1) // NOLINT
 {
   auto r = stub_renderer{};
-  auto exe = r.executing_renderer(basic_rectangle<pixel, int>({}, {}, 2 * pixel_width, 1 * pixel_height));
+  auto exe = r.executing_renderer(
+      basic_rectangle<pixel, int>({}, {}, 2 * pixel_width, 1 * pixel_height));
   EXPECT_THAT(exe.extend(0), Eq(2));
 }
 
 TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
 {
   auto r = stub_renderer{};
-  //r.set_area({{}, {}, 1 * pixel_width, 1 * pixel_height});
-  auto rect = basic_rectangle<point, int>({}, {}, 1 * point_width, 1 * point_height);
+  auto rect =
+      basic_rectangle<point, int>({}, {}, 1 * point_width, 1 * point_height);
   auto fr = call::fill(r, rect, default_colour_t{1, 2, 3, 255});
-  // NOTE: THIS EXECUTE MUST BE ALTERED, THE RENDERER MAY NEED TO DO STUFF
-  // BEFORE AND AFTER THE ACTUAL RENDERING.
-  auto exe = r.executing_renderer(basic_rectangle<pixel, int>({}, {}, 1 * pixel_width, 1 * pixel_height));
-  auto pixels = call::execute(fr, exe);
+  auto exe = r.executing_renderer(
+      basic_rectangle<pixel, int>({}, {}, 1 * pixel_width, 1 * pixel_height));
+  call::execute(fr, exe);
   EXPECT_THAT(exe.size(), Eq(1));
-  EXPECT_THAT((exe[0, 0]), Eq(default_colour_t{1, 2, 3, 255}));
+  EXPECT_THAT((exe[0 * mp_units::isq::width[pixel], 0 * mp_units::isq::height[pixel]]), Eq(default_colour_t{1, 2, 3, 255}));
 }
 
 TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT
 {
   auto fr = fill_rectangle(default_colour_t(255, 0, 0, 127));
   auto renderer = stub_renderer{};
-  auto rect = basic_rectangle<point, float>({}, {}, 1 * point_width, 1 * point_height);
+  auto rect =
+      basic_rectangle<point, float>({}, {}, 1 * point_width, 1 * point_height);
   auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
   EXPECT_THAT(cache.colour().red, Eq(255));
   EXPECT_THAT(cache.colour().green, Eq(0));
@@ -465,8 +555,8 @@ TEST(FillRect, InitialRenderCacheFillsWithCorrectArea) // NOLINT
   auto fr = fill_rectangle(default_colour_t(255, 0, 0, 127));
   auto renderer = stub_renderer{};
   auto rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(1),
-                                     mp_units::absolute<point_height>(5),
-                                     2 * point_width, 3 * point_height);
+                                          mp_units::absolute<point_height>(5),
+                                          2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
   EXPECT_THAT(cache.area.l_x(), Eq(mp_units::absolute<pixel_width>(1)));
   EXPECT_THAT(cache.area.t_y(), Eq(mp_units::absolute<pixel_height>(5)));
@@ -478,14 +568,14 @@ TEST(FillRect, NewRenderCacheIsUpdatedWhenSizeChanged) // NOLINT
 {
   auto fr = fill_rectangle(default_colour_t(0, 255, 0, 127));
   auto renderer = stub_renderer{};
-  auto init_rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(1),
-                                          mp_units::absolute<point_height>(5),
-                                          2 * point_width, 3 * point_height);
+  auto init_rect = basic_rectangle<point, int>(
+      mp_units::absolute<point_width>(1), mp_units::absolute<point_height>(5),
+      2 * point_width, 3 * point_height);
   auto cache =
       initial_render_cache(fr, simple_display_context(renderer, init_rect));
-  auto new_rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(3),
-                                         mp_units::absolute<point_height>(2),
-                                         3 * point_width, 7 * point_height);
+  auto new_rect = basic_rectangle<point, int>(
+      mp_units::absolute<point_width>(3), mp_units::absolute<point_height>(2),
+      3 * point_width, 7 * point_height);
   cache = call::render(fr, simple_display_context(renderer, new_rect),
                        std::move(cache));
   EXPECT_THAT(cache.area.l_x(), Eq(mp_units::absolute<pixel_width>(3)));
@@ -498,8 +588,8 @@ TEST(FillRect, NewRenderCacheIsUpdatedWhenColourChanged) // NOLINT
   auto fr = fill_rectangle(default_colour_t(0, 255, 0, 127));
   auto renderer = stub_renderer{};
   auto rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(1),
-                                     mp_units::absolute<point_height>(5),
-                                     2 * point_width, 3 * point_height);
+                                          mp_units::absolute<point_height>(5),
+                                          2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(fr, simple_display_context(renderer, rect));
   fr = fill_rectangle(default_colour_t(0, 0, 255, 127));
   cache = call::render(fr, simple_display_context(renderer, rect),
@@ -515,8 +605,8 @@ TEST(FillRectBackground, DISABED_FillRectAndFillRect) // NOLINT
            background(fill_rectangle(default_colour_t{0, 255, 0, 255}));
   auto renderer = stub_renderer{};
   auto rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(1),
-                                     mp_units::absolute<point_height>(5),
-                                     2 * point_width, 3 * point_height);
+                                          mp_units::absolute<point_height>(5),
+                                          2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(c, simple_display_context(renderer, rect));
   call::execute(cache, renderer);
   FAIL()
