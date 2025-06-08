@@ -1,5 +1,6 @@
 
 #include <concepts>
+#include <print>
 #include <ranges>
 #include <tuple>
 #include <type_traits>
@@ -247,9 +248,7 @@ concept is_renderer =
              default_colour_t const &c,
              basic_rectangle<point, std::int_least32_t> const &point_box) {
       { call::fill(t, r, c) } -> fill_rect_command;
-      {
-        call::to_pixel(t, point_box)
-      } -> is_int_pixel_rectangle;
+      { call::to_pixel(t, point_box) } -> is_int_pixel_rectangle;
     };
 
 template <typename T>
@@ -265,8 +264,7 @@ fill(auto &&r, rectangle_with_unit<point> auto const &area,
     call::fill(std::forward<decltype(r)>(r), call::to_pixel(r, area), c);
   })
 {
-  return call::fill(std::forward<decltype(r)>(r),
-                    call::to_pixel(r, area), c);
+  return call::fill(std::forward<decltype(r)>(r), call::to_pixel(r, area), c);
 }
 
 struct stub_renderer {
@@ -310,6 +308,9 @@ struct stub_renderer {
       default:
         return 0u;
       }
+    }
+    constexpr std::span<default_colour_t const> pixel_span() const noexcept {
+      return raw_results_;
     }
   };
   struct cached_fill_rect {
@@ -441,16 +442,32 @@ public:
 template <typename T>
 concept is_widget = true;
 
-template <is_widget, is_widget> class background_t {
-public:
-  struct render_cache_t {
-    constexpr auto execute(auto &&) {}
-  };
-  constexpr background_t(auto &&, auto &&) {}
+template <is_render_command FGC> class background_render_cache_t {
+  FGC foreground_;
 
-  friend constexpr render_cache_t
-  initial_render_cache(background_t const &, is_render_context auto &&) {
-    return {};
+public:
+  using associated_renderer = associated_renderer_t<FGC>;
+  constexpr explicit background_render_cache_t(
+      std::convertible_to<FGC> auto &&fg)
+      : foreground_(std::forward<decltype(fg)>(fg)) {}
+  constexpr auto execute(auto &&exe_renderer) const {
+    call::execute(foreground_, exe_renderer);
+  }
+};
+template <is_render_command F>
+background_render_cache_t(F &&)
+    -> background_render_cache_t<std::remove_cvref_t<F>>;
+
+template <is_widget FG, is_widget> class background_t {
+  FG fg_;
+
+public:
+  constexpr background_t(std::convertible_to<FG> auto &&fg, auto &&)
+      : fg_(std::forward<decltype(fg)>(fg)) {}
+
+  friend constexpr is_render_command auto
+  initial_render_cache(background_t const &self, is_render_context auto &&ctx) {
+    return background_render_cache_t{call::initial_render_cache(self.fg_, ctx)};
   }
 };
 
@@ -534,7 +551,23 @@ TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
       basic_rectangle<pixel, int>({}, {}, 1 * pixel_width, 1 * pixel_height));
   call::execute(fr, exe);
   EXPECT_THAT(exe.size(), Eq(1));
-  EXPECT_THAT((exe[0 * mp_units::isq::width[pixel], 0 * mp_units::isq::height[pixel]]), Eq(default_colour_t{1, 2, 3, 255}));
+  EXPECT_THAT(
+      (exe[0 * mp_units::isq::width[pixel], 0 * mp_units::isq::height[pixel]]),
+      Eq(default_colour_t{1, 2, 3, 255}));
+}
+TEST(StubRenderer, DISABLED_IgnorePixelsOutsideBounds) // NOLINT
+{
+  FAIL() << "Not yet implemented";
+}
+TEST(
+    StubRenderer,
+    DISABLED_IgnorePixelsWhenThereIsNoOverlapBetweenRendererAndCommandArea) // NOLINT
+{
+  FAIL() << "Not yet implemented";
+}
+TEST(StubRenderer, DISABLED_TransparentOverOpaqueBlend) // NOLINT
+{
+  FAIL() << "Not yet implemented";
 }
 
 TEST(FillRect, InitialRenderCacheFillsWithCorrectColour) // NOLINT
@@ -599,17 +632,43 @@ TEST(FillRect, NewRenderCacheIsUpdatedWhenColourChanged) // NOLINT
   EXPECT_THAT(cache.colour().green, Eq(255));
   EXPECT_THAT(cache.colour().alpha, Eq(127));
 }
-TEST(FillRectBackground, DISABED_FillRectAndFillRect) // NOLINT
+template <colour T> constexpr bool colour_equal(T const &l, T const &r) {
+  auto field_equal = [&l, &r](auto field_get) {
+    return field_get(l) == field_get(r);
+  };
+  using field_t = std::remove_cvref_t<decltype(call::alpha(l))>;
+  return field_equal(call::alpha) &&
+         (call::alpha(l) == field_t{} ||
+          (field_equal(call::red) && field_equal(call::green) &&
+           field_equal(call::blue)));
+}
+MATCHER_P(ColourEq, exp, "") {
+  if (result_listener != nullptr && result_listener->stream() != nullptr) {
+    std::print(*result_listener->stream(),
+               "Expected colour to be {}, actual was {}", exp, arg);
+  }
+  return colour_equal(arg, exp);
+}
+TEST(FillRectBackground, FillRectAndFillRect) // NOLINT
 {
   auto c = fill_rectangle(default_colour_t(255, 0, 0, 255)) |
            background(fill_rectangle(default_colour_t{0, 255, 0, 255}));
   auto renderer = stub_renderer{};
-  auto rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(1),
-                                          mp_units::absolute<point_height>(5),
+  auto rect = basic_rectangle<point, int>(mp_units::absolute<point_width>(0),
+                                          mp_units::absolute<point_height>(0),
                                           2 * point_width, 3 * point_height);
   auto cache = initial_render_cache(c, simple_display_context(renderer, rect));
-  call::execute(cache, renderer);
-  FAIL()
-      << "Not yet implemented. Must test that the foreground takes 'priority'";
+  auto exe_r = renderer.executing_renderer(
+      basic_rectangle<pixel, int>({}, {}, 2 * pixel_width, 3 * pixel_height));
+  call::execute(cache, exe_r);
+  EXPECT_THAT(exe_r.pixel_span(),
+              Each(ColourEq(default_colour_t{255, 0, 0, 255})));
+}
+TEST(FillRectBackground, DISABLED_DummyForegroundWillDisplayBackground) {
+  FAIL() << "Not yet implemented";
+}
+TEST(FillRectBackground,
+     DISABLED_TransparentForegroundWillLetBackgroundShineThrough) {
+  FAIL() << "Not yet implemented";
 }
 } // namespace asp::tests

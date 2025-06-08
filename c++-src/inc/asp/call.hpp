@@ -320,6 +320,7 @@ ASP_CALL_CONCEPT(glyph)
 ASP_CALL_CONCEPT(text_colour)
 ASP_CALL_CONCEPT(colour)
 ASP_CALL_CONCEPT(execute)
+ASP_CALL_CONCEPT(initial_render_cache)
 ASP_CALL_CONCEPT(executing_renderer)
 ASP_CALL_CONCEPT(to_pixel)
 ASP_CALL_CONCEPT(find_sub)
@@ -743,6 +744,7 @@ inline constexpr impl::_do_set_displayed set_displayed;
 inline constexpr impl::_do_text_colour text_colour;
 inline constexpr impl::_do_colour colour;
 inline constexpr impl::_do_execute execute;
+inline constexpr impl::_do_initial_render_cache initial_render_cache;
 inline constexpr impl::_do_executing_renderer executing_renderer;
 inline constexpr impl::_do_to_pixel to_pixel;
 
