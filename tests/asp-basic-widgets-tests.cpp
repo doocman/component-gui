@@ -115,6 +115,38 @@ basic_rectangle(QX, QY, W, H)
                        std::common_type_t<typename QX::rep, typename QY::rep,
                                           typename W::rep, typename H::rep>>;
 
+template <mp_units::Reference auto R, typename Rep, typename U>
+constexpr auto operator*(basic_rectangle<R, Rep> const &rect, U const &rhs) {
+  return basic_rectangle(mp_units::quantity_point(call::l_x(rect).quantity_from_zero() * rhs), mp_units::quantity_point(call::t_y(rect).quantity_from_zero() * rhs),
+                         call::width(rect) * rhs, call::height(rect) * rhs);
+}
+
+template <is_integer T>
+constexpr T lround(T v) { return v; }
+template <std::floating_point T>
+constexpr is_integer auto lround(T v) {
+  auto lround_res = std::lround(v);
+  if constexpr(sizeof(T) <= 4) {
+    return static_cast<std::int_least32_t>(v);
+  } else {
+    return lround_res;
+  }
+}
+constexpr mp_units::Quantity auto lround(mp_units::Quantity auto q) {
+  return lround(q.numerical_value_in(q.unit)) * q.reference;
+}
+constexpr mp_units::QuantityPoint auto lround(mp_units::QuantityPoint auto q) {
+  return mp_units::quantity_point(lround(q.quantity_from_zero()));
+}
+
+template <typename T>
+using lround_t = decltype(lround(std::declval<T>()));
+
+template <mp_units::Reference auto R, typename Rep>
+constexpr basic_rectangle<R, lround_t<Rep>> lround(basic_rectangle<R, Rep> const& rect) {
+  return {lround(call::l_x(rect)), lround(call::t_y(rect)), lround(call::width(rect)), lround(call::height(rect))};
+}
+
 template <typename T>
 concept has_unit = requires() { std::remove_cvref_t<T>::unit; };
 template <typename T, auto U>
@@ -555,18 +587,14 @@ TEST(StubRenderer, FillRectApplyToSinglePixel) // NOLINT
       (exe[0 * mp_units::isq::width[pixel], 0 * mp_units::isq::height[pixel]]),
       Eq(default_colour_t{1, 2, 3, 255}));
 }
-TEST(StubRenderer, DISABLED_IgnorePixelsOutsideBounds) // NOLINT
+TEST(StubRenderer, TransparentOverOpaqueBlend) // NOLINT
 {
-  FAIL() << "Not yet implemented";
-}
-TEST(
-    StubRenderer,
-    DISABLED_IgnorePixelsWhenThereIsNoOverlapBetweenRendererAndCommandArea) // NOLINT
-{
-  FAIL() << "Not yet implemented";
-}
-TEST(StubRenderer, DISABLED_TransparentOverOpaqueBlend) // NOLINT
-{
+  auto r = stub_renderer{};
+  auto rect =
+      basic_rectangle<point, int>({}, {}, 1 * point_width, 1 * point_height);
+  auto background = call::fill(r, rect, default_colour_t{2, 0, 4, 255});
+  auto foreground = call::fill(r, rect, default_colour_t{0, 2, 4, 127});
+  auto exe = r.executing_renderer(lround(rect * 1 * pixel_per_point));
   FAIL() << "Not yet implemented";
 }
 
