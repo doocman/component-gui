@@ -117,16 +117,16 @@ basic_rectangle(QX, QY, W, H)
 
 template <mp_units::Reference auto R, typename Rep, typename U>
 constexpr auto operator*(basic_rectangle<R, Rep> const &rect, U const &rhs) {
-  return basic_rectangle(mp_units::quantity_point(call::l_x(rect).quantity_from_zero() * rhs), mp_units::quantity_point(call::t_y(rect).quantity_from_zero() * rhs),
-                         call::width(rect) * rhs, call::height(rect) * rhs);
+  return basic_rectangle(
+      mp_units::quantity_point(call::l_x(rect).quantity_from_zero() * rhs),
+      mp_units::quantity_point(call::t_y(rect).quantity_from_zero() * rhs),
+      call::width(rect) * rhs, call::height(rect) * rhs);
 }
 
-template <is_integer T>
-constexpr T lround(T v) { return v; }
-template <std::floating_point T>
-constexpr is_integer auto lround(T v) {
+template <is_integer T> constexpr T lround(T v) { return v; }
+template <std::floating_point T> constexpr is_integer auto lround(T v) {
   auto lround_res = std::lround(v);
-  if constexpr(sizeof(T) <= 4) {
+  if constexpr (sizeof(T) <= 4) {
     return static_cast<std::int_least32_t>(v);
   } else {
     return lround_res;
@@ -139,12 +139,13 @@ constexpr mp_units::QuantityPoint auto lround(mp_units::QuantityPoint auto q) {
   return mp_units::quantity_point(lround(q.quantity_from_zero()));
 }
 
-template <typename T>
-using lround_t = decltype(lround(std::declval<T>()));
+template <typename T> using lround_t = decltype(lround(std::declval<T>()));
 
 template <mp_units::Reference auto R, typename Rep>
-constexpr basic_rectangle<R, lround_t<Rep>> lround(basic_rectangle<R, Rep> const& rect) {
-  return {lround(call::l_x(rect)), lround(call::t_y(rect)), lround(call::width(rect)), lround(call::height(rect))};
+constexpr basic_rectangle<R, lround_t<Rep>>
+lround(basic_rectangle<R, Rep> const &rect) {
+  return {lround(call::l_x(rect)), lround(call::t_y(rect)),
+          lround(call::width(rect)), lround(call::height(rect))};
 }
 
 template <typename T>
