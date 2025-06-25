@@ -2,7 +2,7 @@
 #ifndef COMPONENT_GUI_ASP_AUTO_REF_HPP
 #define COMPONENT_GUI_ASP_AUTO_REF_HPP
 
-#include <type_traits>
+#include <asp/import/stl.hpp>
 
 #include <asp/call.hpp>
 #include <asp/std-backport/concepts.hpp>

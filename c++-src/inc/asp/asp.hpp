@@ -2,12 +2,7 @@
 #ifndef COMPONENT_GUI_ASP_HPP
 #define COMPONENT_GUI_ASP_HPP
 
-#include <algorithm>
-#include <memory>
-#include <tuple>
-#include <type_traits>
-#include <variant>
-#include <vector>
+#include <asp/import/stl.hpp>
 
 #include <asp/auto_ref.hpp>
 #include <asp/build_utility.hpp>

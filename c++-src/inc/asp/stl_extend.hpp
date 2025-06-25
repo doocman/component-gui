@@ -1,28 +1,7 @@
 #ifndef COMPONENT_GUI_STL_EXTEND_HPP
 #define COMPONENT_GUI_STL_EXTEND_HPP
 
-#if defined(__has_include)
-#define ASP_HAS_INCLUDE(X) __has_include(X)
-#else
-#define ASP_HAS_INCLUDE(X) false
-#endif
-
-#include <cassert>
-#include <exception>
-#include <initializer_list>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <variant>
-
-#if __cplusplus > 202002L && ASP_HAS_INCLUDE(<expected>)
-#include <expected>
-#define ASP_HAS_EXPECTED __cpp_lib_expected >= 202202L
-#else
-#define ASP_HAS_EXPECTED false
-#endif
+#include <asp/import/stl.hpp>
 
 #if !ASP_HAS_EXPECTED
 #include <asp/std-backport/expected.hpp>

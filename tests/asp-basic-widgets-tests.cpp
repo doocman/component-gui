@@ -8,10 +8,7 @@
 
 #include <gmock/gmock.h>
 
-#include <mp-units/concepts.h>
-#include <mp-units/framework.h>
-#include <mp-units/math.h>
-#include <mp-units/systems/isq.h>
+#include <asp/import/mp-units.hpp>
 
 #include <asp/call.hpp>
 #include <asp/types.hpp>

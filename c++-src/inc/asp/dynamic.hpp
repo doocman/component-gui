@@ -1,9 +1,7 @@
 #ifndef COMPONENT_GUI_DYNAMIC_HPP
 #define COMPONENT_GUI_DYNAMIC_HPP
 
-#include <functional>
-#include <ranges>
-#include <tuple>
+#include <asp/import/stl.hpp>
 
 #include <asp/build_utility.hpp>
 #include <asp/geometry.hpp>

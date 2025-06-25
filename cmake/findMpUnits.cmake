@@ -12,5 +12,9 @@ if (${PROJECT_IS_TOP_LEVEL})
     set(MP_UNITS_BUILD_CXX_MODULES ON)
 endif ()
 
+if (MP_UNITS_BUILD_CXX_MODULES)
+    set(ASP_MP_UNITS_MODULES 1)
+endif ()
+
 find_package(mp-units)
 #fetchcontent_makeavailable(mp-units)

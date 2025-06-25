@@ -3,9 +3,7 @@
 #define ASP_ASP_WARNINGS_HPP
 
 #ifndef NDEBUG
-#include <iostream>
-#include <source_location>
-#include <string_view>
+#include <asp/import/stl.hpp>
 #endif
 
 #define ASP_PRAGMA_(X) _Pragma(#X)

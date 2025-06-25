@@ -7,7 +7,7 @@
 #include <ranges>
 #include <type_traits>
 
-#include <mp-units/core.h>
+#include <asp/import/mp-units.hpp>
 
 #include <asp/call.hpp>
 #include <asp/std-backport/concepts.hpp>

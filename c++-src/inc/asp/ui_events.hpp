@@ -2,10 +2,7 @@
 #ifndef COMPONENT_GUI_ASP_UI_EVENTS_HPP
 #define COMPONENT_GUI_ASP_UI_EVENTS_HPP
 
-#include <chrono>
-#include <cmath>
-#include <tuple>
-#include <variant>
+#include <asp/import/stl.hpp>
 
 #include <asp/call.hpp>
 #include <asp/std-backport/utility.hpp>
