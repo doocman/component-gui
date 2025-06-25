@@ -9,7 +9,7 @@ fetchcontent_declare(
 
 if (${PROJECT_IS_TOP_LEVEL})
     set(MP_UNITS_API_CONTRACTS "NONE" CACHE STRING "" FORCE)
-    set(MP_UNITS_BUILD_CXX_MODULES OFF)
+    set(MP_UNITS_BUILD_CXX_MODULES ON)
 endif ()
 
 find_package(mp-units)

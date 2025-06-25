@@ -740,81 +740,7 @@ public:
   }
 };
 
-template <bounding_box TB = default_rect> class recursive_area_navigator {
-  TB relative_area_;
-  using x_t = decltype(remove_unit_ref(call::l_x(relative_area_)));
-  using y_t = decltype(remove_unit_ref(call::t_y(relative_area_)));
-  x_t offset_x_{};
-  y_t offset_y_{};
-
-  template <bounding_box A2> friend class recursive_area_navigator;
-
-  constexpr recursive_area_navigator(TB const &b, x_t ox, y_t oy)
-      : relative_area_(b), offset_x_(ox), offset_y_(oy) {}
-
-public:
-  constexpr explicit recursive_area_navigator(TB const &b)
-      : relative_area_(b) {}
-  template <same_unit_geometry_as<TB> TB2 = TB>
-  constexpr recursive_area_navigator sub(TB2 const &b) const {
-    auto intersection = box_intersection<TB>(b, relative_area_);
-    if (valid_box(intersection)) {
-      return {nudge_up(nudge_left(intersection, call::l_x(b)), call::t_y(b)),
-              offset_x_ + call::l_x(b), offset_y_ + call::t_y(b)};
-    } else {
-      auto x = call::l_x(relative_area_);
-      auto y = call::t_y(relative_area_);
-      return {box_from_xyxy<TB>(x, y, x, y), offset_x_, offset_y_};
-    }
-  }
-  constexpr TB relative_area() const { return relative_area_; }
-  template <same_unit_geometry_as<TB> TB2 = TB, pixel_coord C>
-    requires(same_unit_as<C, TB>)
-  constexpr TB2 relative_area(TB2 b, C const &rel_point) const {
-    return box_from_xywh<TB2>(call::l_x(b) + offset_x_ - call::x_of(rel_point),
-                              call::t_y(b) + offset_y_ - call::y_of(rel_point),
-                              call::width(b), call::height(b));
-  }
-
-  template <same_unit_geometry_as<TB> TB2 = TB>
-  constexpr TB2 move_to_absolute(TB2 const &b) const {
-    return box_from_xywh<TB2>(call::l_x(b) + offset_x_,
-                              call::t_y(b) + offset_y_, call::width(b),
-                              call::height(b));
-  }
-  constexpr TB absolute_area() const {
-    return move_to_absolute(relative_area_);
-  }
-
-  constexpr default_coordinate offset() const
-    requires(!size_tagged<TB>)
-  {
-    return {offset_x_, offset_y_};
-  }
-  template <typename TB2 = TB, typename SizeTag = tag_t_of<TB2>,
-            typename ResultT = pixelpoint_unit<SizeTag, default_coordinate>>
-    requires(size_tagged<TB>)
-  constexpr ResultT offset() const {
-    return ResultT(offset_x_, offset_y_);
-  }
-
-  constexpr nudger<x_t, y_t> relative_to_absolute_nudger() const noexcept {
-    return {offset_x_, offset_y_};
-  }
-  template <same_unit_geometry_as<TB> A2>
-  constexpr explicit operator recursive_area_navigator<A2>() const {
-    return {copy_box<A2>(relative_area_), offset_x_, offset_y_};
-  }
-
-  template <pixel_coord V>
-    requires(same_unit_as<V, TB>)
-  constexpr recursive_area_navigator translate(V const &v) const {
-    return {
-        nudge_down(nudge_right(relative_area_, call::x_of(v)), call::y_of(v)),
-        offset_x_ - call::x_of(v), offset_y_ - call::y_of(v)};
-  }
-};
-
+#if 0
 template <point_rect TArea = point_unit_t<default_rect>>
 class basic_widget_back_propagater {
   recursive_area_navigator<TArea> full_area_;
@@ -871,6 +797,7 @@ public:
 
   constexpr auto offset() const { return full_area_.offset(); }
 };
+#endif
 
 template <typename ToAccess, point_rect A,
           typename // std::invocable<ToAccess&>

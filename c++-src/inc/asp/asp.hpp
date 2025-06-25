@@ -21,171 +21,9 @@
 
 namespace asp {
 
-template <canvas T, pixel_rect TB, pixelpoint_scale Scale> class sub_renderer {
-  T *c_;
-  recursive_area_navigator<TB> area_;
-  default_colour_t set_colour_{};
-  Scale scale_;
-
-  static_assert(!std::is_reference_v<Scale>);
-
-public:
-  constexpr auto pixel_scale() const { return scale_; }
-
-private:
-  static constexpr TB bound_area(TB a) {
-    if (!valid_box(a)) {
-      call::height(a, 0);
-      call::width(a, 0);
-      assert(valid_box(a));
-    }
-    return a;
-  }
-
-  template <size_tagged TB2> constexpr auto to_pixels(TB2 const &b) const {
-    return convert_pixelpoint<pixel_size_tag>(b, pixel_scale());
-  }
-
-  template <pixel_rect TB2>
-  constexpr TB2 to_relative_dest(TB2 const &input_dest) const {
-    return box_intersection<TB2>(input_dest, area_.relative_area());
-  }
-  template <typename TB2>
-  constexpr TB2 to_absolute(TB2 const &relative_dest) const {
-    return area_.move_to_absolute(relative_dest);
-  }
-
-public:
-  constexpr sub_renderer(T &c, recursive_area_navigator<TB> a,
-                         default_colour_t sc, Scale s)
-      : c_(std::addressof(c)), area_(a), set_colour_(sc), scale_(s) {
-    assert(valid_box(area_.relative_area()));
-  }
-
-  constexpr sub_renderer(T &c, TB a)
-      : sub_renderer(c, recursive_area_navigator<TB>(a), {},
-                     call::pixel_scale(c)) {}
-  constexpr explicit sub_renderer(T &c)
-      : sub_renderer(c, call::pixel_area(c)) {}
-  template <point_rect TB2>
-  constexpr sub_renderer(T &c, TB2 const &a)
-      : sub_renderer(
-            c, convert_pixelpoint<pixel_size_tag>(a, call::pixel_scale(c))) {}
-
-  template <pixel_or_point_rect_basic TB2, pixel_draw_callback TCB>
-  constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
-    ASP_ASSERT(valid_box(dest.value()));
-    auto relative_dest = to_relative_dest(to_pixels(dest));
-    ASP_ASSERT(valid_box(relative_dest.value()));
-    constexpr auto get_autoconv_dest = [](auto &&dest, auto &&px_scaler) {
-      return autoconverting_pixelpoint_unit(dest, call::pixel_scale(px_scaler));
-    };
-    if (empty_box(relative_dest)) {
-      using return_type = decltype((*c_).draw_pixels(
-          get_autoconv_dest(relative_dest, *c_), [](auto &&...) {}));
-      if constexpr (std::is_void_v<return_type>) {
-        return;
-      } else {
-        return return_type{};
-      }
-    }
-    auto absolute_dest = to_absolute(relative_dest);
-    ASP_ASSERT(valid_box(absolute_dest));
-    return call::draw_pixels(
-        *c_, get_autoconv_dest(absolute_dest, *c_),
-        [cb = bp::as_forward(std::forward<decltype(cb)>(cb)), relative_dest,
-         nudge = area_.relative_to_absolute_nudger()](auto &&drawer) {
-          std::invoke(
-              *cb, relative_dest,
-              [d = bp::as_forward(std::forward<decltype(drawer)>(drawer)),
-               &nudge](pixel_coordinate auto &&px, colour auto &&col) {
-                auto absolute_pos = nudge(px);
-                std::invoke(*d, absolute_pos, col);
-              });
-        });
-  }
-
-  template <pixel_or_point_rect_basic B, typename F>
-  void draw_alpha(B const &b, F &&cb) {
-    if (empty_box(b)) {
-      return;
-    }
-    using bpix = convert_pixelpoint_t<pixel_size_tag, B>;
-    draw_pixels(std::forward<decltype(b)>(b), [this, &cb](bpix const &bbox,
-                                                          auto &&drawer) {
-      ASP_ASSERT(valid_box(bbox));
-      cb(bbox, [this, &drawer](pixel_coordinate auto &&point, auto &&alpha) {
-        drawer(point, multiply_alpha(set_colour_, alpha));
-      });
-    });
-  }
-
-  constexpr void fill(pixel_or_point_rect_basic auto const &dest,
-                      colour auto const &c) {
-    auto absolute_dest_maker = [this](auto const &d) {
-      return to_absolute(to_relative_dest(
-          convert_pixelpoint<pixel_size_tag>(d, pixel_scale())));
-    };
-    if constexpr (has_native_fill<decltype(*c_),
-                                  decltype(absolute_dest_maker(dest)),
-                                  decltype(c)>) {
-      auto absolute_dest = absolute_dest_maker(dest);
-      if (empty_box(absolute_dest)) {
-        return;
-      }
-      call::fill(*c_, absolute_dest, c);
-    } else {
-      draw_pixels(dest,
-                  fill_on_draw_pixel<std::remove_cvref_t<decltype(c)>>{c});
-    }
-  }
-
-  constexpr sub_renderer sub(pixel_rect auto &&b, default_colour_t col) const {
-    return {*c_, area_.sub(b), col, scale_};
-  }
-
-  constexpr sub_renderer sub(pixel_rect auto &&b) const {
-    return sub(b, set_colour_);
-  }
-
-  constexpr sub_renderer sub(point_rect auto const &b, auto &&...args) const {
-    return sub(to_pixels(b), std::forward<decltype(args)>(args)...);
-  }
-
-  constexpr sub_renderer translate(pixel_coordinate auto const &p) const {
-    return {*c_, area_.translate(p), set_colour_, scale_};
-  }
-  constexpr sub_renderer translate(point_coordinate auto const &p) const {
-    return translate(to_pixels(p));
-  }
-  template <pixelpoint_scale S2, typename CT = decltype(S2{} * scale_)>
-  constexpr sub_renderer<T, TB, CT> scale(S2 s) const {
-    return {*c_, area_, set_colour_, s * scale_};
-  }
-
-  constexpr sub_renderer with(default_colour_t c) {
-    auto res = *this;
-    res.set_colour_ = c;
-    return res;
-  }
-
-  constexpr TB area() const { return area_.relative_area(); }
-};
-
 template <typename T>
 using pixelpoint_scale_from_t =
     std::remove_cvref_t<decltype(call::pixel_scale(std::declval<T &&>()))>;
-
-template <typename T, pixel_rect TB>
-sub_renderer(T &, TB) -> sub_renderer<T, TB, pixelpoint_scale_from_t<T>>;
-template <typename T>
-sub_renderer(T &t)
-    -> sub_renderer<T, std::remove_cvref_t<decltype(call::pixel_area(t))>,
-                    pixelpoint_scale_from_t<T>>;
-template <typename T, point_rect TB>
-sub_renderer(T &, TB const &)
-    -> sub_renderer<T, convert_pixelpoint_t<pixel_size_tag, TB>,
-                    pixelpoint_scale_from_t<T>>;
 
 namespace impl {
 struct widget_display_constraint {
@@ -239,19 +77,7 @@ public:
         basic_size_wh{call::width(start_area), call::height(start_area)});
   }
 
-  template <typename... Ts> constexpr void render(sub_renderer<Ts...> &&r) {
-    // asp::fill(r, r.area(), default_colour_t{0, 0, 0, 255});
-    tuple_for_each([&r](auto &&v) { call::render(v, r.sub(call::area(v))); },
-                   widgets_);
-  }
-
-  constexpr void render(canvas auto &&c,
-                        pixel_or_point_rect_basic auto const &rarea) {
-    render(sub_renderer(c, rarea));
-  }
-
-  constexpr void render(canvas auto &&c) { render(sub_renderer(c)); }
-
+  #if 0
   // TODO: Reintroduce a constraint here, it is badly needed.
   constexpr native_box_t handle(auto const &evt)
   // requires((has_handle<TWidgets, decltype(evt),
@@ -302,6 +128,7 @@ public:
     });
     return b.result_area();
   }
+  #endif
 
   constexpr TWidgets &widgets()
     requires(!std::is_empty_v<TWidgets>)
@@ -440,6 +267,7 @@ concept has_accessor = requires(T &&t, Args &&...args) {
   { t.accessor(std::forward<Args>(args)...) } -> accessor;
 };
 
+#if 0
 template <pixel_or_point_rect_basic TArea, typename TDisplay, typename TState,
           typename TEventHandler, typename TSubs, typename TOnResize>
 class widget
@@ -675,7 +503,7 @@ public:
     return found;
   }
 };
-
+#endif
 template <renderer TR, typename TStateArgs>
 struct builder_display_element_constraint {
   constexpr void
@@ -1706,10 +1534,7 @@ using state_marker_t = make_widget_state_marker_sequence_t<
 using all_states_t = all_states_in_marker_t<state_marker_t>;
 using all_triggers_t = triggers<trigger_on, trigger_off>;
 
-template <typename T, typename BP = basic_widget_back_propagater<>>
-concept can_trigger =
-    has_handle<T, trigger_on, BP &&> && has_handle<T, trigger_off, BP &&>;
-
+#if 0
 template <typename T, typename TRender = dummy_renderer,
           typename Position = default_coordinate,
           typename BP = basic_widget_back_propagater<>>
@@ -1725,8 +1550,10 @@ concept element =
 struct sub_constraint {
   constexpr void operator()(element auto &&) const {}
 };
+#endif
 } // namespace radio_button
 
+#if 0
 /// @brief Trigger for widgets that acts like a container of multiple buttons
 /// where at most one button should be enabled.
 ///
@@ -2206,7 +2033,7 @@ public:
 
 constexpr builder_impl<empty_placeholder_t, false> builder() { return {}; }
 } // namespace view_port_trigger
-
+#endif
 } // namespace asp
 
 #endif // COMPONENT_GUI_ASP_HPP

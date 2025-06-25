@@ -7,6 +7,8 @@
 #include <ranges>
 #include <type_traits>
 
+#include <mp-units/core.h>
+
 #include <asp/call.hpp>
 #include <asp/std-backport/concepts.hpp>
 #include <asp/std-backport/limits.hpp>
@@ -412,70 +414,41 @@ concept mut_box_pair =
 
 /// @cond
 namespace impl {
-template <typename T, typename TC>
-concept has_from_xyxy = requires(bp::as_forward<TC> v) {
-  { std::remove_cvref_t<T>::from_xyxy(*v, *v, *v, *v) } -> bounding_box;
+template <typename T, typename... Args>
+concept has_from_xyxy = requires(bp::as_forward<Args>... vs) {
+  { std::remove_cvref_t<T>::from_xyxy(*vs...) } -> bounding_box;
 };
-template <typename T, typename TC>
-concept has_from_xywh = requires(bp::as_forward<TC> v) {
-  { std::remove_cvref_t<T>::from_xywh(*v, *v, *v, *v) } -> bounding_box;
+template <typename T, typename... Args>
+concept has_from_xywh = requires(bp::as_forward<Args>... vs) {
+  { std::remove_cvref_t<T>::from_xywh(*vs...) } -> bounding_box;
 };
-template <typename T, typename TC>
-concept has_from_tlbr_ils = requires(bp::as_forward<TC> v) {
-  { std::remove_cvref_t<T>::from_tlbr({*v, *v}, {*v, *v}) } -> bounding_box;
-};
-template <typename T, typename TC>
-concept has_from_tlbr = requires(bp::as_forward<TC> v) {
-  { std::remove_cvref_t<T>::from_tlbr(*v, *v) } -> bounding_box;
-};
-template <typename T, typename TC>
+template <typename T, typename... Args>
 concept has_bbox_init =
-    has_from_xyxy<T, TC> || has_from_xywh<T, TC> ||
-    has_from_tlbr<T, basic_coordinate<std::remove_cvref_t<TC>>> ||
-    has_from_tlbr_ils<T, TC>;
+    has_from_xyxy<T, Args...> || has_from_xywh<T, Args...>;
 
 struct do_from_xyxy {
-  template <typename TXY, has_bbox_init<TXY> T>
-  constexpr bounding_box auto operator()(std::type_identity<T> const &, TXY xl,
-                                         TXY yt, TXY xr, TXY yb) const {
+  template <typename X, typename Y, has_bbox_init<X, Y, X, Y> T>
+  constexpr bounding_box auto operator()(std::type_identity<T> const &, X xl,
+                                         Y yt, X xr, Y yb) const {
     using raw_t = std::remove_cvref_t<T>;
-    if constexpr (has_from_xyxy<T, TXY>) {
+    if constexpr (has_from_xyxy<T, X, Y, X, Y>) {
       return raw_t::from_xyxy(std::move(xl), std::move(yt), std::move(xr),
                               std::move(yb));
-    } else if constexpr (has_from_xywh<T, TXY>) {
-      return raw_t::from_xywh(std::move(xl), std::move(yt), xr - xl, yb - yt);
-    } else if constexpr (has_from_tlbr_ils<T, TXY>) {
-      return raw_t::from_tlbr({std::move(xl), std::move(yt)},
-                              {std::move(xr), std::move(yb)});
-    } else {
-      return raw_t::from_tlbr(
-          basic_coordinate<TXY>(std::move(xl), std::move(yt)),
-          basic_coordinate<TXY>(std::move(xr), std::move(yb)));
+    } else if constexpr (has_from_xywh<T, X, Y, X, Y>) {
+      auto w = xr - xl;
+      auto h = yb - yt;
+      return raw_t::from_xywh(std::move(xl), std::move(yt), w, h);
     }
   }
 };
 struct do_from_xywh {
-  template <typename TXY, has_bbox_init<TXY> T>
-  constexpr bounding_box auto operator()(std::type_identity<T> const &ti, TXY x,
-                                         TXY y, TXY w, TXY h) const {
-    if constexpr (has_from_xywh<T, TXY>) {
+  template <typename X, typename Y, typename W, typename H, has_bbox_init<X, Y, W, H> T>
+  constexpr bounding_box auto operator()(std::type_identity<T> const &ti, X x,
+                                         Y y, W w, H h) const {
+    if constexpr (has_from_xywh<T, X, Y, W, H>) {
       return T::from_xywh(x, y, w, h);
     } else {
       return do_from_xyxy{}(ti, x, y, x + w, y + h);
-    }
-  }
-};
-struct do_from_tlbr {
-  template <pixel_coord TC, typename T>
-    requires(has_from_tlbr<T, TC> ||
-             has_bbox_init<T, decltype(call::x_of(std::declval<TC &&>()))>)
-  constexpr bounding_box auto operator()(std::type_identity<T> const &ti,
-                                         TC &&tl, TC &&br) const {
-    if constexpr (has_from_tlbr<T, TC>) {
-      return T::from_tlbr(std::forward<TC>(tl), std::forward<TC>(br));
-    } else {
-      return do_from_xyxy{}(ti, call::x_of(tl), call::y_of(tl), call::x_of(br),
-                            call::y_of(br));
     }
   }
 };
@@ -497,57 +470,32 @@ constexpr void set_xx_or_yy(T b, TV1 tl, TV2 br, TTL getset1, TBR getset2) {
 /// @endcond
 
 /// Creates a box (presumably of type T) from two XY coordinates.
-template <typename T, typename A1, typename A2, typename A3, typename A4,
-          typename TXY = std::common_type_t<A1, A2, A3, A4>>
-  requires(impl::has_bbox_init<T, TXY> ||
-           impl::has_bbox_init<extend_api_t<T>, TXY>)
-constexpr auto box_from_xyxy(A1 xl, A2 yt, A3 xr, A4 yb,
+template <typename T, typename X, typename Y>
+  requires(impl::has_bbox_init<T, X, Y,X, Y> ||
+           impl::has_bbox_init<extend_api_t<T>, X,Y,X,Y>)
+constexpr auto box_from_xyxy(X xl, Y yt, X xr, Y yb,
                              std::type_identity<T> = {}) {
-  if constexpr (impl::has_bbox_init<T, TXY>) {
-    return impl::do_from_xyxy{}(std::type_identity<T>{}, static_cast<TXY>(xl),
-                                static_cast<TXY>(yt), static_cast<TXY>(xr),
-                                static_cast<TXY>(yb));
+  if constexpr (impl::has_bbox_init<T, X, Y, X, Y>) {
+    return impl::do_from_xyxy{}(std::type_identity<T>{}, xl, yt, xr, yb);
   } else {
     return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{},
-                                static_cast<TXY>(xl), static_cast<TXY>(yt),
-                                static_cast<TXY>(xr), static_cast<TXY>(yb));
+                                xl, yt, xr, yb);
   }
 }
 
 /// Creates a box (presumably of type T) from a top-left coordinate + width and
 /// height.
-template <typename T, typename A1, typename A2, typename A3, typename A4,
-          typename TXY = std::common_type_t<A1, A2, A3, A4>>
-  requires(impl::has_bbox_init<T, TXY> ||
-           impl::has_bbox_init<extend_api_t<T>, TXY>)
-constexpr auto box_from_xywh(A1 x, A2 y, A3 w, A4 h,
+template <typename T, typename X, typename Y, typename W, typename H>
+  requires(impl::has_bbox_init<T, X, Y, W, H> ||
+           impl::has_bbox_init<extend_api_t<T>, X, Y, W, H>)
+constexpr auto box_from_xywh(X x, Y y, W w, H h,
                              std::type_identity<T> = {}) {
-  if constexpr (impl::has_bbox_init<T, TXY>) {
-    return impl::do_from_xywh{}(std::type_identity<T>{}, static_cast<TXY>(x),
-                                static_cast<TXY>(y), static_cast<TXY>(w),
-                                static_cast<TXY>(h));
+  if constexpr (impl::has_bbox_init<T, X, Y, W, H>) {
+    return impl::do_from_xywh{}(std::type_identity<T>{}, x,
+                                y, w,
+                                h);
   } else {
-    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{},
-                                static_cast<TXY>(x), static_cast<TXY>(y),
-                                static_cast<TXY>(w), static_cast<TXY>(h));
-  }
-}
-
-/// Creates a box (presumably of type T) from two coordinate types.
-template <typename T, typename TC>
-  requires(impl::has_from_tlbr<T, TC> ||
-           impl::has_from_tlbr<extend_api_t<T>, TC> ||
-           impl::has_bbox_init<T, decltype(call::x_of(std::declval<TC>()))> ||
-           impl::has_bbox_init<extend_api_t<T>,
-                               decltype(call::x_of(std::declval<TC>()))>)
-constexpr auto box_from_tlbr(TC &&tl, TC &&br, std::type_identity<T> = {}) {
-  if constexpr (impl::has_from_tlbr<T, TC> ||
-                impl::has_bbox_init<T, decltype(call::x_of(tl))>) {
-    return impl::do_from_tlbr{}(std::type_identity<T>{}, std::forward<TC>(tl),
-                                std::forward<TC>(br));
-  } else {
-    return impl::do_from_tlbr{}(std::type_identity<extend_api_t<T>>{},
-                                std::forward<TC>(tl), std::forward<TC>(br));
+    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w, h);
   }
 }
 
@@ -1048,10 +996,16 @@ constexpr point_unit_t<U> point_unit(T &&in) {
 }
 
 template <typename T> constexpr auto strip_unit(T const &t) {
-  if constexpr (size_tagged<T>) {
-    return t.value();
-  } else {
+  if constexpr(std::integral<T> || std::floating_point<T>) {
     return t;
+  }else if constexpr (size_tagged<T>) {
+    return t.value();
+  } else if constexpr (mp_units::Quantity<T>) {
+    return t.numerical_value_in(T::unit);
+  } else if constexpr (mp_units::QuantityPoint<T>) {
+    return t.quantity_from_zero().numerical_value_in(T::unit);
+  } else {
+    static_assert(std::integral<T>);
   }
 }
 
@@ -1185,8 +1139,8 @@ constexpr auto trim_from_below(T bptr, TV v) {
 
 /// Returns true if width and height are non-negative.
 constexpr bool valid_box(bounding_box auto const &b) {
-  return (call::width(strip_unit(b)) >= 0) &&
-         (call::height(strip_unit(b)) >= 0);
+  return (strip_unit(call::width(b)) >= 0) &&
+         (strip_unit(call::height(b)) >= 0);
 }
 
 /// Creates a larger box that includes the smaller boxes. Does not check for
