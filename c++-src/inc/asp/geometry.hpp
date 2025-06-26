@@ -16,7 +16,6 @@
 #include <asp/warnings.hpp>
 
 namespace asp {
-
 /// @brief Concept to check if a type T meets the range condition for values of
 /// type TX. The range_condition should from a test value and min/max values
 /// determine if the test-value is inside the range of min max. Implementations
@@ -26,48 +25,11 @@ concept range_condition = requires(T t, TX v) {
   { t(v, v, v) } -> std::convertible_to<bool>;
 };
 
-/// @brief Trait to extract pixel type for a given type T.
-template <typename> struct pixel_type {};
-
-/// @brief Concept to define valid pixel coordinate value types.
-template <typename T>
-concept pixel_coord_value_t =
-    true; // std::integral<T> || std::floating_point<T>;
-
-/// @brief Concept to check if a type has a nested pixel_type.
-template <typename T>
-concept member_pixel_type = requires() { typename T::pixel_type; } &&
-                            pixel_coord_value_t<typename T::pixel_type>;
-
-/// @brief Specialization of pixel_type for types with a nested pixel_type.
-template <member_pixel_type T> struct pixel_type<T> {
-  using type = typename T::pixel_type;
-};
-
-/// @brief Fallback specialization for pixel_type for types without pixel_type
-/// member that also have a const/volatile/reference decorator.
-template <typename T>
-  requires(!bp::pure_value<T> && !member_pixel_type<T>)
-struct pixel_type<T> : pixel_type<std::remove_cvref_t<T>> {};
-
-/// @brief Concept to check if a type has a valid pixel_type alias.
-template <typename T>
-concept has_pixel_type = requires() { typename pixel_type<T>::type; } &&
-                         pixel_coord_value_t<typename pixel_type<T>::type>;
-
-/// @brief Helper alias to retrieve the pixel_type for a type.
-template <typename T> using pixel_type_t = typename pixel_type<T>::type;
-
-/// @brief Concept to check if a type is a valid pixel coordinate type (ignoring
-/// cv-ref).
-template <typename T>
-concept pixel_coord_value_cv_t = pixel_coord_value_t<std::remove_cvref_t<T>>;
-
 /// @brief Concept to check if a type is a pixel coordinate.
 template <typename T>
 concept pixel_coord = requires(T &&t) {
-  { call::x_of(t) } -> pixel_coord_value_cv_t;
-  { call::y_of(t) } -> pixel_coord_value_cv_t;
+  call::x_of(t) ;
+  call::y_of(t) ;
 };
 
 /// @brief Concept for pixel coordinates that can be set to a value.
@@ -95,65 +57,11 @@ concept has_position = requires(bp::as_forward<T> t) {
   { call::position(*t) } -> pixel_coord;
 };
 
-/// @brief Basic structure for representing pixel coordinates.
-template <typename T> struct basic_coordinate {
-  T x; ///< X coordinate
-  T y; ///< Y coordinate
-
-  /// @brief Converts this coordinate to a non-const value of the same type.
-  template <typename T2 = T>
-    requires(!std::is_same_v<T2, std::remove_cvref_t<T2>>)
-  constexpr explicit(false) operator std::remove_cvref_t<T>() const {
-    return {.x = x, .y = y};
-  }
-};
-
-template <typename T1, typename T2>
-  requires(std::equality_comparable_with<T1, T2>)
-constexpr bool operator==(basic_coordinate<T1> const &l,
-                          basic_coordinate<T2> const &r) {
-  return (l.x == r.x) && (l.y == r.y);
-}
-
-template <typename T1, typename T2>
-  requires(std::totally_ordered_with<T1, T2>)
-constexpr auto operator<=>(basic_coordinate<T1> const &l,
-                           basic_coordinate<T2> const &r) {
-  auto xcmp = l.x <=> r.x;
-  if (xcmp == 0) {
-    return l.y <=> r.y;
-  } else {
-    return xcmp;
-  }
-}
-
-using default_coordinate = basic_coordinate<int>;
-
-template <typename TX, typename TY>
-basic_coordinate(TX, TY) -> basic_coordinate<std::common_type_t<TX, TY>>;
-
-/// @brief Retrieves the x-coordinate from a basic pixel coordinate.
-template <typename T> constexpr T x_of(basic_coordinate<T> const &c) {
-  return c.x;
-}
-
-/// @brief Retrieves the y-coordinate from a basic pixel coordinate.
-template <typename T> constexpr T y_of(basic_coordinate<T> const &c) {
-  return c.y;
-}
-
-/// @brief Returns a reference to the x-coordinate of a basic pixel coordinate.
-template <typename T> constexpr T &x_of(basic_coordinate<T> &c) { return c.x; }
-
-/// @brief Returns a reference to the y-coordinate of a default pixel
-/// coordinate.
-template <typename T> constexpr T &y_of(basic_coordinate<T> &c) { return c.y; }
-
 /// @brief Concept to check if a type is mutable by TFrom and is a valid pixel
 /// coordinate value.
 template <typename T, typename TFrom>
 concept mutable_pixel_coord_value =
-    bp::is_mutable_by<T, TFrom> && pixel_coord_value_cv_t<T>;
+    bp::is_mutable_by<T, TFrom>;
 
 /// Maps a coordinate to a new coordinate through function f.
 /// \tparam T Resulting type.
@@ -165,50 +73,6 @@ concept mutable_pixel_coord_value =
 template <pixel_coord T, pixel_coord U, typename F>
 constexpr T map_coord(U const &u, F &&f) {
   return {f(call::x_of(u)), f(call::y_of(u))};
-}
-
-/// @brief Structure representing a default rectangular bounding box.
-template <typename T> struct basic_rect {
-  basic_coordinate<T> tl; ///< Top-left coordinate
-  basic_coordinate<T> br; ///< Bottom-right coordinate
-
-  /// @brief Creates a default_rect from given coordinates.
-  /// @param x1 Left x-coordinate.
-  /// @param y1 Top y-coordinate.
-  /// @param x2 Right x-coordinate.
-  /// @param y2 Bottom y-coordinate.
-  static constexpr basic_rect from_xyxy(T x1, T y1, T x2, T y2) {
-    return {{x1, y1}, {x2, y2}};
-  }
-};
-
-template <typename T>
-basic_rect(T &&, T &&) -> basic_rect<std::remove_cvref_t<T>>;
-
-using default_rect = basic_rect<int>;
-
-/// @brief Returns the top-left coordinate of a rectangle.
-template <typename T>
-constexpr default_coordinate top_left(basic_rect<T> const &r) noexcept {
-  return r.tl;
-}
-
-/// @brief Returns a reference to the top-left coordinate of a rectangle.
-template <typename T>
-constexpr default_coordinate &top_left(basic_rect<T> &r) noexcept {
-  return r.tl;
-}
-
-/// @brief Returns the bottom-right coordinate of a rectangle.
-template <typename T>
-constexpr default_coordinate bottom_right(basic_rect<T> const &r) noexcept {
-  return r.br;
-}
-
-/// @brief Returns a reference to the bottom-right coordinate of a rectangle.
-template <typename T>
-constexpr default_coordinate &bottom_right(basic_rect<T> &r) noexcept {
-  return r.br;
 }
 
 /// @brief Concept for types that represent a size with width and height.
@@ -377,17 +241,6 @@ basic_size_wh(T &&, T &&) -> basic_size_wh<std::remove_cvref_t<T>>;
 
 using default_size_wh = basic_size_wh<int>;
 
-/// @brief Concept for bounding box types.
-template <typename T>
-concept bounding_box = requires(T const &t) {
-  { call::l_x(t) } -> bp::not_void;
-  { call::t_y(t) } -> bp::not_void;
-  { call::r_x(t) } -> bp::not_void;
-  { call::b_y(t) } -> bp::not_void;
-  { call::width(t) } -> bp::not_void;
-  { call::height(t) } -> bp::not_void;
-};
-
 /// @brief Concept for mutable bounding box types.
 template <typename T, typename TFrom>
 concept mutable_bounding_box =
@@ -413,92 +266,6 @@ concept mut_box_pair =
     ((mut_box_pointer<T, TVs> || is_placeholder_v<TVs>) && ...);
 
 /// @cond
-namespace impl {
-template <typename T, typename... Args>
-concept has_from_xyxy = requires(bp::as_forward<Args>... vs) {
-  { std::remove_cvref_t<T>::from_xyxy(*vs...) } -> bounding_box;
-};
-template <typename T, typename... Args>
-concept has_from_xywh = requires(bp::as_forward<Args>... vs) {
-  { std::remove_cvref_t<T>::from_xywh(*vs...) } -> bounding_box;
-};
-template <typename T, typename... Args>
-concept has_bbox_init =
-    has_from_xyxy<T, Args...> || has_from_xywh<T, Args...>;
-
-struct do_from_xyxy {
-  template <typename X, typename Y, has_bbox_init<X, Y, X, Y> T>
-  constexpr bounding_box auto operator()(std::type_identity<T> const &, X xl,
-                                         Y yt, X xr, Y yb) const {
-    using raw_t = std::remove_cvref_t<T>;
-    if constexpr (has_from_xyxy<T, X, Y, X, Y>) {
-      return raw_t::from_xyxy(std::move(xl), std::move(yt), std::move(xr),
-                              std::move(yb));
-    } else if constexpr (has_from_xywh<T, X, Y, X, Y>) {
-      auto w = xr - xl;
-      auto h = yb - yt;
-      return raw_t::from_xywh(std::move(xl), std::move(yt), w, h);
-    }
-  }
-};
-struct do_from_xywh {
-  template <typename X, typename Y, typename W, typename H, has_bbox_init<X, Y, W, H> T>
-  constexpr bounding_box auto operator()(std::type_identity<T> const &ti, X x,
-                                         Y y, W w, H h) const {
-    if constexpr (has_from_xywh<T, X, Y, W, H>) {
-      return T::from_xywh(x, y, w, h);
-    } else {
-      return do_from_xyxy{}(ti, x, y, x + w, y + h);
-    }
-  }
-};
-
-template <typename TV1, typename TV2, mut_box_pair<TV1, TV2> T, typename TTL,
-          typename TBR>
-constexpr void set_xx_or_yy(T b, TV1 tl, TV2 br, TTL getset1, TBR getset2) {
-  if constexpr (is_placeholder_v<TV1>) {
-    impl::set_xx_or_yy(b, tl(getset1, *b), br, getset1, getset2);
-  } else if constexpr (is_placeholder_v<TV2>) {
-    impl::set_xx_or_yy(b, tl, br(getset2, *b), getset1, getset2);
-  } else {
-    getset1(*b, tl);
-    getset2(*b, br);
-  }
-}
-
-}; // namespace impl
-/// @endcond
-
-/// Creates a box (presumably of type T) from two XY coordinates.
-template <typename T, typename X, typename Y>
-  requires(impl::has_bbox_init<T, X, Y,X, Y> ||
-           impl::has_bbox_init<extend_api_t<T>, X,Y,X,Y>)
-constexpr auto box_from_xyxy(X xl, Y yt, X xr, Y yb,
-                             std::type_identity<T> = {}) {
-  if constexpr (impl::has_bbox_init<T, X, Y, X, Y>) {
-    return impl::do_from_xyxy{}(std::type_identity<T>{}, xl, yt, xr, yb);
-  } else {
-    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{},
-                                xl, yt, xr, yb);
-  }
-}
-
-/// Creates a box (presumably of type T) from a top-left coordinate + width and
-/// height.
-template <typename T, typename X, typename Y, typename W, typename H>
-  requires(impl::has_bbox_init<T, X, Y, W, H> ||
-           impl::has_bbox_init<extend_api_t<T>, X, Y, W, H>)
-constexpr auto box_from_xywh(X x, Y y, W w, H h,
-                             std::type_identity<T> = {}) {
-  if constexpr (impl::has_bbox_init<T, X, Y, W, H>) {
-    return impl::do_from_xywh{}(std::type_identity<T>{}, x,
-                                y, w,
-                                h);
-  } else {
-    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w, h);
-  }
-}
-
 struct pixel_size_tag {};
 struct point_size_tag {};
 
@@ -885,14 +652,6 @@ struct extend_api<pixelpoint_unit<SizeTag, T>> {
   ASP_BOX_INIT_FWD_(tlbr)
 #undef ASP_BOX_INIT_FWD_
 };
-
-template <typename T> constexpr auto remove_unit_ref(T &&t) {
-  if constexpr (size_tagged<T>) {
-    return t.remove_ref();
-  } else {
-    return std::forward<T>(t);
-  }
-}
 
 template <typename SizeTag, typename T, typename U>
   requires(bp::weakly_comparable_with<T const &, U const &>)
@@ -1354,39 +1113,6 @@ constexpr T map_box(T2 const &b, auto &&map_f) {
   }
 }
 
-namespace call {
-namespace impl {
-struct do_pixel_area {
-  template <typename T>
-    requires(has_pixel_area<T const &> ||
-             (has_point_area<T const &> && has_pixel_scale<T const &>))
-  constexpr pixel_rect auto operator()(T const &t) const {
-    if constexpr (has_pixel_area<T const &>) {
-      return _do_pixel_area::call(t);
-    } else {
-      return convert_pixelpoint<pixel_size_tag>(_do_pixel_area::call(t),
-                                                _do_pixel_scale(t));
-    }
-  }
-};
-struct do_point_area {
-  template <typename T>
-    requires(has_point_area<T const &> ||
-             (has_pixel_area<T const &> && has_pixel_scale<T const &>))
-  constexpr point_rect auto operator()(T const &t) const {
-    if constexpr (has_point_area<T const &>) {
-      return _do_point_area::call(t);
-    } else {
-      return convert_pixelpoint<point_size_tag>(_do_pixel_area::call(t),
-                                                _do_pixel_scale::call(t));
-    }
-  }
-};
-} // namespace impl
-inline constexpr impl::do_pixel_area pixel_area;
-inline constexpr impl::do_point_area point_area;
-} // namespace call
-
 /// Version of box_union that supports empty boxes.
 template <typename TRes = void, typename TB1, typename TB2>
 constexpr auto box_add(TB1 const &b1, TB2 const &b2)
@@ -1472,6 +1198,6 @@ template <typename T, typename U>
 struct common_type<::asp::basic_coordinate<T>, ::asp::basic_coordinate<U>> {
   using type = ::asp::basic_coordinate<common_type_t<T, U>>;
 };
-} // namespace std
+}
 
 #endif

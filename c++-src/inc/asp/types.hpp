@@ -48,68 +48,6 @@ concept has_for_each = requires(bp::as_forward<T> t, bp::as_forward<TCB> cb) {
 };
 
 template <typename T>
-concept colour = requires(T &&t) {
-  { call::red(t) } -> pixel_coord_value_cv_t;
-  { call::blue(t) } -> pixel_coord_value_cv_t;
-  { call::green(t) } -> pixel_coord_value_cv_t;
-  { call::alpha(t) } -> pixel_coord_value_cv_t;
-};
-
-template <typename T> struct basic_colour_t {
-  T red, green, blue, alpha;
-
-  constexpr bool operator==(basic_colour_t const&) const noexcept = default;
-};
-template <typename T> struct basic_rgb_t {
-  T r, g, b;
-  static constexpr auto &&red(auto &&c) {
-    return std::forward<decltype(c)>(c).r;
-  }
-  static constexpr auto &&green(auto &&c) {
-    return std::forward<decltype(c)>(c).r;
-  }
-  static constexpr auto &&blue(auto &&c) {
-    return std::forward<decltype(c)>(c).r;
-  }
-  static constexpr T alpha(auto &&) { return std::numeric_limits<T>::max(); }
-};
-
-template  <typename T, typename S>
-requires(requires(S& s, T const& t) { s << t; })
-constexpr S& operator<<(S& stream, basic_colour_t<T> const& c) {
-  std::format_to(std::ostreambuf_iterator<char>(stream), "{}", c);
-  return stream;
-}
-
-using default_colour_t = basic_colour_t<std::uint_least8_t>;
-using default_rgb_t = basic_rgb_t<std::uint_least8_t>;
-
-template <typename T> constexpr T &red(basic_colour_t<T> &c) noexcept {
-  return c.red;
-}
-template <typename T> constexpr T red(basic_colour_t<T> const &c) noexcept {
-  return c.red;
-}
-template <typename T> constexpr T &blue(basic_colour_t<T> &c) noexcept {
-  return c.blue;
-}
-template <typename T> constexpr T blue(basic_colour_t<T> const &c) noexcept {
-  return c.blue;
-}
-template <typename T> constexpr T &green(basic_colour_t<T> &c) noexcept {
-  return c.green;
-}
-template <typename T> constexpr T green(basic_colour_t<T> const &c) noexcept {
-  return c.green;
-}
-template <typename T> constexpr T &alpha(basic_colour_t<T> &c) noexcept {
-  return c.alpha;
-}
-template <typename T> constexpr T alpha(basic_colour_t<T> const &c) noexcept {
-  return c.alpha;
-}
-
-template <typename T>
 concept boolean_like = std::is_constructible_v<bool, T>;
 
 template <typename T, typename TVal>
@@ -206,17 +144,6 @@ template <typename T, bounding_box TBox = default_rect>
 using sub_of_type_t =
     decltype(std::declval<T &&>().sub(std::declval<TBox const &>()));
 
-template <typename T, typename TCoord = pixel_unit_t<default_coordinate>,
-          typename TColour = default_colour_t>
-concept single_pixel_draw = pixel_coordinate<TCoord> && colour<TColour> &&
-                            std::invocable<T, TCoord, TColour>;
-template <typename T, typename TCoord = pixel_unit_t<default_coordinate>>
-concept single_alpha_draw =
-    pixel_coordinate<TCoord> && std::invocable<T, TCoord, std::uint_least8_t>;
-struct dummy_pixel_drawer {
-  constexpr void operator()(pixel_or_point_coordinate auto &&, colour auto &&) {
-  }
-};
 struct dummy_alpha_drawer {
   constexpr void
   operator()(pixel_coordinate auto &&,
@@ -263,41 +190,10 @@ concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb,
 };
 
 template <typename T, typename... TVals>
-concept has_native_fill =
-    requires(bp::as_forward<T> t, bp::as_forward<TVals>... args) {
-      call::fill(*t, *args...);
-    };
-
-template <typename T, typename... TVals>
 concept has_draw_pixels =
     requires(bp::as_forward<T> t, bp::as_forward<TVals>... args) {
       call::draw_pixels(*t, *args...);
     };
-
-template <colour TC> struct fill_on_draw_pixel {
-  TC c;
-  constexpr void operator()(bounding_box auto &&b,
-                            single_pixel_draw auto &&cb) const {
-    for (auto y : y_view(b)) {
-      for (auto x : x_view(b)) {
-        cb(pixel_unit_t<default_coordinate>(x, y), c);
-      }
-    }
-  }
-};
-
-constexpr auto fill = []<typename T, pixel_or_point_rect_basic TB, colour TC>(
-                          T &&v, TB const &b, TC const &c)
-  requires(has_native_fill<T, TB, TC> ||
-           has_draw_pixels<T, TB, fill_on_draw_pixel<TC>>)
-{
-  auto vf = bp::as_forward<decltype(v)>(v);
-  if constexpr (has_native_fill<T, TB, TC>) {
-    return call::fill(*vf, b, c);
-  } else {
-    return call::draw_pixels(*vf, b, fill_on_draw_pixel<TC>{c});
-  }
-};
 
 template <typename T>
 concept render_args = requires(T &&t) {
@@ -354,7 +250,7 @@ namespace impl {
 template <typename T, typename TInt, TInt... tVals, TInt tOffset>
 inline widget_state_marker<T, static_cast<T>(tVals + tOffset)...>
     deduce_state_marker(std::integer_sequence<TInt, tVals...>,
-                        std::integral_constant<TInt, tOffset>);
+                        std::integral_constant<TInt, tOffset>) { std::unreachable(); }
 }
 template <typename T, T tMin, T tMax> struct make_widget_state_marker_sequence {
 private:
@@ -714,23 +610,6 @@ constexpr default_colour_t &&to_default_colour(default_colour_t &&c) {
   return std::move(c);
 }
 
-template <typename TX, typename TY> class nudger {
-  TX x_;
-  TY y_;
-
-public:
-  constexpr nudger(TX x, TY y) : x_(x), y_(y) {}
-
-  constexpr pixel_coord auto operator()(auto &&in) const
-    requires(requires() {
-      nudge_down(in, y_);
-      nudge_right(in, x_);
-    })
-  {
-    return nudge_down(nudge_right(in, x_), y_);
-  }
-};
-
 #if 0
 template <point_rect TArea = point_unit_t<default_rect>>
 class basic_widget_back_propagater {
@@ -826,22 +705,5 @@ public:
 
 } // namespace asp
 
-namespace std {
-  template <typename T>
-  struct formatter<asp::basic_colour_t<T>, char> {
-    
-    template<class ParseContext>
-    constexpr ParseContext::iterator parse(ParseContext& ctx)
-    {
-        return ctx.begin();
-    }
-    
-    template<class FmtContext>
-    FmtContext::iterator format(asp::basic_colour_t<T> const& c, FmtContext& ctx) const
-    {
-      return format_to(ctx.out(), "[R: {}, G: {}, B: {}, A: {}]", c.red, c.green, c.blue, c.alpha);
-    }
-  };
-}
 
 #endif // COMPONENT_GUI_ASP_TYPES_HPP

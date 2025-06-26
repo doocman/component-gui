@@ -2,6 +2,8 @@
 #ifndef ASP_ASP_IMPORT_MP_UNITS_HPP
 #define ASP_ASP_IMPORT_MP_UNITS_HPP
 
+#include <asp/export/asp_export.hpp>
+
 #if ASP_MP_UNITS_MODULES
 import mp_units;
 #else

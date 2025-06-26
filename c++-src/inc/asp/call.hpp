@@ -3,6 +3,7 @@
 #define COMPONENT_GUI_ASP_CALL_HPP
 
 #include <asp/import/stl.hpp>
+#include <asp/export/asp_export.hpp>
 
 #if __has_include("dooc/named_args_tuple.hpp")
 #include <dooc/named_args_tuple.hpp>
@@ -126,7 +127,7 @@
 
 /// Primary ASP namespace
 namespace asp {
-
+ASP_EXPORT_BEGIN
 /// @brief Class used as a placeholder when no special functionality is
 /// expected.
 struct empty_placeholder_t {};
@@ -263,6 +264,7 @@ template <typename> constexpr bool is_placeholder_impl = false;
 template <> constexpr bool is_placeholder_impl<keep_current_t> = true;
 template <typename T>
 constexpr bool is_placeholder_v = is_placeholder_impl<std::remove_cvref_t<T>>;
+ASP_EXPORT_END
 
 /// @brief Generalized object API invocation namespace.
 ///
@@ -683,6 +685,7 @@ struct do_move_event {
 } // namespace impl
 /// @endcond
 
+ASP_EXPORT_BEGIN
 /// Calls apply_to or fallbacks to std::apply if it seems appropriate. Also
 /// dooc::apply may be called if dooc-np is included in the translation unit.
 inline constexpr impl::do_apply_to apply_to;
@@ -793,7 +796,7 @@ using call_result_cvref_t = decltype(T{}(std::declval<Ts &&>()...));
 /// removed.
 template <typename T, typename... Ts>
 using call_result_t = std::remove_cvref_t<call_result_cvref_t<T, Ts...>>;
-
+ASP_EXPORT_END
 } // namespace call
 } // namespace asp
 
