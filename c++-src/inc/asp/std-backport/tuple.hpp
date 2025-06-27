@@ -1,11 +1,13 @@
 #ifndef COMPONENT_GUI_TUPLE_HPP
 #define COMPONENT_GUI_TUPLE_HPP
 
-#include <tuple>
+#include <asp/import/stl.hpp>
+#include <asp/export/asp_export.hpp>
 
 #include <asp/std-backport/utility.hpp>
 
 namespace asp::bp {
+ASP_EXPORT_BEGIN
 /// Concept to find if tuple_size_v is valid for T.
 /// \tparam T
 template <typename T>
@@ -162,6 +164,7 @@ constexpr decltype(auto) get(T &&t) {
 } // namespace impl
 template <std::size_t tI, typename T>
 using tuple_ref_t = decltype(get<tI>(std::declval<T>()));
+ASP_EXPORT_END
 } // namespace asp::bp
 namespace std {
 template <std::size_t tI, typename... Ts>
@@ -181,6 +184,7 @@ struct tuple_element<
 };
 } // namespace std
 namespace asp::bp {
+ASP_EXPORT_BEGIN
 namespace impl {
 
 template <typename T, std::size_t... is, typename F>
@@ -202,7 +206,6 @@ constexpr decltype(auto) apply_to(T &&t, F &&f) {
 }
 
 } // namespace impl
-
 /// @brief Struct to remove empty objects by letting them be
 /// default-constructible on-the-fly instead.
 ///
@@ -214,7 +217,7 @@ template <typename... Ts>
 using empty_structs_optimiser = impl::empty_structs_optimiser_impl<0u, Ts...>;
 
 template <typename, typename> struct tuple_element_index;
-
+ASP_EXPORT_END
 namespace impl {
 template <typename T, typename U, typename... Us, std::size_t i,
           std::size_t... is>
@@ -226,6 +229,7 @@ consteval std::size_t find_element_index(std::index_sequence<i, is...>) {
   }
 }
 } // namespace impl
+ASP_EXPORT_BEGIN
 /// Trait to find the index in which a specific type resides inside a tuple.
 /// \tparam T Type to find
 /// \tparam Ts Types in tuple
@@ -241,7 +245,7 @@ struct tuple_element_index<T, std::tuple<Ts...>> {
 /// \tparam U tuple that contains all the types.
 template <typename T, typename U>
 constexpr auto tuple_element_index_v = tuple_element_index<T, U>::value;
-
+ASP_EXPORT_END
 } // namespace asp::bp
 
 #endif // COMPONENT_GUI_TUPLE_HPP

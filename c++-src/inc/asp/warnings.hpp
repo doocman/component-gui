@@ -5,6 +5,7 @@
 #ifndef NDEBUG
 #include <asp/import/stl.hpp>
 #endif
+#include <asp/export/asp_export.hpp>
 
 #define ASP_PRAGMA_(X) _Pragma(#X)
 #define ASP_PRAGMA(X) ASP_PRAGMA_(X)
@@ -30,7 +31,7 @@ namespace asp {
 /// No-op function used to signal that any variables or expressions are ignored
 /// on purpose.
 /// \return
-constexpr void unused(auto &&...) {}
+ASP_EXPORT constexpr void unused(auto &&...) {}
 #ifndef NDEBUG
 #define ASP_DEBUG_ONLY(...) __VA_ARGS__
 constexpr void

@@ -5,11 +5,8 @@
 #ifndef COMPONENT_GUI_FUNCTIONAL_HPP
 #define COMPONENT_GUI_FUNCTIONAL_HPP
 
-#include <algorithm>
-#include <cstring>
-#include <functional>
-#include <type_traits>
-#include <variant>
+#include <asp/export/asp_export.hpp>
+#include <asp/import/stl.hpp>
 
 #include <asp/std-backport/concepts.hpp>
 #include <asp/std-backport/math.hpp>
@@ -17,7 +14,7 @@
 #include <asp/std-backport/utility.hpp>
 
 namespace asp::bp {
-
+ASP_EXPORT_BEGIN
 /// Function-like object that does nothing.
 struct no_op_t {
   template <typename T> using function = T;
@@ -265,7 +262,7 @@ public:
     return f_ != static_cast<f_type>(terminate_f);
   }
 };
-
+ASP_EXPORT_END
 } // namespace asp::bp
 
 #endif // COMPONENT_GUI_FUNCTIONAL_HPP

@@ -41,6 +41,7 @@ constexpr auto &&forward_like_reference(TIn &&in) {
 }
 } // namespace details
 
+ASP_EXPORT_BEGIN
 template <typename T, typename TIn> constexpr auto &&forward_like(TIn &&in) {
   return details::forward_like_reference<T>(details::forward_like_const<T>(in));
 }
@@ -81,7 +82,7 @@ using bp::highest_possible;
 using bp::highest_possible_t;
 using bp::lowest_possible;
 using bp::lowest_possible_t;
-
+ASP_EXPORT_END
 } // namespace asp
 
 #endif // COMPONENT_GUI_STL_EXTEND_HPP

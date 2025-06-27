@@ -5,13 +5,13 @@
 #ifndef COMPONENT_GUI_UTILITY_HPP
 #define COMPONENT_GUI_UTILITY_HPP
 
-#include <utility>
-
+#include <asp/export/asp_export.hpp>
+#include <asp/import/stl.hpp>
 #include <asp/std-backport/concepts.hpp>
 #include <asp/warnings.hpp>
 
 namespace asp::bp {
-
+ASP_EXPORT_BEGIN
 /// Same as std::unreachable
 [[noreturn]] inline void unreachable() {
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -153,7 +153,7 @@ constexpr void run_for_each(auto &&cb, auto &&...vals)
   cb_return(std::make_index_sequence<sizeof...(vals)>{},
             std::forward<decltype(vals)>(vals)...);
 }
-
+ASP_EXPORT_END
 } // namespace asp::bp
 
 #endif // COMPONENT_GUI_UTILITY_HPP

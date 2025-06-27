@@ -2,13 +2,13 @@
 #ifndef COMPONENT_GUI_LIMITS_HPP
 #define COMPONENT_GUI_LIMITS_HPP
 
-#include <concepts>
-#include <limits>
-#include <type_traits>
+#include <asp/export/asp_export.hpp>
+#include <asp/import/stl.hpp>
 
 #include <asp/std-backport/concepts.hpp>
 
 namespace asp::bp {
+ASP_EXPORT_BEGIN
 /// @brief Concept to check if a type has numeric limits defined for min and
 /// max.
 template <typename T>
@@ -119,12 +119,13 @@ inline constexpr highest_possible_t highest_possible;
 
 /// @brief Global constant instance for the maximum possible value.
 inline constexpr default_init_valued_t default_init_valued;
+ASP_EXPORT_END
 } // namespace asp::bp
 
 namespace std {
 #define ASP_GEN_BP_COMMON_TYPE_(X)                                             \
   template <typename U>                                                        \
-    requires(std::convertible_to<::asp::bp::X, U>)                             \
+    requires(::std::convertible_to<::asp::bp::X, U>)                             \
   struct common_type<::asp::bp::X, U> {                                        \
     using type = U;                                                            \
   };

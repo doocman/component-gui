@@ -5,21 +5,13 @@
 #ifndef ASP_ASP_STD_BACKPORT_EXPECTED
 #define ASP_ASP_STD_BACKPORT_EXPECTED
 
-#include <cassert>
-#include <exception>
-#include <functional>
-#include <initializer_list>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <variant>
+#include <asp/import/stl.hpp>
+#include <asp/export/asp_export.hpp>
 
 #include <asp/warnings.hpp>
 
 namespace asp::bp {
-
+ASP_EXPORT_BEGIN
 struct unexpect_t {};
 inline constexpr unexpect_t unexpect;
 
@@ -105,7 +97,7 @@ constexpr bool operator==(unexpected<T1> const &l, unexpected<T2> const &r) {
   return l.error() == r.error();
 }
 template <typename E> unexpected(E) -> unexpected<E>;
-
+ASP_EXPORT_END
 namespace details {
 template <typename T, typename TErr> struct expected_member {
   std::variant<T, TErr> data_;
@@ -204,7 +196,7 @@ template <typename T> struct expected_member<void, T> {
   }
 };
 } // namespace details
-
+ASP_EXPORT_BEGIN
 template <typename TExp, typename TErr> class expected {
   using member_t = details::expected_member<TExp, TErr>;
   member_t data_;
@@ -526,6 +518,7 @@ public:
     }
   }
 };
+ASP_EXPORT_END
 } // namespace asp::bp
 
 #endif

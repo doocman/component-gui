@@ -11,6 +11,7 @@ export import mp_units;
 #include <asp/call.hpp>
 //#include <asp/geometry.hpp>
 #include <asp/render.hpp>
+#include <asp/stl_extend.hpp>
 //#include <asp/asp.hpp>
 
 

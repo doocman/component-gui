@@ -1,23 +1,11 @@
 
-#include <asp/std-backport/expected.hpp>
-#include <asp/std-backport/functional.hpp>
-#include <asp/std-backport/tuple.hpp>
-#include <asp/std-backport/utility.hpp>
-#include <asp/stl_extend.hpp>
+import aspect_gui;
 
 #include <type_traits>
 
 #include <gmock/gmock.h>
 
 namespace asp::bp::tests {
-static_assert(
-    std::is_rvalue_reference_v<
-        decltype(asp::bp::details::expected_member<int, bool>::exp(
-            std::declval<asp::bp::details::expected_member<int, bool> &&>()))>);
-static_assert(
-    std::is_rvalue_reference_v<
-        decltype(asp::bp::details::expected_member<int, bool>::err(
-            std::declval<asp::bp::details::expected_member<int, bool> &&>()))>);
 
 using namespace ::testing;
 

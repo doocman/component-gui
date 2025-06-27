@@ -18,11 +18,13 @@ import std;
 #include <cmath>
 #include <concepts>
 #include <cstddef>
+#include <cstring>
 #include <exception>
 #include <format>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ranges>
