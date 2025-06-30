@@ -12,8 +12,10 @@
 #include <asp/std-backport/utility.hpp>
 
 #include <asp/call.hpp>
-#include <asp/geometry.hpp>
+//#include <asp/geometry.hpp>
+#include <asp/render.hpp>
 #include <asp/warnings.hpp>
+#include <asp/std-backport/limits.hpp>
 
 namespace asp {
 
@@ -125,14 +127,14 @@ concept set_state_with_rerender =
       { call::set_state(*t, *args...) } -> bounding_box;
     };
 
-template <typename T, typename TBox = default_point_rect>
+template <typename T, typename TBox = basic_rectangle<point, float>>
 concept widget_back_propagater =
-    point_rect<TBox> && requires(T &t, TBox const &cbox) {
+    rectangle_with_unit<TBox, point> && requires(T &t, TBox const &cbox) {
       t.rerender();
       t.rerender(cbox);
     };
 
-template <typename T, typename TBox = default_point_rect, typename U = T>
+template <typename T, typename TBox = basic_rectangle<point, float>, typename U = T>
 concept subable_widget_back_propagator =
     widget_back_propagater<T, TBox> &&
     requires(T &t, TBox const &box, U const &u) {
@@ -140,43 +142,43 @@ concept subable_widget_back_propagator =
       t.merge_sub(u);
     };
 
-template <typename T, bounding_box TBox = default_rect>
-using sub_of_type_t =
-    decltype(std::declval<T &&>().sub(std::declval<TBox const &>()));
-
 struct dummy_alpha_drawer {
   constexpr void
-  operator()(pixel_coordinate auto &&,
+  operator()(is_int_pixel_coordinate auto &&,
              std::convertible_to<std::uint_least8_t> auto &&) const {}
 };
 
-template <typename T, typename TCB = dummy_pixel_drawer>
+template <typename T, typename Rep = int, typename TCB = dummy_pixel_drawer>
 concept canvas_pixel_callback =
-    single_pixel_draw<TCB> && std::invocable<T, TCB>;
+    single_pixel_draw<TCB, basic_coordinate<pixel, int>, default_colour_t> && std::invocable<T, TCB>;
 
-template <typename T, typename TRect = default_pixel_rect,
+template <typename T>
+using box_coordinate_t = std::remove_cvref_t<decltype(call::top_left(std::declval<T>()))>;
+template <typename T, typename TRect = basic_rectangle<pixel, int>, typename Colour = default_colour_t,
           typename TCB = dummy_pixel_drawer>
-concept pixel_draw_callback = pixel_rect<TRect> && single_pixel_draw<TCB> &&
+concept pixel_draw_callback = is_int_pixel_rectangle<TRect> && single_pixel_draw<TCB, box_coordinate_t<TRect>, Colour> &&
                               std::invocable<T, TRect, TCB>;
-template <typename T, typename TRect = default_pixel_rect,
+template <typename T, typename TRect = basic_rectangle<pixel, int>,
           typename TCB = dummy_alpha_drawer>
-concept alpha_draw_callback = pixel_rect<TRect> && single_alpha_draw<TCB> &&
+concept alpha_draw_callback = is_int_pixel_rectangle<TRect> && single_alpha_draw<TCB, box_coordinate_t<TRect>> &&
                               std::invocable<T, TRect, TCB>;
 
 struct dummy_pixel_draw_callback {
-  constexpr void operator()(pixel_rect auto &&,
-                            single_pixel_draw auto &&) const {}
+  template <is_int_pixel_rectangle Box, single_pixel_draw<box_coordinate_t<Box>, default_colour_t> Draw>
+  constexpr void operator()(Box &&,
+                            Draw &&) const {}
 };
 struct dummy_alpha_draw_callback {
-  constexpr void operator()(pixel_rect auto &&,
-                            single_alpha_draw auto &&) const {}
+  template <is_int_pixel_rectangle Box, single_alpha_draw<box_coordinate_t<Box>> Draw>
+  constexpr void operator()(Box &&,
+                            Draw &&) const {}
 };
 
-template <typename T, typename TArea = point_unit_t<default_rect>,
+template <typename T, typename TArea = basic_rectangle<point, float>,
           typename TDrawPixels = dummy_pixel_draw_callback,
           typename TDrawAlpha = dummy_alpha_draw_callback,
           typename TColour = default_colour_t,
-          typename TPoint = default_point_coordinate, typename TScale = float>
+          typename TPoint = basic_coordinate<point, float>, typename TScale = float>
 concept renderer = requires(T &t, TArea const &a, TDrawPixels &&pixel_cb,
                             TDrawAlpha &&alpha_cb, TColour const &col,
                             TPoint const &point, TScale const &scale) {
@@ -316,6 +318,7 @@ template <typename... Ts> struct triggers {
   static constexpr auto size = sizeof...(Ts);
 };
 
+#if 0
 template <point_scalar TWH = point_unit_t<int>, typename TState = no_state_t>
 class widget_render_args : TState {
   TWH w_;
@@ -610,7 +613,6 @@ constexpr default_colour_t &&to_default_colour(default_colour_t &&c) {
   return std::move(c);
 }
 
-#if 0
 template <point_rect TArea = point_unit_t<default_rect>>
 class basic_widget_back_propagater {
   recursive_area_navigator<TArea> full_area_;
@@ -667,7 +669,6 @@ public:
 
   constexpr auto offset() const { return full_area_.offset(); }
 };
-#endif
 
 template <typename ToAccess, point_rect A,
           typename // std::invocable<ToAccess&>
@@ -702,7 +703,7 @@ public:
     mutater(*impl_);
   }
 };
-
+#endif
 } // namespace asp
 
 

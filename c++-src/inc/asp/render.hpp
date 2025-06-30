@@ -3,9 +3,42 @@
 #define ASPECT_GUI_ASP_RENDER_HPP
 
 #include <asp/call.hpp>
-//#include <asp/geometry.hpp>
+#include <asp/import/mp-units.hpp>
+#include <asp/import/stl.hpp>
 
 namespace asp {
+
+inline constexpr struct point final
+    : mp_units::named_unit<"point", mp_units::kind_of<mp_units::isq::length>> {
+} point;
+inline constexpr struct pixel final
+    : mp_units::named_unit<"pixel", mp_units::kind_of<mp_units::isq::length>> {
+} pixel;
+inline constexpr auto pixel_width = mp_units::isq::width[pixel];
+inline constexpr auto pixel_height = mp_units::isq::height[pixel];
+inline constexpr auto point_width = mp_units::isq::width[point];
+inline constexpr auto point_height = mp_units::isq::height[point];
+inline constexpr auto point_per_pixel = point / pixel;
+inline constexpr auto pixel_per_point = pixel / point;
+inline constexpr struct frame final : mp_units::named_unit<"frame", mp_units::kind_of<mp_units::isq::time>> {} frame;
+
+template <typename T>
+concept has_unit = requires() { std::remove_cvref_t<T>::unit; };
+template <typename T, auto U>
+concept has_unit_of = has_unit<T> && std::remove_cvref_t<T>::unit == U;
+template <typename Q, auto R>
+concept is_quantity =
+    mp_units::Reference<decltype(R)> &&
+    mp_units::QuantityOf<std::remove_cvref_t<Q>, get_quantity_spec(R)> &&
+    has_unit_of<Q, get_unit(R)>;
+template <typename QP, auto R>
+concept is_quantity_point =
+    mp_units::Reference<decltype(R)> &&
+    mp_units::QuantityPointOf<std::remove_cvref_t<QP>, get_quantity_spec(R)> &&
+    has_unit_of<QP, get_unit(R)>;
+
+#define ASP_NO_CONST(X)                                                        \
+  decltype(X) {}
 
 namespace call {
 #if 0
@@ -45,29 +78,55 @@ ASP_EXPORT_END
 } // namespace call
 
 ASP_EXPORT_BEGIN
+template <typename T>
+concept has_width_height = requires(T const& t) {
+  { call::width(t) } -> bp::not_void;
+  { call::height(t) } -> bp::not_void;
+};
 /// @brief Concept for bounding box types.
 template <typename T>
-concept bounding_box = requires(T const &t) {
+concept bounding_box = has_width_height<T> && requires(T const &t) {
   { call::l_x(t) } -> bp::not_void;
   { call::t_y(t) } -> bp::not_void;
   { call::r_x(t) } -> bp::not_void;
   { call::b_y(t) } -> bp::not_void;
-  { call::width(t) } -> bp::not_void;
-  { call::height(t) } -> bp::not_void;
 };
+template <typename T>
+concept two_dimensional_coordinate = requires(T const &t) {
+  { call::x_of(t) } -> bp::not_void;
+  { call::y_of(t) } -> bp::not_void;
+};
+
+template <has_unit T>
+inline constexpr auto unit_of_type = std::remove_cvref_t<T>::unit;
+
+template <typename T>
+concept is_geometric = bounding_box<T> || two_dimensional_coordinate<T>;
+
+template <typename T, typename U>
+concept same_geometry_as =
+    is_geometric<T> && is_geometric<U> && bounding_box<T> == bounding_box<U> &&
+    two_dimensional_coordinate<T> == two_dimensional_coordinate<U>;
+
+template <typename T, typename U>
+concept same_unit_as =
+    has_unit<T> && has_unit<U> && unit_of_type<T> == unit_of_type<U>;
+
+template <typename T, typename U>
+concept same_unit_geometry_as = same_geometry_as<T, U> && same_unit_as<T, U>;
 
 template <typename T>
 concept colour = requires(T &&t) {
-  call::red(t) ;
-  call::blue(t) ;
-  call::green(t) ;
-  call::alpha(t) ;
+  call::red(t);
+  call::blue(t);
+  call::green(t);
+  call::alpha(t);
 };
 
 template <typename T> struct basic_colour_t {
   T red, green, blue, alpha;
 
-  constexpr bool operator==(basic_colour_t const&) const noexcept = default;
+  constexpr bool operator==(basic_colour_t const &) const noexcept = default;
 };
 template <typename T> struct basic_rgb_t {
   T r, g, b;
@@ -83,9 +142,9 @@ template <typename T> struct basic_rgb_t {
   static constexpr T alpha(auto &&) { return std::numeric_limits<T>::max(); }
 };
 
-template  <typename T, typename S>
-  requires(requires(S& s, T const& t) { s << t; })
-constexpr S& operator<<(S& stream, basic_colour_t<T> const& c) {
+template <typename T, typename S>
+  requires(requires(S &s, T const &t) { s << t; })
+constexpr S &operator<<(S &stream, basic_colour_t<T> const &c) {
   std::format_to(std::ostreambuf_iterator<char>(stream), "{}", c);
   return stream;
 }
@@ -118,21 +177,36 @@ template <typename T> constexpr T alpha(basic_colour_t<T> const &c) noexcept {
   return c.alpha;
 }
 
-inline constexpr struct point final
-    : mp_units::named_unit<"point", mp_units::kind_of<mp_units::isq::length>> {
-} point;
-inline constexpr struct pixel final
-    : mp_units::named_unit<"pixel", mp_units::kind_of<mp_units::isq::length>> {
-} pixel;
-inline constexpr auto pixel_width = mp_units::isq::width[pixel];
-inline constexpr auto pixel_height = mp_units::isq::height[pixel];
-inline constexpr auto point_width = mp_units::isq::width[point];
-inline constexpr auto point_height = mp_units::isq::height[point];
-inline constexpr auto point_per_pixel = point / pixel;
-inline constexpr auto pixel_per_point = pixel / point;
+template <mp_units::Reference auto R, typename Rep>
+struct basic_width_height {
+  static constexpr auto reference = R;
+  static constexpr auto unit = mp_units::get_unit(R);
+  using rep = Rep;
+  
+  using width_t = mp_units::quantity<mp_units::isq::width[R], Rep>;
+  using height_t = mp_units::quantity<mp_units::isq::height[R], Rep>;
+  
+  width_t _w_is_an_implementation_detail{};
+  height_t _h_is_an_implementation_detail{};
+
+  constexpr basic_width_height() noexcept = default;
+  constexpr basic_width_height(width_t w, height_t h) noexcept : _w_is_an_implementation_detail(w), _h_is_an_implementation_detail(h) {}
+  
+  constexpr auto&& width(this auto&& s) noexcept {
+    return std::forward<decltype(s)>(s)._w_is_an_implementation_detail;
+  }
+  constexpr auto&& height(this auto&& s) noexcept {
+    return std::forward<decltype(s)>(s)._h_is_an_implementation_detail;
+  }
+  
+  constexpr bool operator==(basic_width_height const&) const noexcept = default;
+};
 
 template <mp_units::Reference auto R, typename Rep> struct basic_rectangle {
   static constexpr auto reference = R;
+  static constexpr auto unit = mp_units::get_unit(R);
+  using rep = Rep;
+
   using left_x_t =
       mp_units::quantity_point<mp_units::isq::width[R],
                                default_point_origin(mp_units::isq::width[R]),
@@ -200,12 +274,6 @@ concept is_integer =
 
 template <typename... Ts>
 concept all_is_integers = (is_integer<Ts> && ...);
-template <typename... Ts>
-concept all_is_floats = (std::floating_point<Ts> && ...);
-
-template <typename... Ts>
-concept all_is_either_integers_or_floats =
-    all_is_integers<Ts...> || all_is_floats<Ts...>;
 
 template <mp_units::QuantityPoint QX, mp_units::QuantityPoint QY,
           mp_units::Quantity W, mp_units::Quantity H>
@@ -250,24 +318,6 @@ lround(basic_rectangle<R, Rep> const &rect) {
           lround(call::width(rect)), lround(call::height(rect))};
 }
 
-template <typename T>
-concept has_unit = requires() { std::remove_cvref_t<T>::unit; };
-template <typename T, auto U>
-concept has_unit_of = has_unit<T> && std::remove_cvref_t<T>::unit == U;
-template <typename Q, auto R>
-concept is_quantity =
-    mp_units::Reference<decltype(R)> &&
-    mp_units::QuantityOf<std::remove_cvref_t<Q>, get_quantity_spec(R)> &&
-    has_unit_of<Q, get_unit(R)>;
-template <typename QP, auto R>
-concept is_quantity_point =
-    mp_units::Reference<decltype(R)> &&
-    mp_units::QuantityPointOf<std::remove_cvref_t<QP>, get_quantity_spec(R)> &&
-    has_unit_of<QP, get_unit(R)>;
-
-#define ASP_NO_CONST(X)                                                        \
-  decltype(X) {}
-
 template <typename T, typename... Args>
 concept direct_invocable = requires(T &&t, Args &&...args) {
   std::forward<T>(t)(std::forward<Args>(args)...);
@@ -277,61 +327,93 @@ template <typename T>
 concept has_rep = requires() { typename std::remove_cvref_t<T>::rep; };
 
 template <typename T, auto R>
+concept width_height_with_unit = has_width_height<T> && requires(T && t) {
+  {call::width(t)} -> is_quantity<ASP_NO_CONST(mp_units::isq::width[R])>;
+  {call::height(t)} -> is_quantity<ASP_NO_CONST(mp_units::isq::height[R])>;
+};
+
+template <typename T, auto R>
 concept rectangle_with_unit =
-    bounding_box<std::remove_cvref_t<T>> && requires(T &&t) {
+    bounding_box<std::remove_cvref_t<T>> && width_height_with_unit<T, R> && requires(T &&t) {
       {
         call::l_x(t)
       } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::width[R])>;
       {
         call::t_y(t)
       } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::height[R])>;
-      { call::width(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::width[R])>;
       {
-        call::height(t)
-      } -> is_quantity<ASP_NO_CONST(mp_units::isq::height[R])>;
+        call::r_x(t)
+      } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::width[R])>;
+      {
+        call::b_y(t)
+      } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::height[R])>;
     };
+template <typename T, auto R>
+concept two_dimensional_coordinate_with_unit =
+    two_dimensional_coordinate<T> && requires(T &&t) {
+      {
+        call::x_of(t)
+      } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::width[R])>;
+      {
+        call::y_of(t)
+      } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::height[R])>;
+    };
+template <typename T>
+concept point_coordinate = two_dimensional_coordinate_with_unit<T, point>;
 
 template <typename T>
 concept rep_is_integer =
     has_rep<T> && is_integer<typename std::remove_cvref_t<T>::rep>;
 
 template <typename T>
-concept is_rectangle_with_integer_rep =
-    bounding_box<std::remove_cvref_t<T>> && requires(T &&t) {
-      { call::l_x(t) } -> rep_is_integer;
-      { call::t_y(t) } -> rep_is_integer;
-      { call::width(t) } -> rep_is_integer;
-      { call::height(t) } -> rep_is_integer;
+concept is_rectangle_with_integer_rep = bounding_box<T> && requires(T &&t) {
+  { call::l_x(t) } -> rep_is_integer;
+  { call::t_y(t) } -> rep_is_integer;
+  { call::width(t) } -> rep_is_integer;
+  { call::height(t) } -> rep_is_integer;
+};
+template <typename T>
+concept is_two_dimensional_coordinate_with_integer_rep =
+    two_dimensional_coordinate<T> && requires(T &&t) {
+      { call::x_of(t) } -> rep_is_integer;
+      { call::y_of(t) } -> rep_is_integer;
     };
 template <typename T>
 concept is_int_pixel_rectangle =
     is_rectangle_with_integer_rep<T> && rectangle_with_unit<T, pixel>;
-
+template <typename T>
+concept is_int_pixel_coordinate =
+    is_two_dimensional_coordinate_with_integer_rep<T> &&
+    two_dimensional_coordinate_with_unit<T, pixel>;
 
 /// @brief Basic structure for representing pixel coordinates.
-template <typename T> struct basic_coordinate {
-  T x; ///< X coordinate
-  T y; ///< Y coordinate
-
-  /// @brief Converts this coordinate to a non-const value of the same type.
-  template <typename T2 = T>
-    requires(!std::is_same_v<T2, std::remove_cvref_t<T2>>)
-  constexpr explicit(false) operator std::remove_cvref_t<T>() const {
-    return {.x = x, .y = y};
-  }
+template <mp_units::Reference auto R, typename Rep> struct basic_coordinate {
+  static constexpr auto reference = R;
+  static constexpr auto unit = get_unit(R);
+  using rep = Rep;
+  using x_t =
+      mp_units::quantity_point<mp_units::isq::width[R],
+                               default_point_origin(mp_units::isq::width[R]),
+                               Rep>;
+  using y_t =
+      mp_units::quantity_point<mp_units::isq::height[R],
+                               default_point_origin(mp_units::isq::height[R]),
+                               Rep>;
+  x_t x; ///< X coordinate
+  y_t y; ///< Y coordinate
 };
 
-template <typename T1, typename T2>
+template <typename T1, typename T2, auto R>
   requires(std::equality_comparable_with<T1, T2>)
-constexpr bool operator==(basic_coordinate<T1> const &l,
-                          basic_coordinate<T2> const &r) {
+constexpr bool operator==(basic_coordinate<R, T1> const &l,
+                          basic_coordinate<R, T2> const &r) {
   return (l.x == r.x) && (l.y == r.y);
 }
 
-template <typename T1, typename T2>
+template <typename T1, typename T2, auto R>
   requires(std::totally_ordered_with<T1, T2>)
-constexpr auto operator<=>(basic_coordinate<T1> const &l,
-                           basic_coordinate<T2> const &r) {
+constexpr auto operator<=>(basic_coordinate<R, T1> const &l,
+                           basic_coordinate<R, T2> const &r) {
   auto xcmp = l.x <=> r.x;
   if (xcmp == 0) {
     return l.y <=> r.y;
@@ -340,27 +422,25 @@ constexpr auto operator<=>(basic_coordinate<T1> const &l,
   }
 }
 
-template <typename TX, typename TY>
-basic_coordinate(TX, TY) -> basic_coordinate<std::common_type_t<TX, TY>>;
+template <typename TX, same_unit_as<TX> TY>
+basic_coordinate(TX, TY) -> basic_coordinate<TX::unit, std::common_type_t<typename TX::rep, typename TY::rep>>;
 
 /// @brief Retrieves the x-coordinate from a basic pixel coordinate.
-template <typename T> constexpr T x_of(basic_coordinate<T> const &c) {
+template <typename T, auto R> constexpr auto x_of(basic_coordinate<R, T> const &c) {
   return c.x;
 }
 
 /// @brief Retrieves the y-coordinate from a basic pixel coordinate.
-template <typename T> constexpr T y_of(basic_coordinate<T> const &c) {
+template <typename T, auto R> constexpr auto y_of(basic_coordinate<R, T> const &c) {
   return c.y;
 }
 
 /// @brief Returns a reference to the x-coordinate of a basic pixel coordinate.
-template <typename T> constexpr T &x_of(basic_coordinate<T> &c) { return c.x; }
+template <typename T, auto R> constexpr auto &x_of(basic_coordinate<R, T> &c) { return c.x; }
 
 /// @brief Returns a reference to the y-coordinate of a default pixel
 /// coordinate.
-template <typename T> constexpr T &y_of(basic_coordinate<T> &c) { return c.y; }
-
-using default_coordinate = basic_coordinate<int>;
+template <typename T, auto R> constexpr auto &y_of(basic_coordinate<R, T> &c) { return c.y; }
 
 template <typename TX, typename TY> class nudger {
   TX x_;
@@ -380,13 +460,12 @@ public:
 };
 
 template <typename T> constexpr auto remove_unit_ref(T &&t) {
-  //if constexpr (size_tagged<T>) {
-  //  return t.remove_ref();
-  //} else {
+  // if constexpr (size_tagged<T>) {
+  //   return t.remove_ref();
+  // } else {
   return std::forward<T>(t);
   //}
 }
-
 
 template <typename T>
 concept has_executing_renderer =
@@ -455,14 +534,15 @@ using context_renderer_t = typename std::remove_cvref_t<T>::renderer;
 
 template <typename T, typename TCoord,
           typename TColour>
-concept single_pixel_draw = true;//pixel_coordinate<TCoord> && colour<TColour> &&
-                            //std::invocable<T, TCoord, TColour>;
+concept single_pixel_draw = true; // pixel_coordinate<TCoord> && colour<TColour>
+                                  // && std::invocable<T, TCoord, TColour>;
 template <typename T, typename TCoord>
 concept single_alpha_draw =
-    true;//pixel_coordinate<TCoord> && std::invocable<T, TCoord, std::uint_least8_t>;
+    true; // pixel_coordinate<TCoord> && std::invocable<T, TCoord,
+          // std::uint_least8_t>;
 struct dummy_pixel_drawer {
-  constexpr void operator()(/*pixel_or_point_coordinate*/ auto &&, colour auto &&) {
-  }
+  constexpr void operator()(/*pixel_or_point_coordinate*/ auto &&,
+                            colour auto &&) {}
 };
 
 template <colour TC> struct fill_on_draw_pixel {
@@ -471,7 +551,7 @@ template <colour TC> struct fill_on_draw_pixel {
                             /*single_pixel_draw*/ auto &&cb) const {
     for (auto y : y_view(b)) {
       for (auto x : x_view(b)) {
-        cb(pixel_unit_t<default_coordinate>(x, y), c);
+        cb(basic_coordinate(x, y), c);
       }
     }
   }
@@ -504,8 +584,7 @@ concept has_from_xywh = requires(bp::as_forward<Args>... vs) {
   { std::remove_cvref_t<T>::from_xywh(*vs...) } -> bounding_box;
 };
 template <typename T, typename... Args>
-concept has_bbox_init =
-    has_from_xyxy<T, Args...> || has_from_xywh<T, Args...>;
+concept has_bbox_init = has_from_xyxy<T, Args...> || has_from_xywh<T, Args...>;
 
 struct do_from_xyxy {
   template <typename X, typename Y, has_bbox_init<X, Y, X, Y> T>
@@ -523,7 +602,8 @@ struct do_from_xyxy {
   }
 };
 struct do_from_xywh {
-  template <typename X, typename Y, typename W, typename H, has_bbox_init<X, Y, W, H> T>
+  template <typename X, typename Y, typename W, typename H,
+            has_bbox_init<X, Y, W, H> T>
   constexpr bounding_box auto operator()(std::type_identity<T> const &ti, X x,
                                          Y y, W w, H h) const {
     if constexpr (has_from_xywh<T, X, Y, W, H>) {
@@ -534,8 +614,8 @@ struct do_from_xywh {
   }
 };
 
-template <typename TV1, typename TV2, typename /*mut_box_pair<TV1, TV2>*/ T, typename TTL,
-          typename TBR>
+template <typename TV1, typename TV2, typename /*mut_box_pair<TV1, TV2>*/ T,
+          typename TTL, typename TBR>
 constexpr void set_xx_or_yy(T b, TV1 tl, TV2 br, TTL getset1, TBR getset2) {
   if constexpr (is_placeholder_v<TV1>) {
     impl::set_xx_or_yy(b, tl(getset1, *b), br, getset1, getset2);
@@ -553,15 +633,15 @@ constexpr void set_xx_or_yy(T b, TV1 tl, TV2 br, TTL getset1, TBR getset2) {
 ASP_EXPORT_BEGIN
 /// Creates a box (presumably of type T) from two XY coordinates.
 template <typename T, typename X, typename Y>
-  requires(impl::has_bbox_init<T, X, Y,X, Y> ||
-           impl::has_bbox_init<extend_api_t<T>, X,Y,X,Y>)
+  requires(impl::has_bbox_init<T, X, Y, X, Y> ||
+           impl::has_bbox_init<extend_api_t<T>, X, Y, X, Y>)
 constexpr auto box_from_xyxy(X xl, Y yt, X xr, Y yb,
                              std::type_identity<T> = {}) {
   if constexpr (impl::has_bbox_init<T, X, Y, X, Y>) {
     return impl::do_from_xyxy{}(std::type_identity<T>{}, xl, yt, xr, yb);
   } else {
-    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{},
-                                xl, yt, xr, yb);
+    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{}, xl, yt,
+                                xr, yb);
   }
 }
 
@@ -570,14 +650,12 @@ constexpr auto box_from_xyxy(X xl, Y yt, X xr, Y yb,
 template <typename T, typename X, typename Y, typename W, typename H>
   requires(impl::has_bbox_init<T, X, Y, W, H> ||
            impl::has_bbox_init<extend_api_t<T>, X, Y, W, H>)
-constexpr auto box_from_xywh(X x, Y y, W w, H h,
-                             std::type_identity<T> = {}) {
+constexpr auto box_from_xywh(X x, Y y, W w, H h, std::type_identity<T> = {}) {
   if constexpr (impl::has_bbox_init<T, X, Y, W, H>) {
-    return impl::do_from_xywh{}(std::type_identity<T>{}, x,
-                                y, w,
-                                h);
+    return impl::do_from_xywh{}(std::type_identity<T>{}, x, y, w, h);
   } else {
-    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w, h);
+    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w,
+                                h);
   }
 }
 
@@ -609,8 +687,9 @@ public:
     }
   }
   constexpr TB relative_area() const { return relative_area_; }
-  template <typename /*same_unit_geometry_as<TB>*/ TB2 = TB, typename /*pixel_coord*/ C>
-  //requires(same_unit_as<C, TB>)
+  template <typename /*same_unit_geometry_as<TB>*/ TB2 = TB,
+            typename /*pixel_coord*/ C>
+  // requires(same_unit_as<C, TB>)
   constexpr TB2 relative_area(TB2 b, C const &rel_point) const {
     return box_from_xywh<TB2>(call::l_x(b) + offset_x_ - call::x_of(rel_point),
                               call::t_y(b) + offset_y_ - call::y_of(rel_point),
@@ -627,8 +706,7 @@ public:
     return move_to_absolute(relative_area_);
   }
 
-  constexpr auto offset() const
-  {
+  constexpr auto offset() const {
     return basic_coordinate{offset_x_, offset_y_};
   }
 
@@ -641,7 +719,7 @@ public:
   }
 
   template </*pixel_coord*/ typename V>
-  //requires(same_unit_as<V, TB>)
+  // requires(same_unit_as<V, TB>)
   constexpr recursive_area_navigator translate(V const &v) const {
     return {
         nudge_down(nudge_right(relative_area_, call::x_of(v)), call::y_of(v)),
@@ -683,7 +761,7 @@ public:
                               TB const &full_area, default_colour_t sc)
       : c_(std::addressof(c)), area_(a), full_area_(full_area),
         set_colour_(sc) {
-    //assert(valid_box(area_.relative_area()));
+    // assert(valid_box(area_.relative_area()));
   }
   constexpr is_int_pixel_rectangle auto
   to_pixel(rectangle_with_unit<point> auto const &b) const {
@@ -698,7 +776,8 @@ public:
   constexpr rendering_context(T &c, TB2 const &a)
       : rendering_context(c, call::to_pixel(c, a)) {}
 
-  template <typename /*pixel_or_point_rect_basic*/ TB2, typename /*pixel_draw_callback*/ TCB>
+  template <typename /*pixel_or_point_rect_basic*/ TB2,
+            typename /*pixel_draw_callback*/ TCB>
   constexpr auto draw_pixels(TB2 const &dest, TCB &&cb) const {
     ASP_ASSERT(valid_box(dest.value()));
     auto relative_dest = to_relative_dest(to_pixels(dest));
@@ -758,12 +837,13 @@ public:
     }
   }
 
-  constexpr rendering_context sub(rectangle_with_unit<point> auto const&b,
+  constexpr rendering_context sub(rectangle_with_unit<point> auto const &b,
                                   default_colour_t col) const {
     return {*c_, area_.sub(b), col};
   }
 
-  constexpr rendering_context sub(rectangle_with_unit<point> auto const & b) const {
+  constexpr rendering_context
+  sub(rectangle_with_unit<point> auto const &b) const {
     return sub(b, set_colour_);
   }
 
@@ -792,12 +872,12 @@ public:
 template <typename T, is_int_pixel_rectangle TB>
 rendering_context(T &, TB) -> rendering_context<T, TB>;
 template <typename T>
-rendering_context(T &t) -> rendering_context<
-    T, std::remove_cvref_t<decltype(call::pixel_area(t))>>;
+rendering_context(T &t)
+    -> rendering_context<T, std::remove_cvref_t<decltype(call::pixel_area(t))>>;
 template <typename T, rectangle_with_unit<point> TB>
 rendering_context(T &, TB const &)
-    -> rendering_context<T, decltype(call::to_pixel(std::declval<T &>(),
-                                                    TB{}))>;
+    -> rendering_context<T,
+                         decltype(call::to_pixel(std::declval<T &>(), TB{}))>;
 
 template <is_render_context T>
 constexpr is_int_pixel_rectangle auto full_pixel_area(T const &t) {
@@ -814,26 +894,25 @@ fill(auto &&r, rectangle_with_unit<point> auto const &area,
   return call::fill(std::forward<decltype(r)>(r), call::to_pixel(r, area), c);
 }
 ASP_EXPORT_END
-}
+} // namespace asp
 
 namespace std {
 ASP_EXPORT_BEGIN
-template <typename T>
-struct formatter<asp::basic_colour_t<T>, char> {
+template <typename T> struct formatter<asp::basic_colour_t<T>, char> {
 
-  template<class ParseContext>
-  constexpr ParseContext::iterator parse(ParseContext& ctx)
-  {
+  template <class ParseContext>
+  constexpr ParseContext::iterator parse(ParseContext &ctx) {
     return ctx.begin();
   }
 
-  template<class FmtContext>
-  FmtContext::iterator format(asp::basic_colour_t<T> const& c, FmtContext& ctx) const
-  {
-    return format_to(ctx.out(), "[R: {}, G: {}, B: {}, A: {}]", c.red, c.green, c.blue, c.alpha);
+  template <class FmtContext>
+  FmtContext::iterator format(asp::basic_colour_t<T> const &c,
+                              FmtContext &ctx) const {
+    return format_to(ctx.out(), "[R: {}, G: {}, B: {}, A: {}]", c.red, c.green,
+                     c.blue, c.alpha);
   }
 };
 ASP_EXPORT_END
-}
+} // namespace std
 
 #endif

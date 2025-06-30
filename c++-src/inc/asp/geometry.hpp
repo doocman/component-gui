@@ -341,15 +341,6 @@ concept same_unit_as = (!size_tagged<T> && !size_tagged<U>) ||
 template <typename T>
 concept scalar = std::is_integral_v<T> || std::is_floating_point_v<T>;
 
-template <typename T>
-concept is_geometric = bounding_box<T> || pixel_coord<T>;
-template <typename T, typename U>
-concept same_geometry_as =
-    is_geometric<T> && is_geometric<U> && bounding_box<T> == bounding_box<U> &&
-    pixel_coord<T> == pixel_coord<U>;
-
-template <typename T, typename U>
-concept same_unit_geometry_as = same_geometry_as<T, U> && same_unit_as<T, U>;
 
 template <typename T>
 concept is_pixel_sized =
