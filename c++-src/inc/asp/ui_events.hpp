@@ -328,7 +328,7 @@ template <typename R> struct default_event<input_events::mouse_exit, R> {
   common_event_data common_data{};
 };
 template <typename R> struct default_event<input_events::mouse_move, R> {
-  basic_coordinate<point, float> pos{};
+  basic_coordinate<point, R> pos{};
   common_event_data common_data{};
 };
 template <typename R> struct default_event<input_events::mouse_scroll, R> {
@@ -434,27 +434,38 @@ constexpr keycode raw_key(T const &t) {
   return t.rawkey;
 }
 
-using default_mouse_move_event = default_event<input_events::mouse_move>;
-using default_mouse_down_event = default_event<input_events::mouse_button_down>;
-using default_mouse_up_event = default_event<input_events::mouse_button_up>;
-using default_mouse_exit_event = default_event<input_events::mouse_exit>;
-using default_mouse_scroll_event = default_event<input_events::mouse_scroll>;
-using default_key_down_event = default_event<input_events::key_down>;
-using default_key_up_event = default_event<input_events::key_up>;
-using default_touch_down_event = default_event<input_events::touch_down>;
-using default_touch_up_event = default_event<input_events::touch_up>;
-using default_touch_move_event = default_event<input_events::touch_move>;
+template <typename R>
+using default_mouse_move_event = default_event<input_events::mouse_move, R>;
+template <typename R>
+using default_mouse_down_event = default_event<input_events::mouse_button_down, R>;
+template <typename R>
+using default_mouse_up_event = default_event<input_events::mouse_button_up, R>;
+template <typename R>
+using default_mouse_exit_event = default_event<input_events::mouse_exit, R>;
+template <typename R>
+using default_mouse_scroll_event = default_event<input_events::mouse_scroll, R>;
+template <typename R>
+using default_key_down_event = default_event<input_events::key_down, R>;
+template <typename R>
+using default_key_up_event = default_event<input_events::key_up, R>;
+template <typename R>
+using default_touch_down_event = default_event<input_events::touch_down, R>;
+template <typename R>
+using default_touch_up_event = default_event<input_events::touch_up, R>;
+template <typename R>
+using default_touch_move_event = default_event<input_events::touch_move, R>;
+template <typename R>
 using default_window_resized_event =
-    default_event<input_events::window_resized>;
+    default_event<input_events::window_resized, R>;
 
 template <typename T, interpreted_events... ie_vs>
 concept interpreted_event_types = (can_be_event<ie_vs, T>() || ...);
 
-template <interpreted_events> struct interpreted_event_impl;
-template <interpreted_events ie_v,
+template <interpreted_events, is_scalar> struct interpreted_event_impl;
+template <interpreted_events ie_v, is_scalar R
           typename TimePoint = std::chrono::steady_clock::time_point>
-struct interpreted_event : interpreted_event_impl<ie_v> {
-  using _base_t = interpreted_event_impl<ie_v>;
+struct interpreted_event : interpreted_event_impl<ie_v, R> {
+  using _base_t = interpreted_event_impl<ie_v, R>;
   interpreted_event_basic<TimePoint> common_data;
   template <typename Evt>
     requires(std::constructible_from<_base_t, Evt> &&
@@ -482,44 +493,44 @@ event_type(interpreted_event<evt_val, TP> const &) {
 template <interpreted_events ie_v, typename C>
 constexpr bool is_asp_default_event_v<interpreted_event<ie_v, C>> = true;
 
-template <interpreted_events ie_v>
+template <interpreted_events ie_v, is_scalar R>
 inline constexpr auto create_interpreted_event_from_tp =
     []<typename TP, typename... Args>(TP const &time_stamp, Args &&...args) {
-      using impl_t = interpreted_event_impl<ie_v>;
+      using impl_t = interpreted_event_impl<ie_v, R>;
       return interpreted_event<ie_v, TP>(impl_t(std::forward<Args>(args)...),
                                          time_stamp);
     };
-template <interpreted_events ie_v>
+template <interpreted_events ie_v, is_scalar R>
 inline constexpr auto create_interpreted_event_from_event =
     []<has_time_stamp Evt, typename... Args>(Evt const &trig_event,
                                              Args &&...args) {
-      return create_interpreted_event_from_tp<ie_v>(
+      return create_interpreted_event_from_tp<ie_v, R>(
           call::time_stamp(trig_event), std::forward<Args>(args)...);
     };
 
-template <> struct interpreted_event_impl<interpreted_events::primary_click> {
-  using position_t = basic_coordinate<point, float>;
+template <typename R> struct interpreted_event_impl<interpreted_events::primary_click, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
       : pos(copy_coordinate<position_t>(p)) {}
 };
-template <>
-struct interpreted_event_impl<interpreted_events::context_menu_click> {
-  using position_t = basic_coordinate<point, float>;
+template <typename R>
+struct interpreted_event_impl<interpreted_events::context_menu_click, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
       : pos(copy_coordinate<position_t>(p)) {}
 };
-template <>
-struct interpreted_event_impl<interpreted_events::pointer_drag_start> {
-  using position_t = basic_coordinate<point, float>;
+template <typename R>
+struct interpreted_event_impl<interpreted_events::pointer_drag_start, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
       : pos(copy_coordinate<position_t>(p)) {}
 };
-template <>
-struct interpreted_event_impl<interpreted_events::pointer_drag_move> {
-  using position_t = basic_coordinate<point, float>;
+template <typename R>
+struct interpreted_event_impl<interpreted_events::pointer_drag_move, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t start_pos{};
   position_t pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &sp,
@@ -527,10 +538,10 @@ struct interpreted_event_impl<interpreted_events::pointer_drag_move> {
       : start_pos(copy_coordinate<position_t>(sp)),
         pos(copy_coordinate<position_t>(cp)) {}
 };
-template <>
+template <typename R>
 struct interpreted_event_impl<
-    interpreted_events::pointer_drag_finished_source> {
-  using position_t = basic_coordinate<point, float>;
+    interpreted_events::pointer_drag_finished_source, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t start_pos{};
   position_t end_pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &sp,
@@ -538,10 +549,10 @@ struct interpreted_event_impl<
       : start_pos(copy_coordinate<position_t>(sp)),
         end_pos(copy_coordinate<position_t>(ep)) {}
 };
-template <>
+template <typename R>
 struct interpreted_event_impl<
-    interpreted_events::pointer_drag_finished_destination> {
-  using position_t = basic_coordinate<point, float>;
+    interpreted_events::pointer_drag_finished_destination, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t start_pos{};
   position_t end_pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &sp,
@@ -549,41 +560,41 @@ struct interpreted_event_impl<
       : start_pos(copy_coordinate<position_t>(sp)),
         end_pos(copy_coordinate<position_t>(ep)) {}
 };
-template <> struct interpreted_event_impl<interpreted_events::pointer_hover> {
-  using position_t = basic_coordinate<point, float>;
+template <typename R> struct interpreted_event_impl<interpreted_events::pointer_hover, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
       : pos(copy_coordinate<position_t>(p)) {}
 };
-template <> struct interpreted_event_impl<interpreted_events::pointer_hold> {
-  using position_t = basic_coordinate<point, float>;
+template <typename R> struct interpreted_event_impl<interpreted_events::pointer_hold, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
       : pos(copy_coordinate<position_t>(p)) {}
 };
-template <> struct interpreted_event_impl<interpreted_events::pointer_enter> {
-  using position_t = basic_coordinate<point, float>;
+template <typename R> struct interpreted_event_impl<interpreted_events::pointer_enter, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
       : pos(copy_coordinate<position_t>(p)) {}
 };
-template <> struct interpreted_event_impl<interpreted_events::pointer_exit> {};
-template <> struct interpreted_event_impl<interpreted_events::scroll> {
-  using position_t = basic_coordinate<point, float>;
+template <typename R> struct interpreted_event_impl<interpreted_events::pointer_exit, R> {};
+template <typename R> struct interpreted_event_impl<interpreted_events::scroll, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t pos{};
-  float dx{};
-  float dy{};
-  constexpr interpreted_event_impl(point_coordinate auto const &p, float dxi,
-                                   float dyi)
+  mp_units::quantity<mp_units::isq::width[point] / frame, R> dx{};
+  mp_units::quantity<mp_units::isq::height[point] / frame, R> dy{};
+  constexpr interpreted_event_impl(point_coordinate auto const &p, std::convertible_to<decltype(dx)> auto&& dxi,
+                                   std::convertible_to<decltype(dy)> auto&& dyi)
       : pos(copy_coordinate<position_t>(p)), dx(dxi), dy(dyi) {}
 };
-template <> struct interpreted_event_impl<interpreted_events::zoom> {
-  using position_t = basic_coordinate<point, float>;
+template <typename R> struct interpreted_event_impl<interpreted_events::zoom, R> {
+  using position_t = basic_coordinate<point, R>;
   position_t pos{};
-  float scale_x{}; ///> Number above 1. -> zoom in / make things bigger.
-  float scale_y{}; ///> Number above 1. -> zoom in / make things bigger.
-  constexpr interpreted_event_impl(point_coordinate auto const &p, float scx,
-                                   float scy)
+  R scale_x{}; ///> Number above 1. -> zoom in / make things bigger.
+  R scale_y{}; ///> Number above 1. -> zoom in / make things bigger.
+  constexpr interpreted_event_impl(point_coordinate auto const &p, R scx,
+                                   R scy)
       : pos(copy_coordinate<position_t>(p)), scale_x(scx), scale_y(scy) {}
 };
 
