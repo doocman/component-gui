@@ -2,7 +2,7 @@
 #define COMPONENT_GUI_ASP_WIDGET_ALGORITHM_HPP
 
 #include <asp/call.hpp>
-#include <asp/geometry.hpp>
+//#include <asp/geometry.hpp>
 
 namespace asp {
 

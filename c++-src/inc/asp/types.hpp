@@ -12,12 +12,39 @@
 #include <asp/std-backport/utility.hpp>
 
 #include <asp/call.hpp>
-//#include <asp/geometry.hpp>
 #include <asp/render.hpp>
 #include <asp/warnings.hpp>
 #include <asp/std-backport/limits.hpp>
+#include <asp/assert.hpp>
 
 namespace asp {
+ASP_EXPORT_BEGIN
+template <typename T>
+concept has_arithmetic_plus = requires(T const& v, T& mut) {
+  { v + v} -> std::same_as<T>;
+  { mut += v} -> std::same_as<T&>;
+};
+template <typename T>
+concept has_arithmetic_minus = requires(T const& v, T& mut) {
+  { v - v} -> std::same_as<T>;
+  { mut -= v} -> std::same_as<T&>;
+};
+template <typename T>
+concept has_arithmetic_multiplication = requires(T const& v, T& mut) {
+  { v * v} -> std::same_as<T>;
+  { mut *= v} -> std::same_as<T&>;
+};
+template <typename T>
+concept has_arithmetic_division = requires(T const& v, T& mut) {
+  { v / v} -> std::same_as<T>;
+  { mut /= v} -> std::same_as<T&>;
+};
+
+template <typename T>
+concept has_arithmetic_operators = has_arithmetic_plus<T> && has_arithmetic_minus<T> && has_arithmetic_division<T> && has_arithmetic_multiplication<T>;
+
+template <typename T>
+concept is_scalar = std::totally_ordered<T> && has_arithmetic_operators<T>;
 
 struct widget_id_t {
   std::intptr_t value = bp::lowest_possible;
@@ -73,9 +100,6 @@ concept readable_text32 = basic_readable_text<T, char32_t>;
 #if __cpp_char8_t >= 201811L
 template <typename T>
 concept readable_text8 = basic_readable_text<T, char8_t>;
-#elif CHAR_BIT == 8
-template <typename T>
-concept readable_text8 = basic_readable_text<T, char>;
 #endif
 
 enum class mouse_buttons {
@@ -84,7 +108,7 @@ enum class mouse_buttons {
   secondary = 3,
   // any other is backend defined here.
 };
-
+ASP_EXPORT_END
 namespace call {
 namespace impl {
 
@@ -99,10 +123,12 @@ struct do_mouse_button {
 };
 
 }; // namespace impl
-
+ASP_EXPORT_BEGIN
 inline constexpr impl::do_mouse_button mouse_button;
+ASP_EXPORT_END
 } // namespace call
 
+ASP_EXPORT_BEGIN
 template <typename T, typename... TArgs>
 concept has_handle =
     requires(bp::as_forward<T> t, bp::as_forward<TArgs>... args) {
@@ -141,6 +167,7 @@ concept subable_widget_back_propagator =
       { t.sub(box) } -> widget_back_propagater<TBox>;
       t.merge_sub(u);
     };
+ASP_EXPORT_END
 
 struct dummy_alpha_drawer {
   constexpr void
@@ -148,17 +175,19 @@ struct dummy_alpha_drawer {
              std::convertible_to<std::uint_least8_t> auto &&) const {}
 };
 
-template <typename T, typename Rep = int, typename TCB = dummy_pixel_drawer>
+ASP_EXPORT template <typename T, typename Rep = int, typename TCB = dummy_pixel_drawer>
 concept canvas_pixel_callback =
     single_pixel_draw<TCB, basic_coordinate<pixel, int>, default_colour_t> && std::invocable<T, TCB>;
 
-template <typename T>
+ASP_EXPORT template <typename T>
 using box_coordinate_t = std::remove_cvref_t<decltype(call::top_left(std::declval<T>()))>;
-template <typename T, typename TRect = basic_rectangle<pixel, int>, typename Colour = default_colour_t,
+
+ASP_EXPORT template <typename T, typename TRect = basic_rectangle<pixel, int>, typename Colour = default_colour_t,
           typename TCB = dummy_pixel_drawer>
 concept pixel_draw_callback = is_int_pixel_rectangle<TRect> && single_pixel_draw<TCB, box_coordinate_t<TRect>, Colour> &&
                               std::invocable<T, TRect, TCB>;
-template <typename T, typename TRect = basic_rectangle<pixel, int>,
+
+ASP_EXPORT template <typename T, typename TRect = basic_rectangle<pixel, int>,
           typename TCB = dummy_alpha_drawer>
 concept alpha_draw_callback = is_int_pixel_rectangle<TRect> && single_alpha_draw<TCB, box_coordinate_t<TRect>> &&
                               std::invocable<T, TRect, TCB>;
@@ -174,6 +203,7 @@ struct dummy_alpha_draw_callback {
                             Draw &&) const {}
 };
 
+ASP_EXPORT_BEGIN
 template <typename T, typename TArea = basic_rectangle<point, float>,
           typename TDrawPixels = dummy_pixel_draw_callback,
           typename TDrawAlpha = dummy_alpha_draw_callback,
@@ -248,12 +278,14 @@ constexpr bool operator==(widget_state_marker<T, tS1...> const &l,
                           widget_state_marker<T, tS2...> const &r) {
   return l.current_state() == r.current_state();
 }
+ASP_EXPORT_END
 namespace impl {
 template <typename T, typename TInt, TInt... tVals, TInt tOffset>
 inline widget_state_marker<T, static_cast<T>(tVals + tOffset)...>
     deduce_state_marker(std::integer_sequence<TInt, tVals...>,
                         std::integral_constant<TInt, tOffset>) { std::unreachable(); }
 }
+
 template <typename T, T tMin, T tMax> struct make_widget_state_marker_sequence {
 private:
   using _int_t = std::underlying_type_t<T>;

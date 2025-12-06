@@ -2,11 +2,25 @@
 #ifndef ASPECT_GUI_ASP_RENDER_HPP
 #define ASPECT_GUI_ASP_RENDER_HPP
 
+#include <asp/assert.hpp>
 #include <asp/call.hpp>
 #include <asp/import/mp-units.hpp>
 #include <asp/import/stl.hpp>
+#include <asp/geometry.hpp>
 
 namespace asp {
+ASP_EXPORT_BEGIN
+/// @brief Concept to check if a type T meets the range condition for values of
+/// type TX. The range_condition should from a test value and min/max values
+/// determine if the test-value is inside the range of min max. Implementations
+/// are e.g. open-range, closed-range and semi-open (open-closed).
+template <typename T, typename TX>
+concept range_condition = requires(T t, TX v) {
+  { t(v, v, v) } -> std::convertible_to<bool>;
+};
+
+using mp_units::isq::width;
+using mp_units::isq::height;
 
 inline constexpr struct point final
     : mp_units::named_unit<"point", mp_units::kind_of<mp_units::isq::length>> {
@@ -20,22 +34,11 @@ inline constexpr auto point_width = mp_units::isq::width[point];
 inline constexpr auto point_height = mp_units::isq::height[point];
 inline constexpr auto point_per_pixel = point / pixel;
 inline constexpr auto pixel_per_point = pixel / point;
-inline constexpr struct frame final : mp_units::named_unit<"frame", mp_units::kind_of<mp_units::isq::time>> {} frame;
+inline constexpr struct frame final
+    : mp_units::named_unit<"frame", mp_units::kind_of<mp_units::isq::time>> {
+} frame;
 
-template <typename T>
-concept has_unit = requires() { std::remove_cvref_t<T>::unit; };
-template <typename T, auto U>
-concept has_unit_of = has_unit<T> && std::remove_cvref_t<T>::unit == U;
-template <typename Q, auto R>
-concept is_quantity =
-    mp_units::Reference<decltype(R)> &&
-    mp_units::QuantityOf<std::remove_cvref_t<Q>, get_quantity_spec(R)> &&
-    has_unit_of<Q, get_unit(R)>;
-template <typename QP, auto R>
-concept is_quantity_point =
-    mp_units::Reference<decltype(R)> &&
-    mp_units::QuantityPointOf<std::remove_cvref_t<QP>, get_quantity_spec(R)> &&
-    has_unit_of<QP, get_unit(R)>;
+ASP_EXPORT_END
 
 #define ASP_NO_CONST(X)                                                        \
   decltype(X) {}
@@ -78,27 +81,6 @@ ASP_EXPORT_END
 } // namespace call
 
 ASP_EXPORT_BEGIN
-template <typename T>
-concept has_width_height = requires(T const& t) {
-  { call::width(t) } -> bp::not_void;
-  { call::height(t) } -> bp::not_void;
-};
-/// @brief Concept for bounding box types.
-template <typename T>
-concept bounding_box = has_width_height<T> && requires(T const &t) {
-  { call::l_x(t) } -> bp::not_void;
-  { call::t_y(t) } -> bp::not_void;
-  { call::r_x(t) } -> bp::not_void;
-  { call::b_y(t) } -> bp::not_void;
-};
-template <typename T>
-concept two_dimensional_coordinate = requires(T const &t) {
-  { call::x_of(t) } -> bp::not_void;
-  { call::y_of(t) } -> bp::not_void;
-};
-
-template <has_unit T>
-inline constexpr auto unit_of_type = std::remove_cvref_t<T>::unit;
 
 template <typename T>
 concept is_geometric = bounding_box<T> || two_dimensional_coordinate<T>;
@@ -107,10 +89,6 @@ template <typename T, typename U>
 concept same_geometry_as =
     is_geometric<T> && is_geometric<U> && bounding_box<T> == bounding_box<U> &&
     two_dimensional_coordinate<T> == two_dimensional_coordinate<U>;
-
-template <typename T, typename U>
-concept same_unit_as =
-    has_unit<T> && has_unit<U> && unit_of_type<T> == unit_of_type<U>;
 
 template <typename T, typename U>
 concept same_unit_geometry_as = same_geometry_as<T, U> && same_unit_as<T, U>;
@@ -177,29 +155,30 @@ template <typename T> constexpr T alpha(basic_colour_t<T> const &c) noexcept {
   return c.alpha;
 }
 
-template <mp_units::Reference auto R, typename Rep>
-struct basic_width_height {
+template <mp_units::Reference auto R, typename Rep> struct basic_width_height {
   static constexpr auto reference = R;
   static constexpr auto unit = mp_units::get_unit(R);
   using rep = Rep;
-  
+
   using width_t = mp_units::quantity<mp_units::isq::width[R], Rep>;
   using height_t = mp_units::quantity<mp_units::isq::height[R], Rep>;
-  
+
   width_t _w_is_an_implementation_detail{};
   height_t _h_is_an_implementation_detail{};
 
   constexpr basic_width_height() noexcept = default;
-  constexpr basic_width_height(width_t w, height_t h) noexcept : _w_is_an_implementation_detail(w), _h_is_an_implementation_detail(h) {}
-  
-  constexpr auto&& width(this auto&& s) noexcept {
+  constexpr basic_width_height(width_t w, height_t h) noexcept
+      : _w_is_an_implementation_detail(w), _h_is_an_implementation_detail(h) {}
+
+  constexpr auto &&width(this auto &&s) noexcept {
     return std::forward<decltype(s)>(s)._w_is_an_implementation_detail;
   }
-  constexpr auto&& height(this auto&& s) noexcept {
+  constexpr auto &&height(this auto &&s) noexcept {
     return std::forward<decltype(s)>(s)._h_is_an_implementation_detail;
   }
-  
-  constexpr bool operator==(basic_width_height const&) const noexcept = default;
+
+  constexpr bool
+  operator==(basic_width_height const &) const noexcept = default;
 };
 
 template <mp_units::Reference auto R, typename Rep> struct basic_rectangle {
@@ -325,16 +304,19 @@ concept direct_invocable = requires(T &&t, Args &&...args) {
 
 template <typename T>
 concept has_rep = requires() { typename std::remove_cvref_t<T>::rep; };
+template <typename T>
+using representation_of_t = typename std::remove_cvref_t<T>::rep;
 
 template <typename T, auto R>
-concept width_height_with_unit = has_width_height<T> && requires(T && t) {
-  {call::width(t)} -> is_quantity<ASP_NO_CONST(mp_units::isq::width[R])>;
-  {call::height(t)} -> is_quantity<ASP_NO_CONST(mp_units::isq::height[R])>;
+concept width_height_with_unit = has_width_height<T> && requires(T &&t) {
+  { call::width(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::width[R])>;
+  { call::height(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::height[R])>;
 };
 
 template <typename T, auto R>
 concept rectangle_with_unit =
-    bounding_box<std::remove_cvref_t<T>> && width_height_with_unit<T, R> && requires(T &&t) {
+    bounding_box<std::remove_cvref_t<T>> && width_height_with_unit<T, R> &&
+    requires(T &&t) {
       {
         call::l_x(t)
       } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::width[R])>;
@@ -385,62 +367,6 @@ template <typename T>
 concept is_int_pixel_coordinate =
     is_two_dimensional_coordinate_with_integer_rep<T> &&
     two_dimensional_coordinate_with_unit<T, pixel>;
-
-/// @brief Basic structure for representing pixel coordinates.
-template <mp_units::Reference auto R, typename Rep> struct basic_coordinate {
-  static constexpr auto reference = R;
-  static constexpr auto unit = get_unit(R);
-  using rep = Rep;
-  using x_t =
-      mp_units::quantity_point<mp_units::isq::width[R],
-                               default_point_origin(mp_units::isq::width[R]),
-                               Rep>;
-  using y_t =
-      mp_units::quantity_point<mp_units::isq::height[R],
-                               default_point_origin(mp_units::isq::height[R]),
-                               Rep>;
-  x_t x; ///< X coordinate
-  y_t y; ///< Y coordinate
-};
-
-template <typename T1, typename T2, auto R>
-  requires(std::equality_comparable_with<T1, T2>)
-constexpr bool operator==(basic_coordinate<R, T1> const &l,
-                          basic_coordinate<R, T2> const &r) {
-  return (l.x == r.x) && (l.y == r.y);
-}
-
-template <typename T1, typename T2, auto R>
-  requires(std::totally_ordered_with<T1, T2>)
-constexpr auto operator<=>(basic_coordinate<R, T1> const &l,
-                           basic_coordinate<R, T2> const &r) {
-  auto xcmp = l.x <=> r.x;
-  if (xcmp == 0) {
-    return l.y <=> r.y;
-  } else {
-    return xcmp;
-  }
-}
-
-template <typename TX, same_unit_as<TX> TY>
-basic_coordinate(TX, TY) -> basic_coordinate<TX::unit, std::common_type_t<typename TX::rep, typename TY::rep>>;
-
-/// @brief Retrieves the x-coordinate from a basic pixel coordinate.
-template <typename T, auto R> constexpr auto x_of(basic_coordinate<R, T> const &c) {
-  return c.x;
-}
-
-/// @brief Retrieves the y-coordinate from a basic pixel coordinate.
-template <typename T, auto R> constexpr auto y_of(basic_coordinate<R, T> const &c) {
-  return c.y;
-}
-
-/// @brief Returns a reference to the x-coordinate of a basic pixel coordinate.
-template <typename T, auto R> constexpr auto &x_of(basic_coordinate<R, T> &c) { return c.x; }
-
-/// @brief Returns a reference to the y-coordinate of a default pixel
-/// coordinate.
-template <typename T, auto R> constexpr auto &y_of(basic_coordinate<R, T> &c) { return c.y; }
 
 template <typename TX, typename TY> class nudger {
   TX x_;
@@ -657,6 +583,83 @@ constexpr auto box_from_xywh(X x, Y y, W w, H h, std::type_identity<T> = {}) {
     return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w,
                                 h);
   }
+}
+
+/// Copies a box of type T2 into a box of type T.
+template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
+  if constexpr (bp::cvref_type<T2, T>) {
+    return std::forward<T2>(b);
+  } else if constexpr (std::constructible_from<T, T2 &&>) {
+    return T(std::forward<T2>(b));
+  } else if constexpr (impl::has_from_xywh<T, decltype(call::l_x(b)),
+                                           decltype(call::t_y(b)),
+                                           decltype(call::width(b)),
+                                           decltype(call::height(b))>) {
+    return box_from_xywh<T>(call::l_x(b), call::t_y(b), call::width(b),
+                            call::height(b));
+  } else {
+    return box_from_xyxy<T>(call::l_x(b), call::t_y(b), call::r_x(b),
+                            call::b_y(b));
+  }
+}
+
+/// Range checker that models the open range min < c < max.
+inline constexpr auto inside_open_range = [](auto &&c, auto &&min, auto &&max) {
+  return (min < c) && (c < max);
+};
+/// Range checker that models the closed range min <= c <= max.
+inline constexpr auto inside_closed_range =
+    [](auto &&c, auto &&min, auto &&max) { return (min <= c) && (c <= max); };
+
+/// Range checker that models the closed-open range min <= c < max.
+inline constexpr auto inside_semiopen_range =
+    [](auto &&c, auto &&min, auto &&max) { return (min <= c) && (c < max); };
+
+using inside_open_range_t = decltype(inside_open_range);
+using inside_closed_range_t = decltype(inside_closed_range);
+using inside_semiopen_range_t = decltype(inside_semiopen_range);
+
+/// Returns true if width and height are non-negative.
+constexpr bool valid_box(bounding_box auto const &b) {
+  return (call::width(b) >= decltype(call::width(b)){}) &&
+         (call::height(b) >= decltype(call::height(b)){});
+}
+
+/// Check if coordinate c is inside box b, by the range checking policy
+/// inside_range.
+template <bounding_box TB, two_dimensional_coordinate TC,
+          range_condition<decltype(call::x_of(std::declval<TC>()))> TRC =
+              inside_semiopen_range_t>
+  requires(same_unit_as<TB, TC>)
+constexpr bool hit_box(TB const &b, TC const &c, TRC &&inside_range = {}) {
+  ASP_ASSERT(valid_box(b));
+  return inside_range(call::x_of(c), call::l_x(b), call::r_x(b)) &&
+         inside_range(call::y_of(c), call::t_y(b), call::b_y(b));
+}
+
+template <two_dimensional_coordinate T1, same_unit_geometry_as<T1> T2>
+constexpr T1 copy_coordinate(T2 &&p) {
+  if constexpr (std::constructible_from<T1, T2>) {
+    return T1(std::forward<T2>(p));
+  } else {
+    using out_x = call::call_result_t<call::x_of_t, T1>;
+    using in_x = call::call_result_t<call::x_of_t, T2>;
+    if constexpr (std::is_integral_v<out_x> && !std::is_integral_v<in_x>) {
+      // We assume x and y are the same types for both T1 and T2.
+      return T1(static_cast<out_x>(call::x_of(p)),
+                static_cast<out_x>(call::y_of(p)));
+    } else {
+      return T1(call::x_of(p), call::y_of(p));
+    }
+  }
+}
+
+constexpr auto square_value(auto &&v) { return v * v; }
+
+template <two_dimensional_coordinate T1, same_unit_geometry_as<T1> T2>
+constexpr auto distance_squared(T1 const &p1, T2 const &p2) {
+  return square_value(call::x_of(p1) - call::x_of(p2)) +
+         square_value(call::y_of(p1) - call::y_of(p2));
 }
 
 template <bounding_box TB> class recursive_area_navigator {

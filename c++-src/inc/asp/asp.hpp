@@ -16,6 +16,7 @@
 
 namespace asp {
 
+#if 0
 template <typename T>
 using pixelpoint_scale_from_t =
     std::remove_cvref_t<decltype(call::pixel_scale(std::declval<T &&>()))>;
@@ -71,8 +72,6 @@ public:
     call_on_resize(
         basic_size_wh{call::width(start_area), call::height(start_area)});
   }
-
-  #if 0
   // TODO: Reintroduce a constraint here, it is badly needed.
   constexpr native_box_t handle(auto const &evt)
   // requires((has_handle<TWidgets, decltype(evt),
@@ -123,7 +122,6 @@ public:
     });
     return b.result_area();
   }
-  #endif
 
   constexpr TWidgets &widgets()
     requires(!std::is_empty_v<TWidgets>)
@@ -262,7 +260,6 @@ concept has_accessor = requires(T &&t, Args &&...args) {
   { t.accessor(std::forward<Args>(args)...) } -> accessor;
 };
 
-#if 0
 template <pixel_or_point_rect_basic TArea, typename TDisplay, typename TState,
           typename TEventHandler, typename TSubs, typename TOnResize>
 class widget
@@ -498,7 +495,6 @@ public:
     return found;
   }
 };
-#endif
 template <renderer TR, typename TStateArgs>
 struct builder_display_element_constraint {
   constexpr void
@@ -1529,7 +1525,6 @@ using state_marker_t = make_widget_state_marker_sequence_t<
 using all_states_t = all_states_in_marker_t<state_marker_t>;
 using all_triggers_t = triggers<trigger_on, trigger_off>;
 
-#if 0
 template <typename T, typename TRender = dummy_renderer,
           typename Position = default_coordinate,
           typename BP = basic_widget_back_propagater<>>
@@ -1545,10 +1540,8 @@ concept element =
 struct sub_constraint {
   constexpr void operator()(element auto &&) const {}
 };
-#endif
 } // namespace radio_button
 
-#if 0
 /// @brief Trigger for widgets that acts like a container of multiple buttons
 /// where at most one button should be enabled.
 ///

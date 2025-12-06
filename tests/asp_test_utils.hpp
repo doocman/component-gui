@@ -6,7 +6,9 @@
 
 #include <gmock/gmock.h>
 
-#include <asp/asp.hpp>
+import aspect_gui;
+
+#define ASP_TEST_ASSERT(EXPR) ::asp::asp_assert(!!(EXPR), #EXPR)
 
 namespace asp::tests {
 template <interpreted_events evt>
@@ -26,6 +28,7 @@ expect_colour_eq(asp::colour auto const &val, asp::colour auto const &expected,
       << "Called at line " << s.line();
 }
 
+#if 0
 template <bounding_box ToTest, bounding_box ToExpect>
   requires(!size_tagged<ToTest> && !size_tagged<ToExpect>)
 inline void expect_box_equal(
@@ -183,7 +186,7 @@ constexpr void click_widget(auto &w, default_point_coordinate const &pos = {},
              args...);
   }
 }
-
+#endif
 } // namespace asp::tests
 
 #endif // COMPONENT_GUI_ASP_TEST_UTILS_HPP

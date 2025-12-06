@@ -1,4 +1,5 @@
 
+/*
 #include <asp/ui_events.hpp>
 
 #include <initializer_list>
@@ -7,6 +8,15 @@
 #include <gmock/gmock.h>
 
 #include <asp_test_utils.hpp>
+*/
+#include <asp/warnings.hpp>
+#include <asp_test_utils.hpp>
+
+import aspect_gui;
+
+#include <chrono>
+
+#include <gmock/gmock.h>
 
 ASP_WARNINGS_PUSH
 ASP_SUPPRESSW_MSVC(4244)
@@ -14,14 +24,14 @@ ASP_SUPPRESSW_MSVC(4244)
 namespace asp::tests {
 using namespace ::testing;
 
-static_assert(
-    has_event_type_of_type<interpreted_event<interpreted_events::primary_click>,
-                           interpreted_events>);
+static_assert(has_event_type_of_type<
+              interpreted_event<interpreted_events::primary_click, float>,
+              interpreted_events>);
 static_assert(
     can_be_event<interpreted_events::primary_click,
-                 interpreted_event<interpreted_events::primary_click>>());
+                 interpreted_event<interpreted_events::primary_click, int>>());
 static_assert(interpreted_event_types<
-              interpreted_event<interpreted_events::primary_click>,
+              interpreted_event<interpreted_events::primary_click, int>,
               interpreted_events::primary_click>);
 
 TEST(UiEventsMatcher, Basics) // NOLINT
@@ -39,9 +49,9 @@ TEST(UiEventsMatcher, Basics) // NOLINT
                     event_case<mouse_button_up>([&f] { f.Call("Up"); }),
                     event_case<mouse_move>([&f] { f.Call("Move"); }));
   };
-  my_switch(default_mouse_move_event{});
-  my_switch(default_mouse_down_event{});
-  my_switch(default_mouse_up_event{});
+  my_switch(default_mouse_move_event<int>{});
+  my_switch(default_mouse_down_event<int>{});
+  my_switch(default_mouse_up_event<int>{});
 }
 
 TEST(UiEventsMatcher, BasicsState) // NOLINT
@@ -61,9 +71,9 @@ TEST(UiEventsMatcher, BasicsState) // NOLINT
         event_case<mouse_button_up>([](auto &&, auto &f2) { f2.Call("Up"); }),
         event_case<mouse_move>([&f] { f.Call("Move"); }));
   };
-  my_switch(default_mouse_move_event{});
-  my_switch(default_mouse_down_event{});
-  my_switch(default_mouse_up_event{});
+  my_switch(default_mouse_move_event<int>{});
+  my_switch(default_mouse_down_event<int>{});
+  my_switch(default_mouse_up_event<int>{});
 }
 
 template <interpreted_events ie_v, typename TimePoint>
@@ -77,6 +87,12 @@ constexpr interpreted_events to_interpreted_event_enum() {
   return to_interpreted_event_enum(std::type_identity<Evt>());
 }
 
+template <auto Ref, typename Rep>
+constexpr mp_units::quantity_point<Ref, default_point_origin(Ref), Rep>
+make_point(mp_units::quantity<Ref, Rep> const &q) {
+  return mp_units::quantity_point{q};
+}
+
 struct event_counter {
   static widget_id_t next_id() {
     static widget_id_t next{0};
@@ -85,12 +101,16 @@ struct event_counter {
     return res;
   }
   std::vector<interpreted_events> event_types;
-  default_point_rect a_ =
-      point_unit(default_rect{{-1000, -1000}, {1000, 1000}});
-  zoom_factor_t zf{1.f, 1.f};
+  // default_point_rect a_ =
+  //     point_unit(default_rect{{-1000, -1000}, {1000, 1000}});
+  basic_rectangle<point, int> a_ = {
+      make_point(-1000 * mp_units::isq::width[point]),
+      make_point(-1000 * mp_units::isq::height[point]),
+      1000 * mp_units::isq::width[point], 1000 * mp_units::isq::height[point]};
+  zoom_factor_t<float> zf{1.f, 1.f};
   widget_id_t id_ = next_id();
   event_counter() = default;
-  explicit event_counter(default_point_rect a) : a_(a) {}
+  explicit event_counter(basic_rectangle<point, int> a) : a_(a) {}
   template <typename Evt> constexpr void handle(Evt const &e) {
     event_types.push_back(to_interpreted_event_enum<Evt>());
   }
@@ -98,7 +118,7 @@ struct event_counter {
   constexpr auto area() const { return a_; }
 
   void reset() { event_types.clear(); }
-  constexpr zoom_factor_t const &zoom_factor() const { return zf; }
+  constexpr zoom_factor_t<float> const &zoom_factor() const { return zf; }
   constexpr widget_id_t widget_id() const noexcept { return id_; }
 
   template <typename T> struct with_cb_t {
@@ -178,13 +198,13 @@ public:
   struct dummy_widget_query {
     event_counter *counter{};
     std::vector<interpreted_events> events_to_allow{};
-    zoom_factor_t zf_{1.f, 1.f};
+    zoom_factor_t<float> zf_{1.f, 1.f};
     template <typename QM, interpreted_events... evts>
     constexpr bool
     operator()(query_interpreted_events_t<QM, evts...> const &q) const {
       if (std::ranges::any_of(events_to_allow,
                               [](auto &&e) { return ((e == evts) || ...); })) {
-        ASP_ASSERT(counter != nullptr);
+        ASP_TEST_ASSERT(counter != nullptr);
         q(*counter);
         return true;
       }
@@ -198,7 +218,7 @@ public:
         if (std::ranges::any_of(events_to_allow, [](auto &&e) {
               return ((e == evts) || ...);
             })) {
-          ASP_ASSERT(counter != nullptr);
+          ASP_TEST_ASSERT(counter != nullptr);
           q(counter->with_cb(cb)
             //      , [cb](auto &dw, auto &&e) {
             //  cb(e);
@@ -210,7 +230,7 @@ public:
         return false;
       };
     }
-    constexpr zoom_factor_t const &zoom_factor() const { return zf_; }
+    constexpr zoom_factor_t<float> const &zoom_factor() const { return zf_; }
   };
 
   time_point_t first_ts{};
@@ -257,31 +277,31 @@ public:
   void enable_all_events_except(std::same_as<interpreted_events> auto... evts) {
     enable_all_events();
     auto tot_found = (std::erase(event_query.events_to_allow, evts) + ...);
-    ASP_ASSERT(tot_found == sizeof...(evts));
+    ASP_TEST_ASSERT(tot_found == sizeof...(evts));
   }
 };
 
 TEST_F(GestureEventsTests, AllQueriesFail) // NOLINT
 {
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_down_event{});
+  invoke_tt(default_mouse_down_event<float>{});
   EXPECT_THAT(counter.event_types, IsEmpty());
-  invoke_tt(default_mouse_up_event{});
+  invoke_tt(default_mouse_up_event<float>{});
   EXPECT_THAT(counter.event_types, IsEmpty());
-  invoke_tt(default_mouse_move_event{});
+  invoke_tt(default_mouse_move_event<float>{});
   EXPECT_THAT(counter.event_types, IsEmpty());
 }
 
 TEST_F(GestureEventsTests, MouseClick) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   auto &event_types = counter.event_types;
-  invoke_tt(default_mouse_down_event{.common_data{first_ts}});
+  invoke_tt(default_mouse_down_event<float>{.common_data{first_ts}});
   EXPECT_THAT(event_types, ElementsAre(interpreted_events::pointer_hold));
-  invoke_tt(default_mouse_up_event{.common_data{first_ts}});
+  invoke_tt(default_mouse_up_event<float>{.common_data{first_ts}});
   EXPECT_THAT(event_types, ElementsAre(interpreted_events::primary_click,
                                        interpreted_events::pointer_hover));
   counter.reset();
@@ -300,12 +320,12 @@ TEST_F(GestureEventsTests, MouseClick) // NOLINT
 template <typename> struct dummy_event_interpreter {
   struct state {};
   struct settings {};
-  template <typename E>
-  static constexpr auto can_handle =
-      _interpreter_can_handle<input_events::system>::op<E>;
+  //template <typename E>
+  //static constexpr auto can_handle =
+  //    _interpreter_can_handle<input_events::system>::op<E>;
 
   static constexpr std::optional<state>
-  handle(default_event<input_events::system>, auto &&...) {
+  handle(default_event<input_events::system, float>, auto &&...) {
     return state{};
   }
   static constexpr std::optional<state> pass_time(auto &&...) {
@@ -317,13 +337,13 @@ template <typename> struct dummy_event_interpreter {
 TEST_F(GestureEventsTests, ContextMenuMouseClick) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_down_event{.button_id = mouse_buttons::secondary,
-                                     .common_data{first_ts}});
+  invoke_tt(default_mouse_down_event<float>{
+      .button_id = mouse_buttons::secondary, .common_data{first_ts}});
   EXPECT_THAT(counter.event_types, IsEmpty());
-  invoke_tt(default_mouse_up_event{.button_id = mouse_buttons::secondary,
-                                   .common_data{first_ts}});
+  invoke_tt(default_mouse_up_event<float>{.button_id = mouse_buttons::secondary,
+                                          .common_data{first_ts}});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::context_menu_click));
 }
@@ -331,14 +351,16 @@ TEST_F(GestureEventsTests, ContextMenuMouseClick) // NOLINT
 TEST_F(GestureEventsTests, MouseDrag) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_down_event{});
-  invoke_tt(default_mouse_move_event{.pos = {20, 20}});
+  invoke_tt(default_mouse_down_event<float>{});
+  invoke_tt(default_mouse_move_event<float>{
+      .pos = {mp_units::quantity_point(20.f * width[point]),
+              mp_units::quantity_point(20 * height[point])}});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_drag_start,
                           interpreted_events::pointer_drag_move));
-  invoke_tt(default_mouse_up_event{});
+  invoke_tt(default_mouse_up_event<float>{});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_drag_finished_source,
                           interpreted_events::pointer_drag_finished_destination,
@@ -348,13 +370,15 @@ TEST_F(GestureEventsTests, MouseNoDrag) // NOLINT
 {
   enable_all_events_except(interpreted_events::pointer_drag_start,
                            interpreted_events::pointer_drag_move);
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_down_event{});
-  invoke_tt(default_mouse_move_event{.pos = {20, 20}});
+  invoke_tt(default_mouse_down_event<float>{});
+  invoke_tt(default_mouse_move_event<float>{
+      .pos = {mp_units::quantity_point(20.f * width[point]),
+              mp_units::quantity_point(20.f * height[point])}});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_hold));
-  invoke_tt(default_mouse_up_event{});
+  invoke_tt(default_mouse_up_event<float>{});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::primary_click,
                           interpreted_events::pointer_hover));
@@ -363,9 +387,9 @@ TEST_F(GestureEventsTests, MouseNoDrag) // NOLINT
 TEST_F(GestureEventsTests, MouseHover) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_move_event{});
+  invoke_tt(default_mouse_move_event<float>{});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_enter,
                           interpreted_events::pointer_hover));
@@ -374,28 +398,28 @@ TEST_F(GestureEventsTests, MouseHover) // NOLINT
 TEST_F(GestureEventsTests, MouseScroll) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_move_event{});
-  invoke_tt(default_mouse_scroll_event{});
+  invoke_tt(default_mouse_move_event<float>{});
+  invoke_tt(default_mouse_scroll_event<float>{});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
 }
 
 TEST_F(GestureEventsTests, MouseScrollToZoomLCtrl) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_move_event{});
-  invoke_tt(default_key_down_event(keycode::lctrl));
-  invoke_tt(default_mouse_scroll_event{});
+  invoke_tt(default_mouse_move_event<float>{});
+  invoke_tt(default_key_down_event<float>(keycode::lctrl));
+  invoke_tt(default_mouse_scroll_event<float>{});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
 }
 
 TEST_F(GestureEventsTests, MouseScrollToZoomRCtrl) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   float scale_x{};
   float scale_y{};
   settings<primary_mouse_click_translator>(to_test).zoom_scale = 0.1f;
@@ -405,9 +429,9 @@ TEST_F(GestureEventsTests, MouseScrollToZoomRCtrl) // NOLINT
       scale_y = call::scale_y(e);
     }
   });
-  invoke_tt(default_mouse_move_event{});
-  invoke_tt(default_key_down_event(keycode::rctrl));
-  invoke_tt(default_mouse_scroll_event{.dy = 1.f});
+  invoke_tt(default_mouse_move_event<float>{});
+  invoke_tt(default_key_down_event<float>(keycode::rctrl));
+  invoke_tt(default_mouse_scroll_event<float>{.dy = 1.f * height[point] / frame});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
   EXPECT_THAT(scale_x, FloatEq(1.1f));
   EXPECT_THAT(scale_y, FloatEq(1.1f));
@@ -416,94 +440,101 @@ TEST_F(GestureEventsTests, MouseScrollToZoomRCtrl) // NOLINT
 TEST_F(GestureEventsTests, MouseScrollLiftLCtrlScrolls) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_move_event{});
-  invoke_tt(default_key_down_event(keycode::lctrl));
-  invoke_tt(default_key_up_event(keycode::lctrl));
-  invoke_tt(default_mouse_scroll_event{});
+  invoke_tt(default_mouse_move_event<float>{});
+  invoke_tt(default_key_down_event<float>(keycode::lctrl));
+  invoke_tt(default_key_up_event<float>(keycode::lctrl));
+  invoke_tt(default_mouse_scroll_event<float>{});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
 }
 
 TEST_F(GestureEventsTests, MouseScrollLiftRLCtrlScrolls) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_mouse_move_event{});
-  invoke_tt(default_key_down_event(keycode::lctrl));
-  invoke_tt(default_key_down_event(keycode::rctrl));
-  invoke_tt(default_key_up_event(keycode::lctrl));
-  invoke_tt(default_mouse_scroll_event{});
+  invoke_tt(default_mouse_move_event<float>{});
+  invoke_tt(default_key_down_event<float>(keycode::lctrl));
+  invoke_tt(default_key_down_event<float>(keycode::rctrl));
+  invoke_tt(default_key_up_event<float>(keycode::lctrl));
+  invoke_tt(default_mouse_scroll_event<float>{});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
-  invoke_tt(default_key_down_event(keycode::lctrl));
-  invoke_tt(default_mouse_scroll_event{});
+  invoke_tt(default_key_down_event<float>(keycode::lctrl));
+  invoke_tt(default_mouse_scroll_event<float>{});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
-  invoke_tt(default_key_up_event(keycode::rctrl));
-  invoke_tt(default_key_up_event(keycode::lctrl));
-  invoke_tt(default_mouse_scroll_event{});
+  invoke_tt(default_key_up_event<float>(keycode::rctrl));
+  invoke_tt(default_key_up_event<float>(keycode::lctrl));
+  invoke_tt(default_mouse_scroll_event<float>{});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
 }
 
 TEST_F(GestureEventsTests, TouchClick) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_touch_down_event());
+  invoke_tt(default_touch_down_event<float>());
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_enter,
                           interpreted_events::pointer_hold));
-  invoke_tt(default_touch_up_event());
+  invoke_tt(default_touch_up_event<float>());
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::primary_click,
                           interpreted_events::pointer_exit));
 }
 
+constexpr auto operator""_wpf_point(long double f) {
+  return make_point(static_cast<float>(f) * width[point]);
+}
+constexpr auto operator""_hpf_point(long double f) {
+  return make_point(static_cast<float>(f) * height[point]);
+}
+
 TEST_F(GestureEventsTests, TouchZoom) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
-  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {8, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {22, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {6, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {24, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {4, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {26, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {2, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {28, 0}, .finger_index = 1});
+  invoke_tt(default_touch_down_event<float>{.pos = {make_point(10.f * width[point]), make_point(0.f * height[point])}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {20._wpf_point, 0._hpf_point}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {8._wpf_point, 0._hpf_point}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {22._wpf_point, 0._hpf_point}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {6._wpf_point, 0._hpf_point}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {24._wpf_point, 0._hpf_point}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {4._wpf_point, 0._hpf_point}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {26._wpf_point, 0._hpf_point}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {2._wpf_point, 0._hpf_point}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {28._wpf_point, 0._hpf_point}, .finger_index = 1});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
 }
 
 TEST_F(GestureEventsTests, TouchPan) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   settings<touch_translator>(to_test).scroll_threshold = 2;
   settings<touch_translator>(to_test).drag_threshold = 2;
-  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
-  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {12, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {10, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {12, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, IsEmpty());
-  invoke_tt(default_touch_move_event{.pos = {22, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {14, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {22, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {14, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
-  invoke_tt(default_touch_move_event{.pos = {24, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {16, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {26, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {18, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {28, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {24, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {16, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {26, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {18, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {28, 0}, .finger_index = 1});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
 
   invoke_tt(default_touch_up_event{.finger_index = 0});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_exit));
 
-  invoke_tt(default_touch_down_event{});
+  invoke_tt(default_touch_down_event<float>{});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_enter,
                           interpreted_events::pointer_hold));
@@ -513,7 +544,7 @@ TEST_F(GestureEventsTests, TouchPan) // NOLINT
                           interpreted_events::pointer_exit));
 
   invoke_tt(default_touch_up_event{.finger_index = 1});
-  invoke_tt(default_touch_down_event{.finger_index = 1});
+  invoke_tt(default_touch_down_event<float>{.finger_index = 1});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_enter,
                           interpreted_events::pointer_hold));
@@ -526,18 +557,18 @@ TEST_F(GestureEventsTests, TouchPan) // NOLINT
 TEST_F(GestureEventsTests, TouchPanAndZoom) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
-  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {11, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {23, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {12, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {26, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {13, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {29, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {14, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {32, 0}, .finger_index = 1});
+  invoke_tt(default_touch_down_event<float>{.pos = {10, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {11, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {23, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {12, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {26, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {13, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {29, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {14, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {32, 0}, .finger_index = 1});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
@@ -545,7 +576,7 @@ TEST_F(GestureEventsTests, TouchPanAndZoom) // NOLINT
 
 TEST_F(GestureEventsTests, TouchPanLevels) {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   float last_scroll_x{};
   float total_scroll_x{};
   float last_scroll_y{};
@@ -561,8 +592,8 @@ TEST_F(GestureEventsTests, TouchPanLevels) {
       total_scroll_y += call::delta_y(e);
     }
   });
-  invoke_tt(default_touch_down_event{.pos = {10, 10}, .finger_index = 0});
-  invoke_tt(default_touch_down_event{.pos = {20, 20}, .finger_index = 1});
+  invoke_tt(default_touch_down_event<float>{.pos = {10, 10}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {20, 20}, .finger_index = 1});
   int last_gen_x = 0;
   int last_gen_y = 0;
   auto generate_pan = [&](int px, int py) {
@@ -570,13 +601,13 @@ TEST_F(GestureEventsTests, TouchPanLevels) {
     auto end_y = last_gen_y + py;
     auto end_point = std::max(end_x, end_y) + 1;
     for (int i = std::min(last_gen_x, last_gen_y) + 1; i < end_point; ++i) {
-      ASP_ASSERT(last_gen_x <= end_x);
-      ASP_ASSERT(last_gen_y <= end_y);
+      ASP_TEST_ASSERT(last_gen_x <= end_x);
+      ASP_TEST_ASSERT(last_gen_y <= end_y);
       last_gen_x = std::clamp(i, last_gen_x, end_x);
       last_gen_y = std::clamp(i, last_gen_y, end_y);
-      invoke_tt(default_touch_move_event{
+      invoke_tt(default_touch_move_event<float>{
           .pos = {10 + last_gen_x, 10 + last_gen_y}, .finger_index = 0});
-      invoke_tt(default_touch_move_event{
+      invoke_tt(default_touch_move_event<float>{
           .pos = {20 + last_gen_x, 20 + last_gen_y}, .finger_index = 1});
     }
   };
@@ -609,29 +640,29 @@ TEST_F(GestureEventsTests, TouchPanLevels) {
 TEST_F(GestureEventsTests, PanThenZoom) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   settings<touch_translator>(to_test).scroll_threshold = 2;
   settings<touch_translator>(to_test).drag_threshold = 2;
   settings<touch_translator>(to_test).zoom_threshold = 5;
   auto invoke_tt = get_invoke_tt(to_test);
 
-  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
-  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {12, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {22, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {14, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {10, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {12, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {22, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {14, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
-  invoke_tt(default_touch_move_event{.pos = {21, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {21, 0}, .finger_index = 1});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
-  invoke_tt(default_touch_move_event{.pos = {16, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {16, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
-  invoke_tt(default_touch_move_event{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {20, 0}, .finger_index = 1});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
-  invoke_tt(default_touch_move_event{.pos = {18, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {18, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
@@ -640,27 +671,27 @@ TEST_F(GestureEventsTests, PanThenZoom) // NOLINT
 TEST_F(GestureEventsTests, ZoomThenPan) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   settings<touch_translator>(to_test).scroll_threshold = 3;
   settings<touch_translator>(to_test).drag_threshold = 3;
   settings<touch_translator>(to_test).zoom_threshold = 3;
   auto invoke_tt = get_invoke_tt(to_test);
 
-  invoke_tt(default_touch_down_event{.pos = {10, 0}, .finger_index = 0});
-  invoke_tt(default_touch_down_event{.pos = {20, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {11, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event{.pos = {19, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {12, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {10, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {11, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {19, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {12, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
-  invoke_tt(default_touch_move_event{.pos = {21, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {21, 0}, .finger_index = 1});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
-  invoke_tt(default_touch_move_event{.pos = {15, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {15, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
-  invoke_tt(default_touch_move_event{.pos = {23, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {23, 0}, .finger_index = 1});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
-  invoke_tt(default_touch_move_event{.pos = {18, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {18, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
@@ -673,15 +704,15 @@ constexpr void apply_touch_zoom_x(auto &&handler, int start_distance,
     sign_i = -1;
     distance_diff = -distance_diff;
   }
-  ASP_ASSERT(distance_diff >= 0);
-  handler(default_touch_down_event{.pos = {start_x, 0}, .finger_index = 0});
-  handler(default_touch_down_event{.pos = {start_x + start_distance, 0},
+  ASP_TEST_ASSERT(distance_diff >= 0);
+  handler(default_touch_down_event<float>{.pos = {start_x, 0}, .finger_index = 0});
+  handler(default_touch_down_event<float>{.pos = {start_x + start_distance, 0},
                                    .finger_index = 1});
   for (auto i = 1; i <= distance_diff; ++i) {
     auto xl = start_x - i * sign_i;
     auto xr = start_x + start_distance + i * sign_i;
-    handler(default_touch_move_event{.pos = {xl, 0}, .finger_index = 0});
-    handler(default_touch_move_event{.pos = {xr, 0}, .finger_index = 1});
+    handler(default_touch_move_event<float>{.pos = {xl, 0}, .finger_index = 0});
+    handler(default_touch_move_event<float>{.pos = {xr, 0}, .finger_index = 1});
   }
 }
 constexpr void apply_touch_pan_x(auto &&handler, int distance,
@@ -693,14 +724,14 @@ constexpr void apply_touch_pan_x(auto &&handler, int distance,
   }
   constexpr int fdist = 10;
   handler(
-      default_touch_down_event{.pos = {start_x - fdist, 0}, .finger_index = 0});
+      default_touch_down_event<float>{.pos = {start_x - fdist, 0}, .finger_index = 0});
   handler(
-      default_touch_down_event{.pos = {start_x + fdist, 0}, .finger_index = 1});
+      default_touch_down_event<float>{.pos = {start_x + fdist, 0}, .finger_index = 1});
   for (auto i = 1; i <= distance; ++i) {
     auto xl = start_x - fdist + i * sign;
     auto xr = start_x + fdist + i * sign;
-    handler(default_touch_move_event{.pos = {xl, 0}, .finger_index = 0});
-    handler(default_touch_move_event{.pos = {xr, 0}, .finger_index = 1});
+    handler(default_touch_move_event<float>{.pos = {xl, 0}, .finger_index = 0});
+    handler(default_touch_move_event<float>{.pos = {xr, 0}, .finger_index = 1});
   }
 }
 constexpr void apply_touch_pan_zoom_x(auto &&handler, int pan_distance,
@@ -717,23 +748,23 @@ constexpr void apply_touch_pan_zoom_x(auto &&handler, int pan_distance,
     sign_p = -1;
     pan_distance = -pan_distance;
   }
-  ASP_ASSERT(distance_diff >= 0);
-  handler(default_touch_down_event{.pos = {start_x, 0}, .finger_index = 0});
-  handler(default_touch_down_event{.pos = {start_x + start_distance, 0},
+  ASP_TEST_ASSERT(distance_diff >= 0);
+  handler(default_touch_down_event<float>{.pos = {start_x, 0}, .finger_index = 0});
+  handler(default_touch_down_event<float>{.pos = {start_x + start_distance, 0},
                                    .finger_index = 1});
   for (auto i = 1; i <= distance_diff; ++i) {
     auto zoom_v = std::min(i, distance_diff) * sign_z;
     auto pan_v = std::min(i, pan_distance) * sign_p + start_x;
     auto xl = pan_v - zoom_v;
     auto xr = pan_v + start_distance + zoom_v;
-    handler(default_touch_move_event{.pos = {xl, 0}, .finger_index = 0});
-    handler(default_touch_move_event{.pos = {xr, 0}, .finger_index = 1});
+    handler(default_touch_move_event<float>{.pos = {xl, 0}, .finger_index = 0});
+    handler(default_touch_move_event<float>{.pos = {xr, 0}, .finger_index = 1});
   }
 }
 TEST_F(GestureEventsTests, TouchZoomLevels) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   float scale = 1.f;
   int zoom_count{};
   auto invoke_tt = get_invoke_tt(to_test, [&]<typename T>(T const &event) {
@@ -751,39 +782,39 @@ TEST_F(GestureEventsTests, TouchZoomLevels) // NOLINT
 TEST_F(GestureEventsTests, NoDragAfterTouchPan) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   float scale = 1.f;
   int zoom_count{};
   auto invoke_tt = get_invoke_tt(to_test);
   apply_touch_pan_x(invoke_tt, 20);
   invoke_tt(default_touch_up_event{.finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {40, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {40, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, IsEmpty());
 }
 
 TEST_F(GestureEventsTests, NoDragAfterTouchZoom) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   float scale = 1.f;
   int zoom_count{};
   auto invoke_tt = get_invoke_tt(to_test);
   apply_touch_zoom_x(invoke_tt, 20, 40);
   invoke_tt(default_touch_up_event{.finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {40, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {40, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, IsEmpty());
 }
 
 TEST_F(GestureEventsTests, NoDragAfterTouchPanZoom) // NOLINT
 {
   enable_all_events();
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   float scale = 1.f;
   int zoom_count{};
   auto invoke_tt = get_invoke_tt(to_test);
   apply_touch_pan_zoom_x(invoke_tt, 20, 20, 40);
   invoke_tt(default_touch_up_event{.finger_index = 1});
-  invoke_tt(default_touch_move_event{.pos = {40, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {40, 0}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, IsEmpty());
 }
 
@@ -847,7 +878,7 @@ struct GestureEventsHitTests : public ::testing::Test {
 
 TEST_F(GestureEventsHitTests, MouseEnterExit) // NOLINT
 {
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   add_widget({{0, 0}, {50, 50}});
   add_widget({{50, 0}, {100, 50}});
   auto &cl = query.widgets[0].counter;
@@ -870,7 +901,7 @@ TEST_F(GestureEventsHitTests, MouseEnterExit) // NOLINT
 
 TEST_F(GestureEventsHitTests, DragDelayEnterExit) // NOLINT
 {
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   add_widget({{0, 0}, {50, 50}});
   add_widget({{50, 0}, {100, 50}});
   auto &cl = query.widgets[0].counter;
@@ -896,7 +927,7 @@ TEST_F(GestureEventsHitTests, DragDelayEnterExit) // NOLINT
 
 TEST_F(GestureEventsHitTests, MouseDownNoDragEnterExit) // NOLINT
 {
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto const event_enabler = [](auto &v) {
     enable_all_events_except({interpreted_events::pointer_drag_start,
                               interpreted_events::pointer_drag_move},
@@ -924,7 +955,7 @@ TEST_F(GestureEventsHitTests, MouseDownNoDragEnterExit) // NOLINT
 
 TEST_F(GestureEventsHitTests, MouseDownNoDragEnterExitFar) // NOLINT
 {
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto const event_enabler = [](auto &v) {
     enable_all_events_except({interpreted_events::pointer_drag_start,
                               interpreted_events::pointer_drag_move},
@@ -951,7 +982,7 @@ TEST_F(GestureEventsHitTests, MoveMouseOutsideWidgetDrag) // NOLINT
 {
   add_widget({{0, 0}, {50, 50}});
   auto &w = query.widgets[0].counter;
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   using enum interpreted_events;
   invoke_tt(default_mouse_move_event{.pos = {0, 0}});
@@ -986,7 +1017,7 @@ TEST_F(GestureEventsHitTests, MoveMouseOutsideWidgetNoDrag) // NOLINT
     enable_all_events_except({pointer_drag_start, pointer_drag_move}, v);
   });
   auto &w = query.widgets[0].counter;
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_mouse_move_event{.pos = {0, 0}});
   invoke_tt(default_mouse_down_event{.pos = {0, 0}});
@@ -1009,7 +1040,7 @@ TEST_F(GestureEventsHitTests, MouseHoldMultipleWidgets) // NOLINT
 
   auto &cl = query.widgets[0].counter;
   auto &cr = query.widgets[1].counter;
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_mouse_down_event{.pos = {0, 0}});
   invoke_tt(default_mouse_move_event{.pos = {75, 0}});
@@ -1032,21 +1063,21 @@ TEST_F(GestureEventsHitTests, TouchDrag) // NOLINT
 
   auto &cl = query.widgets[0].counter;
   auto &cr = query.widgets[1].counter;
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_touch_down_event());
-  invoke_tt(default_touch_move_event{.pos = {2, 0}});
+  invoke_tt(default_touch_down_event<float>());
+  invoke_tt(default_touch_move_event<float>{.pos = {2, 0}});
   EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_hold));
-  invoke_tt(default_touch_move_event{.pos = {20, 0}});
+  invoke_tt(default_touch_move_event<float>{.pos = {20, 0}});
   EXPECT_THAT(cl.event_types,
               ElementsAre(interpreted_events::pointer_drag_start,
                           interpreted_events::pointer_drag_move));
   EXPECT_THAT(cr.event_types, IsEmpty());
-  invoke_tt(default_touch_move_event{.pos = {40, 0}});
+  invoke_tt(default_touch_move_event<float>{.pos = {40, 0}});
   EXPECT_THAT(cl.event_types,
               ElementsAre(interpreted_events::pointer_drag_move));
   EXPECT_THAT(cr.event_types, IsEmpty());
-  invoke_tt(default_touch_move_event{.pos = {60, 0}});
+  invoke_tt(default_touch_move_event<float>{.pos = {60, 0}});
   EXPECT_THAT(cl.event_types,
               ElementsAre(interpreted_events::pointer_drag_move));
   EXPECT_THAT(cr.event_types, IsEmpty());
@@ -1071,18 +1102,18 @@ TEST_F(GestureEventsHitTests, TouchMoveNoDrag) // NOLINT
 
   auto &cl = query.widgets[0].counter;
   auto &cr = query.widgets[1].counter;
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_touch_down_event());
-  invoke_tt(default_touch_move_event{.pos = {2, 0}});
+  invoke_tt(default_touch_down_event<float>());
+  invoke_tt(default_touch_move_event<float>{.pos = {2, 0}});
   EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_hold));
-  invoke_tt(default_touch_move_event{.pos = {20, 0}});
-  EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_hold));
-  EXPECT_THAT(cr.event_types, IsEmpty());
-  invoke_tt(default_touch_move_event{.pos = {40, 0}});
+  invoke_tt(default_touch_move_event<float>{.pos = {20, 0}});
   EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_hold));
   EXPECT_THAT(cr.event_types, IsEmpty());
-  invoke_tt(default_touch_move_event{.pos = {60, 0}});
+  invoke_tt(default_touch_move_event<float>{.pos = {40, 0}});
+  EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_hold));
+  EXPECT_THAT(cr.event_types, IsEmpty());
+  invoke_tt(default_touch_move_event<float>{.pos = {60, 0}});
   EXPECT_THAT(cl.event_types, ElementsAre(interpreted_events::pointer_exit));
   EXPECT_THAT(cr.event_types, ElementsAre(interpreted_events::pointer_enter,
                                           interpreted_events::pointer_hold));
@@ -1102,7 +1133,7 @@ TEST_F(GestureEventsHitTests, TouchParentPanCallsExitOnChild) // NOLINT
   add_widget({{0, 0}, {100, 100}});
   auto &child = query.widgets[0].counter;
   auto &parent = query.widgets[1].counter;
-  auto to_test = default_event_interpreter<time_point_t>{};
+  auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt_no_clear(to_test);
   apply_touch_pan_x(invoke_tt, 20, 40);
   EXPECT_THAT(child.event_types, Contains(interpreted_events::pointer_exit));

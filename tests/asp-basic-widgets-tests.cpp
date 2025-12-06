@@ -23,7 +23,6 @@ static_assert(is_quantity_point<
               mp_units::quantity_point<decltype(mp_units::isq::width[pixel]){}>,
               decltype(mp_units::isq::width[pixel]){}>);
 static_assert(rectangle_with_unit<basic_rectangle<pixel, int>, pixel>);
-// static_assert(has_unit_of<basic_rectangle<point, float>, point>);
 static_assert(
     has_unit_of<mp_units::quantity_point<mp_units::isq::width[pixel]>, pixel>);
 static_assert(rectangle_with_unit<basic_rectangle<point, float>, point>);
@@ -280,7 +279,7 @@ operator|(T &&t, pipe_to_invoke<c, Us...> const &v) {
 #endif
 }
 
-inline constexpr auto background(is_widget auto &&bg) {
+constexpr auto background(is_widget auto &&bg) {
   using bg_t = decltype(bg);
   return pipe_to_invoke<[]<is_widget FG, is_widget BG>(FG &&fg, BG &&bg) {
     return background_t(std::forward<FG>(fg), std::forward<BG>(bg));

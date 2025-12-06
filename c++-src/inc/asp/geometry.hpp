@@ -16,22 +16,173 @@
 #include <asp/warnings.hpp>
 
 namespace asp {
-/// @brief Concept to check if a type T meets the range condition for values of
-/// type TX. The range_condition should from a test value and min/max values
-/// determine if the test-value is inside the range of min max. Implementations
-/// are e.g. open-range, closed-range and semi-open (open-closed).
-template <typename T, typename TX>
-concept range_condition = requires(T t, TX v) {
-  { t(v, v, v) } -> std::convertible_to<bool>;
-};
-
-/// @brief Concept to check if a type is a pixel coordinate.
+ASP_EXPORT_BEGIN
 template <typename T>
-concept pixel_coord = requires(T &&t) {
-  call::x_of(t) ;
-  call::y_of(t) ;
+concept has_width_height = requires(T const &t) {
+  { call::width(t) } -> bp::not_void;
+  { call::height(t) } -> bp::not_void;
+};
+/// @brief Concept for bounding box types.
+template <typename T>
+concept bounding_box = has_width_height<T> && requires(T const &t) {
+  { call::l_x(t) } -> bp::not_void;
+  { call::t_y(t) } -> bp::not_void;
+  { call::r_x(t) } -> bp::not_void;
+  { call::b_y(t) } -> bp::not_void;
+};
+template <typename T>
+concept two_dimensional_coordinate = requires(T const &t) {
+  { call::x_of(t) } -> bp::not_void;
+  { call::y_of(t) } -> bp::not_void;
 };
 
+template <typename T>
+concept has_unit = requires() { std::remove_cvref_t<T>::unit; };
+template <typename T, auto U>
+concept has_unit_of = has_unit<T> && std::remove_cvref_t<T>::unit == U;
+template <typename T>
+concept is_any_quantity = mp_units::Quantity<std::remove_cvref_t<T>>;
+template <typename T>
+concept is_any_quantity_point = mp_units::QuantityPoint<std::remove_cvref_t<T>>;
+template <typename Q, auto R>
+concept is_quantity =
+    is_any_quantity<Q> && mp_units::Reference<decltype(R)> &&
+    mp_units::QuantityOf<std::remove_cvref_t<Q>, get_quantity_spec(R)> &&
+    has_unit_of<Q, get_unit(R)>;
+template <typename QP, auto R>
+concept is_quantity_point =
+    is_any_quantity_point<QP> && mp_units::Reference<decltype(R)> &&
+    mp_units::QuantityPointOf<std::remove_cvref_t<QP>, get_quantity_spec(R)> &&
+    has_unit_of<QP, get_unit(R)>;
+
+template <has_unit T>
+inline constexpr auto unit_of_type = std::remove_cvref_t<T>::unit;
+
+template <typename T, typename U>
+concept same_unit_as =
+    has_unit<T> && has_unit<U> && unit_of_type<T> == unit_of_type<U>;
+
+
+template <is_any_quantity_point QP>
+constexpr QP center_between(QP lhs, QP rhs) {
+  if constexpr (std::floating_point<typename QP::rep>) {
+    auto sum_quantity_from_zero = lhs.quantity_from(QP::point_origin) +
+                                  rhs.quantity_from(QP::point_origin);
+    return QP(sum_quantity_from_zero / 2, QP::point_origin);
+  } else {
+    static_assert(std::integral<typename QP::rep>);
+    return lhs + (rhs - lhs) / 2;
+  }
+}
+template <two_dimensional_coordinate C>
+constexpr C center_between(C lhs, C rhs) {
+  return C(center_between(call::x_of(lhs), call::x_of(rhs)),
+           center_between(call::y_of(lhs), call::y_of(rhs)));
+}
+ASP_EXPORT_END
+
+template <typename T>
+concept has_reference_member = requires()
+{
+  T::reference;
+};
+template <typename T>
+concept has_unit_reference = has_reference_member<T> && mp_units::Reference<decltype(T::reference)>;
+struct no_unit_reference {
+  friend constexpr bool operator==(const no_unit_reference &, const no_unit_reference &) noexcept = default;
+};
+
+template <typename T>
+constexpr auto get_unit_or_no_unit_reference() {
+  if constexpr(has_unit<T>) { return T::unit; } else {
+    return no_unit_reference{};
+  }
+}
+
+/// @brief Basic structure for representing screen coordinates.
+template <typename TX, typename TY>
+requires (get_unit_or_no_unit_reference<TX>() == get_unit_or_no_unit_reference<TY>())
+struct xy_pair {
+  using x_t = TX;
+  using y_t = TY;
+  TX x;
+  TY y;
+};
+
+template <has_unit TX, has_unit TY>
+struct xy_pair<TX, TY> {
+  static constexpr mp_units::Unit auto unit = TX::unit;
+  using x_t = TX;
+  using y_t = TY;
+  TX x;
+  TY y;
+};
+
+template <mp_units::Unit auto R, typename Rep>
+using basic_coordinate = xy_pair<
+  mp_units::quantity_point<mp_units::isq::width[R],
+                               default_point_origin(mp_units::isq::width[R]),
+                               Rep>,
+mp_units::quantity_point<mp_units::isq::height[R],
+                               default_point_origin(mp_units::isq::height[R]),
+                               Rep>
+>;
+
+
+template <typename T1, typename T2, auto R>
+  requires(std::equality_comparable_with<T1, T2>)
+constexpr bool operator==(basic_coordinate<R, T1> const &l,
+                          basic_coordinate<R, T2> const &r) {
+  return (l.x == r.x) && (l.y == r.y);
+}
+
+template <typename T1, typename T2, auto R>
+  requires(std::totally_ordered_with<T1, T2>)
+constexpr auto operator<=>(basic_coordinate<R, T1> const &l,
+                           basic_coordinate<R, T2> const &r) {
+  auto xcmp = l.x <=> r.x;
+  if (xcmp == 0) {
+    return l.y <=> r.y;
+  } else {
+    return xcmp;
+  }
+}
+
+template <typename T1, typename T2, auto R>
+constexpr two_dimensional_coordinate auto operator-(basic_coordinate<R, T1> const& lhs, basic_coordinate<R, T2> const& rhs) {
+
+}
+
+template <typename TX, same_unit_as<TX> TY>
+basic_coordinate(TX, TY)
+    -> basic_coordinate<TX::unit,
+                        std::common_type_t<typename TX::rep, typename TY::rep>>;
+
+/// @brief Retrieves the x-coordinate from a basic pixel coordinate.
+template <typename T, auto R>
+constexpr auto x_of(basic_coordinate<R, T> const &c) {
+  return c.x;
+}
+
+/// @brief Retrieves the y-coordinate from a basic pixel coordinate.
+template <typename T, auto R>
+constexpr auto y_of(basic_coordinate<R, T> const &c) {
+  return c.y;
+}
+
+/// @brief Returns a reference to the x-coordinate of a basic pixel coordinate.
+template <typename T, auto R> constexpr auto &x_of(basic_coordinate<R, T> &c) {
+  return c.x;
+}
+
+/// @brief Returns a reference to the y-coordinate of a default pixel
+/// coordinate.
+template <typename T, auto R> constexpr auto &y_of(basic_coordinate<R, T> &c) {
+  return c.y;
+}
+
+ASP_EXPORT_END
+#if 0
 /// @brief Concept for pixel coordinates that can be set to a value.
 template <typename T, typename TVal>
 concept pixel_coord_set =
@@ -54,7 +205,7 @@ concept pixel_coord_mut = pixel_coord_ref<T, TVal> || pixel_coord_set<T, TVal>;
 /// @brief Concept for readable position.
 template <typename T>
 concept has_position = requires(bp::as_forward<T> t) {
-  { call::position(*t) } -> pixel_coord;
+  { call::position(*t) } -> two_dimensional_coordinate;
 };
 
 /// @brief Concept to check if a type is mutable by TFrom and is a valid pixel
@@ -70,7 +221,7 @@ concept mutable_pixel_coord_value =
 /// \param u
 /// \param f
 /// \return mapped coordinate of type T.
-template <pixel_coord T, pixel_coord U, typename F>
+template <two_dimensional_coordinate T, two_dimensional_coordinate U, typename F>
 constexpr T map_coord(U const &u, F &&f) {
   return {f(call::x_of(u)), f(call::y_of(u))};
 }
@@ -113,8 +264,8 @@ template <typename T = int> struct basic_size_wh {
 ///         otherwise, individual components are summed.
 /// @note The function ensures compatibility with vectors that define an `x_of`
 ///       and `y_of` accessor instead of operator+.
-template <typename Ret = void, pixel_coord P1, pixel_coord P2,
-          pixel_coord RetType = typename std::conditional_t<
+template <typename Ret = void, two_dimensional_coordinate P1, two_dimensional_coordinate P2,
+          two_dimensional_coordinate RetType = typename std::conditional_t<
               std::is_same_v<void, Ret>, std::common_type<P1, P2>,
               std::type_identity<Ret>>::type>
 constexpr RetType add(P1 const &p1, P2 const &p2) {
@@ -123,8 +274,8 @@ constexpr RetType add(P1 const &p1, P2 const &p2) {
                 }) {
     return p1 + p2;
   } else {
-    auto x = call::x_of(p1) + call::x_of(p2);
-    auto y = call::y_of(p1) + call::y_of(p2);
+    auto x = call::x_of(p1) + call::x_of(p2).quantity_from_zero();
+    auto y = call::y_of(p1) + call::y_of(p2).quantity_from_zero();
     return RetType(x, y);
   }
 }
@@ -145,8 +296,8 @@ constexpr RetType add(P1 const &p1, P2 const &p2) {
 ///         otherwise, individual components are summed.
 /// @note The function ensures compatibility with vectors that define an `x_of`
 ///       and `y_of` accessor instead of operator+.
-template <typename Ret = void, pixel_coord P1, pixel_coord P2,
-          pixel_coord RetType = typename std::conditional_t<
+template <typename Ret = void, two_dimensional_coordinate P1, two_dimensional_coordinate P2,
+          two_dimensional_coordinate RetType = typename std::conditional_t<
               std::is_same_v<void, Ret>, std::common_type<P1, P2>,
               std::type_identity<Ret>>::type>
 constexpr RetType sub(P1 const &p1, P2 const &p2) {
@@ -175,7 +326,7 @@ constexpr RetType sub(P1 const &p1, P2 const &p2) {
 /// @note The function ensures compatibility with coordinate types that may not
 /// natively
 ///       support operator/ by falling back to elementwise division.
-template <pixel_coord P, typename Div>
+template <two_dimensional_coordinate P, typename Div>
   requires(
       requires(P p, Div d) { p / d; } ||
       requires(P p, Div d) {
@@ -198,7 +349,7 @@ constexpr P divide(P const &p, Div d) {
 /// @param p The vector to be multiplied.
 /// @param f The scalar factor.
 /// @return Vector with all elements multiplied with f.
-template <pixel_coord P, typename F>
+template <two_dimensional_coordinate P, typename F>
   requires(
       requires(P p, F f) { p * f; } ||
       requires(P p, F f) {
@@ -228,12 +379,13 @@ constexpr P multiply(P const &p, F const &f) {
 /// @param p1 The first coordinate vector.
 /// @param p2 The second coordinate vector.
 /// @return A coordinate vector pointing to the center of the input vectors.
-template <typename Ret = void, pixel_coord P1, pixel_coord P2,
-          pixel_coord RetType = typename std::conditional_t<
+template <typename Ret = void, two_dimensional_coordinate P1, two_dimensional_coordinate P2,
+          two_dimensional_coordinate RetType = typename std::conditional_t<
               std::is_same_v<void, Ret>, std::common_type<P1, P2>,
               std::type_identity<Ret>>::type>
 constexpr RetType center_between(P1 const &p1, P2 const &p2) {
-  return divide(add<Ret>(p1, p2), 2);
+  //return divide(p1 + sub(p1, p2), 2);
+  return p1 + (p1 - p2) / 2;
 }
 
 template <typename T>
@@ -333,11 +485,6 @@ concept size_tagged = has_tag_t<T> && pixelpoint_tag<tag_t_of<T>>;
 template <typename T, typename Tag>
 concept size_tagged_with = size_tagged<T> && std::is_same_v<Tag, tag_t_of<T>>;
 
-template <typename T, typename U>
-concept same_unit_as = (!size_tagged<T> && !size_tagged<U>) ||
-                       (size_tagged<T> && size_tagged<U> &&
-                        std::same_as<tag_t_of<T>, tag_t_of<U>>);
-
 template <typename T>
 concept scalar = std::is_integral_v<T> || std::is_floating_point_v<T>;
 
@@ -348,26 +495,6 @@ concept is_pixel_sized =
 template <typename T>
 concept is_point_sized =
     size_tagged<T> && std::is_same_v<tag_t_of<T>, point_size_tag>;
-
-template <typename T>
-concept pixel_coordinate = pixel_coord<T> && is_pixel_sized<T>;
-template <typename T>
-concept point_coordinate = pixel_coord<T> && is_point_sized<T>;
-template <typename T>
-concept pixel_or_point_coordinate_basic =
-    pixel_coordinate<T> || point_coordinate<T>;
-template <typename T>
-concept pixel_or_point_coordinate =
-    pixel_or_point_coordinate_basic<T> || requires(T &&t) {
-      { t.convert() } -> pixel_or_point_coordinate_basic;
-    };
-
-template <typename T>
-concept pixel_scalar =
-    is_pixel_sized<T> && scalar<typename std::remove_cvref_t<T>::value_type>;
-template <typename T>
-concept point_scalar =
-    is_point_sized<T> && scalar<typename std::remove_cvref_t<T>::value_type>;
 
 template <typename T>
 concept pixel_rect = bounding_box<T> && is_pixel_sized<T>;
@@ -759,13 +886,6 @@ template <typename T> constexpr auto strip_unit(T const &t) {
   }
 }
 
-using default_pixel_rect = pixel_unit_t<basic_rect<int>>;
-using default_point_rect = point_unit_t<basic_rect<int>>;
-using default_pixel_coordinate = pixel_unit_t<basic_coordinate<int>>;
-using default_point_coordinate = point_unit_t<basic_coordinate<float>>;
-using default_pixel_size_wh = pixel_unit_t<default_size_wh>;
-using default_point_size_wh = point_unit_t<default_size_wh>;
-
 /// @brief Concept for readable position declared in point units.
 template <typename T>
 concept has_point_position = requires(bp::as_forward<T> t) {
@@ -800,7 +920,7 @@ constexpr void set_yy(T b, TV1 ty, TV2 by) {
 
 /// Create a bounding box that has the same dimensions as b, but with its top
 /// left corner at tl.
-template <bounding_box TB, pixel_coord TC = default_coordinate>
+template <bounding_box TB, pixel_coord TC>
 constexpr auto move_tl_to(TB b, TC tl) {
   auto w = call::width(b);
   auto h = call::height(b);
@@ -887,12 +1007,6 @@ constexpr auto trim_from_below(T bptr, TV v) {
                                               call::width(b), v);
 }
 
-/// Returns true if width and height are non-negative.
-constexpr bool valid_box(bounding_box auto const &b) {
-  return (strip_unit(call::width(b)) >= 0) &&
-         (strip_unit(call::height(b)) >= 0);
-}
-
 /// Creates a larger box that includes the smaller boxes. Does not check for
 /// empty boxes. Use box_add when the boxes may be empty or non-valid.
 template <typename TRes = void, bounding_box T1, same_unit_geometry_as<T1> T2>
@@ -967,34 +1081,6 @@ constexpr auto nudge_down(bounding_box auto b, auto &&val) {
   return nudge_up(b, -val);
 }
 
-/// Range checker that models the open range min < c < max.
-inline constexpr auto inside_open_range = [](auto &&c, auto &&min, auto &&max) {
-  return (min < c) && (c < max);
-};
-/// Range checker that models the closed range min <= c <= max.
-inline constexpr auto inside_closed_range =
-    [](auto &&c, auto &&min, auto &&max) { return (min <= c) && (c <= max); };
-
-/// Range checker that models the closed-open range min <= c < max.
-inline constexpr auto inside_semiopen_range =
-    [](auto &&c, auto &&min, auto &&max) { return (min <= c) && (c < max); };
-
-using inside_open_range_t = decltype(inside_open_range);
-using inside_closed_range_t = decltype(inside_closed_range);
-using inside_semiopen_range_t = decltype(inside_semiopen_range);
-
-/// Check if coordinate c is inside box b, by the range checking policy
-/// inside_range.
-template <bounding_box TB, pixel_coord TC = default_coordinate,
-          range_condition<decltype(call::x_of(std::declval<TC>()))> TRC =
-              inside_semiopen_range_t>
-  requires(same_unit_as<TB, TC>)
-constexpr bool hit_box(TB const &b, TC const &c, TRC &&inside_range = {}) {
-  ASP_ASSERT(valid_box(b));
-  return inside_range(call::x_of(c), call::l_x(b), call::r_x(b)) &&
-         inside_range(call::y_of(c), call::t_y(b), call::b_y(b));
-}
-
 /// True if all corners of inner is inside the outer box.
 template <bounding_box TB1, same_unit_geometry_as<TB1> TB2>
   requires(same_unit_as<TB1, TB2>)
@@ -1013,25 +1099,6 @@ constexpr bool empty_box(bounding_box auto const &b) {
   return call::width(b) == bp::default_init_valued ||
          call::height(b) == bp::default_init_valued;
 }
-
-template <pixel_coord T1, same_unit_geometry_as<T1> T2>
-constexpr T1 copy_coordinate(T2 &&p) {
-  if constexpr (std::constructible_from<T1, T2>) {
-    return T1(std::forward<T2>(p));
-  } else {
-    using out_x = call::call_result_t<call::x_of_t, T1>;
-    using in_x = call::call_result_t<call::x_of_t, T2>;
-    if constexpr (std::is_integral_v<out_x> && !std::is_integral_v<in_x>) {
-      // We assume x and y are the same types for both T1 and T2.
-      return T1(static_cast<out_x>(call::x_of(p)),
-                static_cast<out_x>(call::y_of(p)));
-    } else {
-      return T1(call::x_of(p), call::y_of(p));
-    }
-  }
-}
-
-constexpr auto square_value(auto &&v) { return v * v; }
 
 /// Calculates the length-squared of a coordinate vector
 /// \tparam T Type of coordinate
@@ -1055,32 +1122,6 @@ template <pixel_coord T> constexpr auto length(T const &p) {
     return T{std::sqrt(length_sqr(p.value()))};
   } else {
     return std::sqrt(length_sqr(p));
-  }
-}
-
-template <pixel_coord T1, same_unit_geometry_as<T1> T2>
-constexpr auto distance_sqr(T1 const &p1, T2 const &p2) {
-  if constexpr (size_tagged<T1>) {
-    // We currently don't support 'unit to the power of ...'.
-    return distance_sqr(p1.value(), p2.value());
-  } else {
-    return square_value(call::x_of(p1) - call::x_of(p2)) +
-           square_value(call::y_of(p1) - call::y_of(p2));
-  }
-}
-
-/// Copies a box of type T2 into a box of type T.
-template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
-  if constexpr (bp::cvref_type<T2, T>) {
-    return std::forward<T2>(b);
-  } else if constexpr (std::constructible_from<T, T2 &&>) {
-    return T(std::forward<T2>(b));
-  } else if constexpr (impl::has_from_xywh<T, decltype(call::l_x(b))>) {
-    return box_from_xywh<T>(call::l_x(b), call::t_y(b), call::width(b),
-                            call::height(b));
-  } else {
-    return box_from_xyxy<T>(call::l_x(b), call::t_y(b), call::r_x(b),
-                            call::b_y(b));
   }
 }
 
@@ -1164,31 +1205,7 @@ constexpr pixelpoint_unit<Tag, T>
 convert_to(autoconverting_pixelpoint_unit<TagOrg, T, S> const &pu) {
   return pu;
 }
-
+#endif
 } // namespace asp
-
-namespace std {
-template <typename ST, typename T, typename S, typename U, typename S2>
-  requires(requires() {
-    typename common_type<T, U>::type;
-    typename common_type<S, S2>::type;
-  })
-struct common_type<::asp::autoconverting_pixelpoint_unit<ST, T, S>,
-                   ::asp::autoconverting_pixelpoint_unit<ST, U, S2>> {
-  using type = ::asp::autoconverting_pixelpoint_unit<ST, common_type_t<T, U>,
-                                                     common_type_t<S, S2>>;
-};
-template <typename ST, typename ST2, typename T, typename S, typename U>
-  requires(requires() { typename common_type<T, U>::type; })
-struct common_type<::asp::autoconverting_pixelpoint_unit<ST, T, S>,
-                   ::asp::pixelpoint_unit<ST2, U>> {
-  using type = ::asp::pixelpoint_unit<ST2, common_type_t<T, U>>;
-};
-template <typename T, typename U>
-  requires(requires() { typename common_type<T, U>::type; })
-struct common_type<::asp::basic_coordinate<T>, ::asp::basic_coordinate<U>> {
-  using type = ::asp::basic_coordinate<common_type_t<T, U>>;
-};
-}
 
 #endif

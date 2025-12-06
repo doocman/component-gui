@@ -2,11 +2,6 @@
 #ifndef ASP_ASP_WARNINGS_HPP
 #define ASP_ASP_WARNINGS_HPP
 
-#ifndef NDEBUG
-#include <asp/import/stl.hpp>
-#endif
-#include <asp/export/asp_export.hpp>
-
 #define ASP_PRAGMA_(X) _Pragma(#X)
 #define ASP_PRAGMA(X) ASP_PRAGMA_(X)
 #define ASP_PRAGMA_S(X) _Pragma(X)
@@ -26,31 +21,5 @@
 #define ASP_WARNINGS_PUSH
 #define ASP_WARNINGS_POP
 #endif
-
-namespace asp {
-/// No-op function used to signal that any variables or expressions are ignored
-/// on purpose.
-/// \return
-ASP_EXPORT constexpr void unused(auto &&...) {}
-#ifndef NDEBUG
-#define ASP_DEBUG_ONLY(...) __VA_ARGS__
-constexpr void
-asp_assert(auto &&val, std::string_view text = {},
-           std::source_location const &loc = std::source_location::current()) {
-  if (!val) [[unlikely]] {
-    std::cerr << loc.file_name() << ':' << loc.line() << ": Assertion failed\n";
-    if (!empty(text)) {
-      std::cerr << '\t' << text;
-    }
-    std::abort();
-  }
-}
-#define ASP_ASSERT(EXPR) ::asp::asp_assert((EXPR))
-
-#else
-#define ASP_DEBUG_ONLY(...)
-#define ASP_ASSERT(...)
-#endif
-} // namespace asp
 
 #endif
