@@ -62,7 +62,6 @@ template <typename T, typename U>
 concept same_unit_as =
     has_unit<T> && has_unit<U> && unit_of_type<T> == unit_of_type<U>;
 
-
 template <is_any_quantity_point QP>
 constexpr QP center_between(QP lhs, QP rhs) {
   if constexpr (std::floating_point<typename QP::rep>) {
@@ -79,39 +78,37 @@ constexpr C center_between(C lhs, C rhs) {
   return C(center_between(call::x_of(lhs), call::x_of(rhs)),
            center_between(call::y_of(lhs), call::y_of(rhs)));
 }
-ASP_EXPORT_END
 
 template <typename T>
-concept has_reference_member = requires()
-{
-  T::reference;
-};
+concept has_reference_member = requires() { T::reference; };
 template <typename T>
-concept has_unit_reference = has_reference_member<T> && mp_units::Reference<decltype(T::reference)>;
+concept has_unit_reference =
+    has_reference_member<T> && mp_units::Reference<decltype(T::reference)>;
 struct no_unit_reference {
-  friend constexpr bool operator==(const no_unit_reference &, const no_unit_reference &) noexcept = default;
+  friend constexpr bool
+  operator==(const no_unit_reference &,
+             const no_unit_reference &) noexcept = default;
 };
 
-template <typename T>
-constexpr auto get_unit_or_no_unit_reference() {
-  if constexpr(has_unit<T>) { return T::unit; } else {
+template <typename T> constexpr auto get_unit_or_no_unit_reference() {
+  if constexpr (has_unit<T>) {
+    return T::unit;
+  } else {
     return no_unit_reference{};
   }
 }
 
 /// @brief Basic structure for representing screen coordinates.
-template <typename TX, typename TY>
-requires (get_unit_or_no_unit_reference<TX>() == get_unit_or_no_unit_reference<TY>())
-struct xy_pair {
+template <typename TX, typename TY> struct xy_pair {
   using x_t = TX;
   using y_t = TY;
   TX x;
   TY y;
 };
 
-template <has_unit TX, has_unit TY>
+template <has_unit TX, has_unit_of<unit_of_type<TX>> TY>
 struct xy_pair<TX, TY> {
-  static constexpr mp_units::Unit auto unit = TX::unit;
+  static constexpr mp_units::Unit auto unit = unit_of_type<TX>;
   using x_t = TX;
   using y_t = TY;
   TX x;
@@ -119,27 +116,25 @@ struct xy_pair<TX, TY> {
 };
 
 template <mp_units::Unit auto R, typename Rep>
-using basic_coordinate = xy_pair<
-  mp_units::quantity_point<mp_units::isq::width[R],
-                               default_point_origin(mp_units::isq::width[R]),
-                               Rep>,
-mp_units::quantity_point<mp_units::isq::height[R],
-                               default_point_origin(mp_units::isq::height[R]),
-                               Rep>
->;
+using basic_coordinate =
+    xy_pair<mp_units::quantity_point<
+                mp_units::isq::width[R],
+                default_point_origin(mp_units::isq::width[R]), Rep>,
+            mp_units::quantity_point<
+                mp_units::isq::height[R],
+                default_point_origin(mp_units::isq::height[R]), Rep>>;
 
-
-template <typename T1, typename T2, auto R>
-  requires(std::equality_comparable_with<T1, T2>)
-constexpr bool operator==(basic_coordinate<R, T1> const &l,
-                          basic_coordinate<R, T2> const &r) {
+template <typename X1, typename Y1, std::equality_comparable_with<X1> X2,
+          std::equality_comparable_with<Y1> Y2>
+constexpr bool operator==(xy_pair<X1, Y1> const &l, xy_pair<X2, Y2> const &r) {
   return (l.x == r.x) && (l.y == r.y);
 }
 
-template <typename T1, typename T2, auto R>
-  requires(std::totally_ordered_with<T1, T2>)
-constexpr auto operator<=>(basic_coordinate<R, T1> const &l,
-                           basic_coordinate<R, T2> const &r) {
+static_assert(std::totally_ordered<float>);
+
+template <typename X1, typename Y1, std::totally_ordered_with<X1> X2,
+          std::equality_comparable_with<Y1> Y2>
+constexpr bool operator==(xy_pair<X1, Y1> const &l, xy_pair<X2, Y2> const &r) {
   auto xcmp = l.x <=> r.x;
   if (xcmp == 0) {
     return l.y <=> r.y;
@@ -149,35 +144,34 @@ constexpr auto operator<=>(basic_coordinate<R, T1> const &l,
 }
 
 template <typename T1, typename T2, auto R>
-constexpr two_dimensional_coordinate auto operator-(basic_coordinate<R, T1> const& lhs, basic_coordinate<R, T2> const& rhs) {
+constexpr two_dimensional_coordinate auto
+operator-(basic_coordinate<R, T1> const &lhs,
+          basic_coordinate<R, T2> const &rhs) {}
 
-}
-
-template <typename TX, same_unit_as<TX> TY>
-basic_coordinate(TX, TY)
-    -> basic_coordinate<TX::unit,
-                        std::common_type_t<typename TX::rep, typename TY::rep>>;
+template <typename TX, typename TY>
+xy_pair(TX &&, TY &&)
+    -> xy_pair<std::remove_cvref_t<TX>, std::remove_cvref_t<TY>>;
 
 /// @brief Retrieves the x-coordinate from a basic pixel coordinate.
-template <typename T, auto R>
-constexpr auto x_of(basic_coordinate<R, T> const &c) {
+template <typename TX, typename TY>
+constexpr TX const &x_of(xy_pair<TX, TY> const &c) {
   return c.x;
 }
 
 /// @brief Retrieves the y-coordinate from a basic pixel coordinate.
-template <typename T, auto R>
-constexpr auto y_of(basic_coordinate<R, T> const &c) {
+template <typename TX, typename TY>
+constexpr TY const &y_of(xy_pair<TX, TY> const &c) {
   return c.y;
 }
 
 /// @brief Returns a reference to the x-coordinate of a basic pixel coordinate.
-template <typename T, auto R> constexpr auto &x_of(basic_coordinate<R, T> &c) {
+template <typename TX, typename TY> constexpr TX &x_of(xy_pair<TX, TY> &c) {
   return c.x;
 }
 
 /// @brief Returns a reference to the y-coordinate of a default pixel
 /// coordinate.
-template <typename T, auto R> constexpr auto &y_of(basic_coordinate<R, T> &c) {
+template <typename TX, typename TY> constexpr TY &y_of(xy_pair<TX, TY> &c) {
   return c.y;
 }
 
