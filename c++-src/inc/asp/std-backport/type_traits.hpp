@@ -38,6 +38,14 @@ template <typename T> struct remove_temp_ref<T const &&> {
 template <typename T>
 using remove_temp_ref_t = typename remove_temp_ref<T>::type;
 
+template <typename L, typename R>
+concept subtractable_with = requires(L&& lhs, R&& rhs) {
+	lhs - rhs;
+};
+template <typename L, typename R>
+requires (subtractable_with<L, R>)
+using subtract_result_t = decltype(std::declval<L&&>() - std::declval<R&&>());
+
 } // namespace asp::bp
 
 #endif // COMPONENT_GUI_TYPE_TRAITS_HPP

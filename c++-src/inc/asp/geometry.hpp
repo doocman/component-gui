@@ -18,6 +18,11 @@
 namespace asp {
 ASP_EXPORT_BEGIN
 template <typename T>
+concept has_rep = requires() { typename std::remove_cvref_t<T>::rep; };
+template <typename T>
+using representation_of_t = typename std::remove_cvref_t<T>::rep;
+
+template <typename T>
 concept has_width_height = requires(T const &t) {
   { call::width(t) } -> bp::not_void;
   { call::height(t) } -> bp::not_void;
@@ -35,7 +40,6 @@ concept two_dimensional_coordinate = requires(T const &t) {
   { call::x_of(t) } -> bp::not_void;
   { call::y_of(t) } -> bp::not_void;
 };
-
 template <typename T>
 concept has_unit = requires() { std::remove_cvref_t<T>::unit; };
 template <typename T, auto U>
@@ -55,12 +59,46 @@ concept is_quantity_point =
     mp_units::QuantityPointOf<std::remove_cvref_t<QP>, get_quantity_spec(R)> &&
     has_unit_of<QP, get_unit(R)>;
 
+template <typename T>
+concept two_dimensional_point = two_dimensional_coordinate<T> && has_unit<T> && has_rep<T> && 
+  requires(T const& t) {
+	  { call::x_of(t) } -> is_any_quantity_point;
+	  { call::y_of(t) } -> is_any_quantity_point;
+  };
+template <typename T>
+concept two_dimensional_delta = two_dimensional_coordinate<T> && has_unit<T> && 
+  requires(T const& t) {
+	  { call::x_of(t) } -> is_any_quantity;
+	  { call::y_of(t) } -> is_any_quantity;
+  };
+
 template <has_unit T>
 inline constexpr auto unit_of_type = std::remove_cvref_t<T>::unit;
 
 template <typename T, typename U>
 concept same_unit_as =
     has_unit<T> && has_unit<U> && unit_of_type<T> == unit_of_type<U>;
+	
+template <typename T, auto R>
+concept two_dimensional_delta_of = two_dimensional_delta<T> && unit_of_type<T> == R;
+
+template <typename...>
+struct common_unit_base {};
+template <has_unit T, same_unit_as<T>... Ts>
+struct common_unit_base<T, Ts...> {
+  static constexpr mp_units::Unit auto unit = unit_of_type<T>;
+};
+
+template <typename... Ts>
+struct common_rep_base : common_unit_base<Ts...> {};
+template <has_rep T, has_rep... Ts>
+requires (std::same_as<representation_of_t<T>, representation_of_t<Ts>> &&...)
+struct common_rep_base<T, Ts...> : common_unit_base<T, Ts...> {
+  using rep = representation_of_t<T>;
+};
+
+template <typename... Ts>
+struct common_aliases_base : common_rep_base<Ts...> {};
 
 template <is_any_quantity_point QP>
 constexpr QP center_between(QP lhs, QP rhs) {
@@ -99,20 +137,19 @@ template <typename T> constexpr auto get_unit_or_no_unit_reference() {
 }
 
 /// @brief Basic structure for representing screen coordinates.
-template <typename TX, typename TY> struct xy_pair {
+template <typename TX, typename TY> struct xy_pair : common_aliases_base<TX, TY> {
   using x_t = TX;
   using y_t = TY;
-  TX x;
-  TY y;
-};
-
-template <has_unit TX, has_unit_of<unit_of_type<TX>> TY>
-struct xy_pair<TX, TY> {
-  static constexpr mp_units::Unit auto unit = unit_of_type<TX>;
-  using x_t = TX;
-  using y_t = TY;
-  TX x;
-  TY y;
+  TX x{};
+  TY y{};
+  
+  constexpr xy_pair(std::convertible_to<TX> auto&& x_in, std::convertible_to<TY> auto&& y_in)
+  : x(std::forward<decltype(x_in)>(x_in)), y(std::forward<decltype(y_in)>(y_in)) {}
+  constexpr xy_pair() = default;
+  template <std::convertible_to<TX> XIn, std::convertible_to<TY> YIn>
+  requires(!std::convertible_to<XIn, TY> && std::convertible_to<YIn, TX>)
+  constexpr xy_pair(YIn&& y_in, XIn&& x_in)
+   : x(std::forward<XIn>(x_in)), y(std::forward<YIn>(y_in)) {}
 };
 
 template <mp_units::Unit auto R, typename Rep>
@@ -124,13 +161,66 @@ using basic_coordinate =
                 mp_units::isq::height[R],
                 default_point_origin(mp_units::isq::height[R]), Rep>>;
 
+template <mp_units::Unit auto R, typename Rep>
+using basic_coordinate_delta = xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>, mp_units::quantity<mp_units::isq::height[R], Rep>>;
+
 template <typename X1, typename Y1, std::equality_comparable_with<X1> X2,
           std::equality_comparable_with<Y1> Y2>
 constexpr bool operator==(xy_pair<X1, Y1> const &l, xy_pair<X2, Y2> const &r) {
   return (l.x == r.x) && (l.y == r.y);
 }
 
-static_assert(std::totally_ordered<float>);
+template <typename... Ts>
+concept all_multipliable = requires(Ts&&... ts) {
+	(ts * ...);
+};
+template <typename T>
+concept squarable = all_multipliable<T, T>;
+template <typename... Ts>
+concept all_summable = requires(Ts&&... ts) {
+	(ts + ...);
+};
+template <typename Num, typename Den>
+concept dividable_with = requires(Num n, Den d) {
+	n / d;
+};
+
+template <typename... Ts>
+requires all_multipliable<Ts...>
+using product_result_t = decltype((std::declval<Ts>() * ...));
+template <typename T>
+requires all_multipliable<T, T>
+using square_result_t = product_result_t<T, T>;
+template <typename Num, typename Den>
+requires dividable_with<Num, Den>
+using divide_result_t = decltype(std::declval<Num>() / std::declval<Den>());
+
+template <typename... Ts>
+concept all_sum_squarable = (squarable<Ts> &&...) && 
+all_summable<square_result_t<Ts>...>;
+
+template <typename... Ts>
+requires all_summable<Ts...>
+using sum_result_t = decltype((std::declval<Ts>() + ...));
+template <typename... Ts>
+using sum_square_result_t = sum_result_t<square_result_t<Ts>...>;
+
+template <typename X, typename Y>
+requires(all_sum_squarable<X, Y>)
+constexpr sum_square_result_t<X, Y> distance_square(xy_pair<X, Y> const& v) {
+  return call::x_of(v) * call::x_of(v) + call::y_of(v) * call::y_of(v);
+}
+template <typename X, typename Y>
+constexpr decltype(sqrt(std::declval<sum_square_result_t<X, Y>>())) length(xy_pair<X, Y> const& v) {
+  using std::sqrt;
+  return sqrt(distance_square(v));
+}
+
+template <typename X, typename Y, typename Den>
+requires (dividable_with<X, Den> && dividable_with<Y, Den>)
+constexpr xy_pair<divide_result_t<X, Den>, divide_result_t<Y, Den>> operator/(xy_pair<X, Y> const& xy, Den const& den) {
+	return {xy.x  / den, xy.y / den};
+}
 
 template <typename X1, typename Y1, std::totally_ordered_with<X1> X2,
           std::equality_comparable_with<Y1> Y2>
@@ -143,10 +233,12 @@ constexpr bool operator==(xy_pair<X1, Y1> const &l, xy_pair<X2, Y2> const &r) {
   }
 }
 
-template <typename T1, typename T2, auto R>
-constexpr two_dimensional_coordinate auto
-operator-(basic_coordinate<R, T1> const &lhs,
-          basic_coordinate<R, T2> const &rhs) {}
+template <typename X1, typename Y1, typename X2, typename Y2>
+requires(bp::subtractable_with<X1, X2> && bp::subtractable_with<Y1, Y2>)
+constexpr xy_pair<bp::subtract_result_t<X1 const&, X2 const&>, bp::subtract_result_t<Y1 const&, Y2 const&>>
+operator-(xy_pair<X1, Y1> const& lhs, xy_pair<X2, Y2> const& rhs) {
+	return {lhs.x - rhs.x, lhs.y - rhs.y};
+}
 
 template <typename TX, typename TY>
 xy_pair(TX &&, TY &&)

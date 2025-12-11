@@ -1029,11 +1029,11 @@ constexpr bool is_cached_widget<R>::operator()(auto &w) const noexcept {
 
 template <interpreted_events evt_type, point_coordinate C, typename TP,
           typename Q, typename... Args>
-  requires(
-      std::constructible_from<
-          interpreted_event<evt_type, representation_of_t<C>, TP>, TP, Args...>)
-constexpr interpreter_widget_cache<representation_of_t<C>>
-_invoke_with_interpreted_event(Q &&q, C const &pos, TP const &tp,
+  //requires(
+  //    std::constructible_from<
+  //        interpreted_event<evt_type, representation_of_t<C>, TP>, TP, Args...>)
+constexpr auto// interpreter_widget_cache<representation_of_t<C>>
+_create_invoke_with_interpreted_event(Q &&q, C const &pos, TP const &tp,
                                Args &&...args) {
   using event_t = interpreted_event<evt_type, representation_of_t<C>, TP>;
   interpreter_widget_cache<representation_of_t<C>> cached{};
@@ -1063,6 +1063,7 @@ constexpr interpreter_widget_cache<representation_of_t<C>> _invoke_with_interpre
 }
 template <interpreted_events evt_type, typename Rep, typename Q, typename TP,
           typename... Args>
+		  requires(std::constructible_from<interpreted_event<evt_type, Rep, TP>, TP, Args...>)
 constexpr bool send_to_cached_widget(Q &&q, TP tp,
                                      interpreter_widget_cache<Rep> const &cw,
                                      Args &&...args) {
@@ -1250,7 +1251,7 @@ private:
     return std::visit(
         [&]<typename T>(T const &s) -> state {
           if constexpr (std::is_same_v<T, drag_t>) {
-            _invoke_with_interpreted_event<
+            _create_invoke_with_interpreted_event<
                 interpreted_events::pointer_drag_move>(
                 q, s.start_position, call::time_stamp(e), s.start_position,
                 call::position(e));
@@ -1295,7 +1296,7 @@ private:
     if (std::holds_alternative<hover_t>(v)) {
       interpreter_widget_cache_t w{};
       if (call::mouse_button(e) == mouse_buttons::primary) {
-        w = _invoke_with_interpreted_event<interpreted_events::pointer_hold>(
+        w = _create_invoke_with_interpreted_event<interpreted_events::pointer_hold>(
             q, call::position(e), call::time_stamp(e), call::position(e));
         return first_down_t{.click_position =
                                 copy_coordinate<basic_coordinate<point, float>>(
@@ -1314,7 +1315,7 @@ private:
        primary_mouse_click_translator_settings const &conf) {
     if (call::mouse_button(e) == mouse_buttons::secondary) {
       _cancel(v, q, conf);
-      _invoke_with_interpreted_event<interpreted_events::context_menu_click>(
+      _create_invoke_with_interpreted_event<interpreted_events::context_menu_click>(
           q, call::position(e), call::time_stamp(e), call::position(e));
       return v;
     }
@@ -1325,7 +1326,7 @@ private:
                 interpreted_events::pointer_drag_finished_source>(
                 q, call::time_stamp(e), s.drag_start_widget, s.start_position,
                 call::position(e));
-            _invoke_with_interpreted_event<
+            _create_invoke_with_interpreted_event<
                 interpreted_events::pointer_drag_finished_destination>(
                 q, call::position(e), call::time_stamp(e), s.start_position,
                 call::position(e));
@@ -1333,7 +1334,7 @@ private:
                            call::time_stamp(e));
           } else if constexpr (bp::same_as_any<T, first_down_t,
                                                hold_no_drag_t>) {
-            auto w = _invoke_with_interpreted_event<
+            auto w = _create_invoke_with_interpreted_event<
                 interpreted_events::primary_click>(
                 q, call::position(e), call::time_stamp(e), call::position(e));
             return hover_t(q, w, call::position(e), call::time_stamp(e));
@@ -1379,7 +1380,7 @@ private:
                                       orgx * scale_mod, orgy * scale_mod));
                 }));
           } else {
-            _invoke_with_interpreted_event<interpreted_events::scroll>(
+            _create_invoke_with_interpreted_event<interpreted_events::scroll>(
                 q, call::position(e), call::time_stamp(e), call::position(e),
                 call::delta_x(e), call::delta_y(e));
           }
@@ -1415,9 +1416,9 @@ public:
 struct _touch_no_rep_base {
   struct settings {
     std::chrono::milliseconds context_menu_hold{500};
-    int drag_threshold = 5;
-    int zoom_threshold = 5;
-    int scroll_threshold = 5;
+    mp_units::quantity<point, int> drag_threshold = 5 * point;
+    mp_units::quantity<point, int> zoom_threshold = 5 * point;
+    mp_units::quantity<point, int> scroll_threshold = 5 * point;
   };
   struct no_fingers_t {};
 };
@@ -1663,12 +1664,14 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
   }
 
   static constexpr std::pair<float, float>
-  zoom_from_distances(float const &old_distance,
-                      point_coordinate auto const &new_distances) {
+  zoom_from_distances(mp_units::quantity<point, float> const &old_distance,
+                      two_dimensional_delta_of<point> auto const &new_distances) {
     auto get_scale = [&](auto xy_of) {
-      auto denom = std::max(old_distance, 1e-25f);
-      return std::clamp(
-          std::abs(static_cast<float>(xy_of(new_distances.value()))) / (denom),
+      auto denom = std::max(old_distance, 1e-2f * point);
+	  using std::clamp;
+	  using std::abs;
+      return clamp(
+          abs(xy_of(new_distances) / denom).numerical_value_in(mp_units::one),
           1.f / 128.f, 128.f);
     };
     return {get_scale(call::x_of), get_scale(call::y_of)};
@@ -1679,9 +1682,9 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
                  point_coordinate auto const &p1_new,
                  point_coordinate auto const &p2_org,
                  point_coordinate auto const &p2_new) {
-    auto old_distances = sub(p2_org, p1_org);
-    auto old_dist = length(old_distances.value());
-    auto new_distances = sub(p2_new, p1_new);
+    auto old_distances = p2_org - p1_org;
+    auto old_dist = length(old_distances);
+    auto new_distances = p2_new - p1_new;
     return zoom_from_distances(old_dist, new_distances);
   }
 
@@ -1689,31 +1692,32 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
       point_coordinate auto const &p1_org, point_coordinate auto const &p1_new,
       point_coordinate auto const &p2_org, point_coordinate auto const &p2_new,
       settings const &conf) {
-    auto old_distances = sub(p2_org, p1_org);
-    auto new_distances = sub(p2_new, p1_new);
-    auto old_dist = length(old_distances.value());
-    auto new_dist = length(new_distances.value());
-    if (std::abs(old_dist - new_dist) >= conf.zoom_threshold) {
+    auto old_distances = p2_org - p1_org;
+    auto new_distances = p2_new - p1_new;
+    auto old_dist = length(old_distances);
+    auto new_dist = length(new_distances);
+	using std::abs;
+    if (abs(old_dist - new_dist) >= conf.zoom_threshold) {
       return zoom_from_distances(old_dist, new_distances);
     }
     return {};
   }
-  static constexpr std::pair<float, float>
+  static constexpr two_dimensional_delta auto
   get_scroll_value(auto const &old_center, auto const &new_center) {
     //auto center_diff = sub(new_center, old_center).value();
     //return {call::x_of(center_diff), call::y_of(center_diff)};
-    return new_center - old_center;
+    return (new_center - old_center) / (1 * frame);
   }
-  static constexpr std::optional<std::pair<float, float>>
+  static constexpr auto
   get_opt_scroll_value(point_coordinate auto const &p1_org,
                        point_coordinate auto const &p1_new,
                        point_coordinate auto const &p2_org,
-                       point_coordinate auto const &p2_new, settings const &s) {
-    auto old_center = divide(add(p1_org, p2_org), 2);
-    auto new_center = divide(add(p1_new, p2_new), 2);
+                       point_coordinate auto const &p2_new, settings const &s) -> std::optional<decltype(get_scroll_value(center_between(p1_org, p2_org), center_between(p1_new, p2_new)))> {
+    auto old_center = center_between(p1_org, p2_org);//divide(add(p1_org, p2_org), 2);
+    auto new_center = center_between(p1_new, p2_new);//divide(add(p1_new, p2_new), 2);
     auto pot_value = get_scroll_value(old_center, new_center);
     auto [x, y] = pot_value;
-    auto dist_sqr = square_value(x) + square_value(y);
+    auto dist_sqr = square_value(x * 1 * frame) + square_value(y * 1 * frame);
     if (dist_sqr > (s.scroll_threshold * s.scroll_threshold)) {
       return pot_value;
     }
@@ -1876,7 +1880,7 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
               [&]<typename S>(S &sv) {
                 if constexpr (bp::same_as_any<S, first_down_t,
                                               hold_no_drag_t>) {
-                  _invoke_with_interpreted_event<
+                  _create_invoke_with_interpreted_event<
                       interpreted_events::primary_click>(q, call::position(e),
                                                          call::time_stamp(e),
                                                          call::position(e));
@@ -1889,7 +1893,7 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
                       call::position(e));
                   send_to_cached_widget<interpreted_events::pointer_exit>(
                       q, call::time_stamp(e), sv.held_widget);
-                  _invoke_with_interpreted_event<
+                  _create_invoke_with_interpreted_event<
                       interpreted_events::pointer_drag_finished_destination>(
                       q, call::position(e), call::time_stamp(e),
                       sv.down_position, call::position(e));
@@ -1989,7 +1993,7 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
                 }
                 // ===
                 else if constexpr (std::is_same_v<S, hold_no_drag_t>) {
-                  _invoke_with_interpreted_event<
+                  _create_invoke_with_interpreted_event<
                       interpreted_events::pointer_hold, TimePoint>(
                       q, call::position(e), call::time_stamp(e),
                       call::position(e));

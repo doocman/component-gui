@@ -302,11 +302,6 @@ concept direct_invocable = requires(T &&t, Args &&...args) {
   std::forward<T>(t)(std::forward<Args>(args)...);
 };
 
-template <typename T>
-concept has_rep = requires() { typename std::remove_cvref_t<T>::rep; };
-template <typename T>
-using representation_of_t = typename std::remove_cvref_t<T>::rep;
-
 template <typename T, auto R>
 concept width_height_with_unit = has_width_height<T> && requires(T &&t) {
   { call::width(t) } -> is_quantity<ASP_NO_CONST(mp_units::isq::width[R])>;
