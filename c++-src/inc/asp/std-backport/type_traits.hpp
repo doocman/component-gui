@@ -5,9 +5,7 @@
 #ifndef COMPONENT_GUI_TYPE_TRAITS_HPP
 #define COMPONENT_GUI_TYPE_TRAITS_HPP
 
-#include <functional>
-#include <numeric>
-#include <type_traits>
+#include <asp/import/stl.hpp>
 
 namespace asp::bp {
 template <typename T> using dereferenced_t = decltype(*std::declval<T &&>());

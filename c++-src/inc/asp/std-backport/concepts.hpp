@@ -5,10 +5,7 @@
 #ifndef COMPONENT_GUI_CONCEPTS_HPP
 #define COMPONENT_GUI_CONCEPTS_HPP
 
-#include <concepts>
-#include <functional>
-#include <type_traits>
-#include <utility>
+#include <asp/import/stl.hpp>
 
 namespace asp::bp {
 /// Concept that requires that the type has no reference nor volatile/const

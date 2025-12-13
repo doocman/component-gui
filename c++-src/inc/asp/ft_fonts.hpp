@@ -24,25 +24,29 @@
 #define ASP_USE_BM_GLYPH 1
 
 namespace asp {
-template <> struct extend_api<FT_BBox> {
-  static constexpr auto &&l_x(bp::cvref_type<FT_BBox> auto &&b) noexcept {
-    return std::forward<decltype(b)>(b).xMin;
-  }
-  static constexpr auto &&t_y(bp::cvref_type<FT_BBox> auto &&b) noexcept {
-    return std::forward<decltype(b)>(b).yMin;
-  }
-  static constexpr auto &&r_x(bp::cvref_type<FT_BBox> auto &&b) noexcept {
-    return std::forward<decltype(b)>(b).xMax;
-  }
-  static constexpr auto &&b_y(bp::cvref_type<FT_BBox> auto &&b) noexcept {
-    return std::forward<decltype(b)>(b).yMax;
+template <mp_units::Unit auto U, std::size_t decimals>
+class ft_bbox_strong {
+  FT_BBox raw_box_{};
+public:
+  using rep_t = cnl::scaled_integer<signed long, cnl::power<-decimals>>;
+  FT_BBox& _get_handle() {
+    return raw_box_;
   }
 
-  static constexpr FT_BBox from_xyxy(FT_Pos xl, FT_Pos yt, FT_Pos xr,
-                                     FT_Pos yb) {
-    return {xl, yt, xr, yb};
+  constexpr from_zero_quantity_point_t<mp_units::isq::width[U], rep_t> l_x() const {
+    return {rep_t(cnl::from_rep(raw_box_.xMin)) * mp_units::isq::width[U], mp_units::default_point_origin(mp_units::isq::width[U])};
+  }
+  constexpr from_zero_quantity_point_t<mp_units::isq::height[U], rep_t> t_y() const {
+    return {rep_t(cnl::from_rep(raw_box_.yMin)) * mp_units::isq::height[U], mp_units::default_point_origin(mp_units::isq::height[U])};
+  }
+  constexpr from_zero_quantity_point_t<mp_units::isq::width[U], rep_t> r_x() const {
+    return {rep_t(cnl::from_rep(raw_box_.xMax)) * mp_units::isq::width[U], mp_units::default_point_origin(mp_units::isq::width[U])};
+  }
+  constexpr from_zero_quantity_point_t<mp_units::isq::height[U], rep_t> b_y() const {
+    return {rep_t(cnl::from_rep(raw_box_.yMax)) * mp_units::isq::height[U], mp_units::default_point_origin(mp_units::isq::height[U])};
   }
 };
+
 inline namespace {
 
 class ft_font_library {
@@ -199,10 +203,10 @@ public:
   }
   [[nodiscard]] constexpr FT_Glyph handle() const noexcept { return glyph(); }
 
-  [[nodiscard]] pixel_unit_t<FT_BBox> pixel_area() const noexcept {
-    FT_BBox b;
-    FT_Glyph_Get_CBox(handle(), ft_glyph_bbox_pixels, &b);
-    return {{}, b};
+  [[nodiscard]] ft_bbox_strong<pixel, 0> pixel_area() const noexcept {
+    ft_bbox_strong<pixel, 0> b;
+    FT_Glyph_Get_CBox(handle(), ft_glyph_bbox_pixels, &b._get_handle());
+    return b;
   }
 #else
   [[nodiscard]] constexpr auto advance_x() const { return adv_x; }

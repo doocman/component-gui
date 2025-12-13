@@ -9,7 +9,6 @@
 #include <asp/geometry.hpp>
 
 namespace asp {
-ASP_EXPORT_BEGIN
 /// @brief Concept to check if a type T meets the range condition for values of
 /// type TX. The range_condition should from a test value and min/max values
 /// determine if the test-value is inside the range of min max. Implementations
@@ -18,27 +17,6 @@ template <typename T, typename TX>
 concept range_condition = requires(T t, TX v) {
   { t(v, v, v) } -> std::convertible_to<bool>;
 };
-
-using mp_units::isq::width;
-using mp_units::isq::height;
-
-inline constexpr struct point final
-    : mp_units::named_unit<"point", mp_units::kind_of<mp_units::isq::length>> {
-} point;
-inline constexpr struct pixel final
-    : mp_units::named_unit<"pixel", mp_units::kind_of<mp_units::isq::length>> {
-} pixel;
-inline constexpr auto pixel_width = mp_units::isq::width[pixel];
-inline constexpr auto pixel_height = mp_units::isq::height[pixel];
-inline constexpr auto point_width = mp_units::isq::width[point];
-inline constexpr auto point_height = mp_units::isq::height[point];
-inline constexpr auto point_per_pixel = point / pixel;
-inline constexpr auto pixel_per_point = pixel / point;
-inline constexpr struct frame final
-    : mp_units::named_unit<"frame", mp_units::kind_of<mp_units::isq::time>> {
-} frame;
-
-ASP_EXPORT_END
 
 #define ASP_NO_CONST(X)                                                        \
   decltype(X) {}
@@ -810,6 +788,8 @@ public:
 
   template <typename /*pixel_or_point_rect_basic*/ B, typename F>
   void draw_alpha(B const &b, F &&cb) {
+    (void)b;
+    (void)cb;
     /*if (empty_box(b)) {
       return;
     }

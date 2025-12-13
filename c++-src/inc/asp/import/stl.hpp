@@ -26,6 +26,7 @@ import std;
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <ranges>
 #include <ratio>

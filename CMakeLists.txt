@@ -62,6 +62,7 @@ set(ASP_DEVELOP ${_ASP_DEVELOP_DEFAULT} CACHE BOOL "")
 include(FetchContent)
 
 include(cmake/findSDL.cmake)
+include(cmake/findCnl.cmake)
 include(cmake/findDoocNP.cmake)
 include(cmake/findFreeType.cmake)
 include(cmake/findFmt.cmake)

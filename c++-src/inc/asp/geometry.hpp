@@ -17,6 +17,26 @@
 
 namespace asp {
 ASP_EXPORT_BEGIN
+
+inline constexpr struct point final
+    : mp_units::named_unit<"point", mp_units::kind_of<mp_units::isq::length>> {
+} point;
+inline constexpr struct pixel final
+    : mp_units::named_unit<"pixel", mp_units::kind_of<mp_units::isq::length>> {
+} pixel;
+inline constexpr auto pixel_width = mp_units::isq::width[pixel];
+inline constexpr auto pixel_height = mp_units::isq::height[pixel];
+inline constexpr auto point_width = mp_units::isq::width[point];
+inline constexpr auto point_height = mp_units::isq::height[point];
+inline constexpr auto point_per_pixel = point / pixel;
+inline constexpr auto pixel_per_point = pixel / point;
+inline constexpr struct frame final
+    : mp_units::named_unit<"frame", mp_units::kind_of<mp_units::isq::time>> {
+} frame;
+
+template <mp_units::Reference auto R, typename Rep>
+using from_zero_quantity_point_t = mp_units::quantity_point<R, mp_units::default_point_origin(R), Rep>;
+
 template <typename T>
 concept has_rep = requires() { typename std::remove_cvref_t<T>::rep; };
 template <typename T>
@@ -71,6 +91,16 @@ concept two_dimensional_delta = two_dimensional_coordinate<T> && has_unit<T> &&
 	  { call::x_of(t) } -> is_any_quantity;
 	  { call::y_of(t) } -> is_any_quantity;
   };
+template <typename T>
+concept is_width_and_height = requires(T const& t) {
+  { call::x_of(t)} -> is_any_quantity;
+  { call::y_of(t)} -> is_any_quantity;
+};
+template <typename T, auto U>
+concept is_width_and_height_with_unit = is_width_and_height<T> && requires(T const& t) {
+  { call::x_of(t)} -> is_quantity<mp_units::isq::width[U]>;
+  { call::y_of(t)} -> is_quantity<mp_units::isq::height[U]>;
+};
 
 template <has_unit T>
 inline constexpr auto unit_of_type = std::remove_cvref_t<T>::unit;
@@ -154,15 +184,21 @@ template <typename TX, typename TY> struct xy_pair : common_aliases_base<TX, TY>
 
 template <mp_units::Unit auto R, typename Rep>
 using basic_coordinate =
-    xy_pair<mp_units::quantity_point<
-                mp_units::isq::width[R],
-                default_point_origin(mp_units::isq::width[R]), Rep>,
-            mp_units::quantity_point<
-                mp_units::isq::height[R],
-                default_point_origin(mp_units::isq::height[R]), Rep>>;
+    xy_pair<from_zero_quantity_point_t<mp_units::isq::width[R], Rep>,
+            from_zero_quantity_point_t<
+                mp_units::isq::height[R], Rep>>;
 
 template <mp_units::Unit auto R, typename Rep>
 using basic_coordinate_delta = xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>, mp_units::quantity<mp_units::isq::height[R], Rep>>;
+
+template <mp_units::Unit auto R, typename Rep>
+constexpr mp_units::quantity<mp_units::isq::width[R], Rep> width(xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>, mp_units::quantity<mp_units::isq::height[R], Rep>> xy) {
+  return xy.x;
+};
+template <mp_units::Unit auto R, typename Rep>
+constexpr mp_units::quantity<mp_units::isq::height[R], Rep> height(xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>, mp_units::quantity<mp_units::isq::height[R], Rep>> xy) {
+  return xy.y;
+};
 
 template <typename X1, typename Y1, std::equality_comparable_with<X1> X2,
           std::equality_comparable_with<Y1> Y2>

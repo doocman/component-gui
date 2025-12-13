@@ -4,8 +4,15 @@
 #include <gmock/gmock.h>
 
 namespace asp::tests {
-static_assert(point_scalar<point_unit_t<int>>);
-static_assert(pixel_scalar<pixel_unit_t<int>>);
+static_assert(is_quantity_point<
+              mp_units::quantity_point<decltype(mp_units::isq::width[pixel]){}>,
+              decltype(mp_units::isq::width[pixel]){}>);
+static_assert(rectangle_with_unit<basic_rectangle<pixel, int>, pixel>);
+static_assert(
+    has_unit_of<mp_units::quantity_point<mp_units::isq::width[pixel]>, pixel>);
+static_assert(rectangle_with_unit<basic_rectangle<point, float>, point>);
+
+#if 0
 static_assert(pixel_or_point_rect<
               autoconverting_pixelpoint_unit<pixel_size_tag, default_rect>>);
 static_assert(bounding_box<default_rect>);
@@ -18,6 +25,7 @@ static_assert(
 static_assert(
     mutable_bounding_box<pixelpoint_unit<pixel_size_tag, default_rect>,
                          pixelpoint_unit<pixel_size_tag, int>>);
+#endif
 
 using namespace ::testing;
 

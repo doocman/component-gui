@@ -350,6 +350,100 @@ template <typename... Ts> struct triggers {
   static constexpr auto size = sizeof...(Ts);
 };
 
+
+struct no_auto_cleanup_t {};
+inline constexpr no_auto_cleanup_t no_auto_cleanup;
+struct auto_cleanup_t {};
+inline constexpr auto_cleanup_t auto_cleanup;
+
+template <typename TQuit, typename... TArgs> struct cleanup_object_t {
+  using value_type = std::tuple<TArgs...>;
+  static constexpr bool _all_pointers =
+      (std::is_pointer_v<TArgs> && ...) && sizeof...(TArgs);
+  using wrapper_t =
+      std::conditional_t<_all_pointers, value_type, std::optional<value_type>>;
+  wrapper_t values;
+
+private:
+  constexpr value_type &_values() {
+    if constexpr (_all_pointers) {
+      return values;
+    } else {
+      assert(has_value());
+      return *values;
+    }
+  }
+  void cleanup() {
+    if (has_value()) {
+      std::apply(TQuit{}, _values());
+    }
+  }
+
+public:
+  constexpr cleanup_object_t() = default;
+  constexpr explicit cleanup_object_t(TArgs... args)
+    requires(sizeof...(TArgs) > 0 &&
+             (std::is_copy_constructible_v<TArgs> && ...))
+      : values(std::tuple<TArgs...>(std::move(args)...)) {}
+  constexpr explicit(false) cleanup_object_t(std::nullptr_t)
+    requires(_all_pointers)
+      : values() {}
+  constexpr explicit cleanup_object_t(no_auto_cleanup_t) : values() {}
+  constexpr explicit cleanup_object_t(std::in_place_t, auto &&...args)
+      : values(std::in_place, std::forward<decltype(args)>(args)...) {}
+  constexpr cleanup_object_t(cleanup_object_t &&other) noexcept
+      : values(std::exchange(other.values, wrapper_t())) {}
+  constexpr cleanup_object_t &operator=(cleanup_object_t &&other) noexcept {
+    std::swap(values, other.values);
+    return *this;
+  }
+  constexpr ~cleanup_object_t() { cleanup(); }
+  constexpr void reset() {
+    cleanup();
+    values = wrapper_t();
+  }
+  constexpr void reset(std::convertible_to<value_type> auto &&v) noexcept {
+    cleanup();
+    values = std::forward<decltype(v)>(v);
+  }
+  constexpr void reset(std::convertible_to<TArgs> auto &&...v) noexcept
+    requires(sizeof...(v) > 1)
+  {
+    cleanup();
+    values = value_type(std::forward<decltype(v)>(v)...);
+  }
+  constexpr bool has_value() const noexcept {
+    if constexpr (_all_pointers) {
+      return std::get<0>(values) != nullptr;
+    } else {
+      return values.has_value();
+    }
+  }
+  constexpr operator bool() const noexcept { return has_value(); }
+  template <typename = void>
+    requires(sizeof...(TArgs) > 0)
+  [[nodiscard]] constexpr auto &first_value() noexcept {
+    return std::get<0>(_values());
+  }
+  template <typename = void>
+    requires(sizeof...(TArgs) > 0)
+  [[nodiscard]] constexpr auto const &first_value() const noexcept {
+    return std::get<0>(values);
+  }
+  constexpr void swap(cleanup_object_t &r) noexcept {
+    std::swap(values, r.values);
+  }
+  [[nodiscard]] constexpr auto release() noexcept {
+    return std::exchange(values, wrapper_t{});
+  }
+  constexpr auto operator->() const
+    requires(sizeof...(TArgs) == 1 && _all_pointers)
+  {
+    return first_value();
+  }
+};
+
+
 #if 0
 template <point_scalar TWH = point_unit_t<int>, typename TState = no_state_t>
 class widget_render_args : TState {
@@ -498,98 +592,6 @@ concept font_face = requires(bp::as_forward<T> t, TChar c) {
   { *call::glyph(*t, c) } -> font_glyph;
   { call::full_height(*t) } -> pixel_scalar;
   { call::ascender(*t) } -> pixel_scalar;
-};
-
-struct no_auto_cleanup_t {};
-inline constexpr no_auto_cleanup_t no_auto_cleanup;
-struct auto_cleanup_t {};
-inline constexpr auto_cleanup_t auto_cleanup;
-
-template <typename TQuit, typename... TArgs> struct cleanup_object_t {
-  using value_type = std::tuple<TArgs...>;
-  static constexpr bool _all_pointers =
-      (std::is_pointer_v<TArgs> && ...) && sizeof...(TArgs);
-  using wrapper_t =
-      std::conditional_t<_all_pointers, value_type, std::optional<value_type>>;
-  wrapper_t values;
-
-private:
-  constexpr value_type &_values() {
-    if constexpr (_all_pointers) {
-      return values;
-    } else {
-      assert(has_value());
-      return *values;
-    }
-  }
-  void cleanup() {
-    if (has_value()) {
-      std::apply(TQuit{}, _values());
-    }
-  }
-
-public:
-  constexpr cleanup_object_t() = default;
-  constexpr explicit cleanup_object_t(TArgs... args)
-    requires(sizeof...(TArgs) > 0 &&
-             (std::is_copy_constructible_v<TArgs> && ...))
-      : values(std::tuple<TArgs...>(std::move(args)...)) {}
-  constexpr explicit(false) cleanup_object_t(std::nullptr_t)
-    requires(_all_pointers)
-      : values() {}
-  constexpr explicit cleanup_object_t(no_auto_cleanup_t) : values() {}
-  constexpr explicit cleanup_object_t(std::in_place_t, auto &&...args)
-      : values(std::in_place, std::forward<decltype(args)>(args)...) {}
-  constexpr cleanup_object_t(cleanup_object_t &&other) noexcept
-      : values(std::exchange(other.values, wrapper_t())) {}
-  constexpr cleanup_object_t &operator=(cleanup_object_t &&other) noexcept {
-    std::swap(values, other.values);
-    return *this;
-  }
-  constexpr ~cleanup_object_t() { cleanup(); }
-  constexpr void reset() {
-    cleanup();
-    values = wrapper_t();
-  }
-  constexpr void reset(std::convertible_to<value_type> auto &&v) noexcept {
-    cleanup();
-    values = std::forward<decltype(v)>(v);
-  }
-  constexpr void reset(std::convertible_to<TArgs> auto &&...v) noexcept
-    requires(sizeof...(v) > 1)
-  {
-    cleanup();
-    values = value_type(std::forward<decltype(v)>(v)...);
-  }
-  constexpr bool has_value() const noexcept {
-    if constexpr (_all_pointers) {
-      return std::get<0>(values) != nullptr;
-    } else {
-      return values.has_value();
-    }
-  }
-  constexpr operator bool() const noexcept { return has_value(); }
-  template <typename = void>
-    requires(sizeof...(TArgs) > 0)
-  [[nodiscard]] constexpr auto &first_value() noexcept {
-    return std::get<0>(_values());
-  }
-  template <typename = void>
-    requires(sizeof...(TArgs) > 0)
-  [[nodiscard]] constexpr auto const &first_value() const noexcept {
-    return std::get<0>(values);
-  }
-  constexpr void swap(cleanup_object_t &r) noexcept {
-    std::swap(values, r.values);
-  }
-  [[nodiscard]] constexpr auto release() noexcept {
-    return std::exchange(values, wrapper_t{});
-  }
-  constexpr auto operator->() const
-    requires(sizeof...(TArgs) == 1 && _all_pointers)
-  {
-    return first_value();
-  }
 };
 
 namespace details {

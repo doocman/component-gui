@@ -5,7 +5,7 @@
 #ifndef ARRAY_HPP
 #define ARRAY_HPP
 
-#include <array>
+#include <asp/import/stl.hpp>
 
 namespace asp::bp {
 namespace impl {

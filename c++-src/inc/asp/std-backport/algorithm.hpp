@@ -2,11 +2,7 @@
 #ifndef COMPONENT_GUI_STD_BACKPORT_ALGORITHM_HPP
 #define COMPONENT_GUI_STD_BACKPORT_ALGORITHM_HPP
 
-#include <algorithm>
-#include <array>
-#include <numeric>
-#include <type_traits>
-#include <utility>
+#include <asp/import/stl.hpp>
 
 #include <asp/std-backport/concepts.hpp>
 

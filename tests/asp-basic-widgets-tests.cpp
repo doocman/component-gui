@@ -1,10 +1,5 @@
 
-#include <concepts>
-#include <print>
-#include <ranges>
-#include <tuple>
-#include <type_traits>
-#include <utility>
+#include <asp/import/stl.hpp>
 
 #include <gmock/gmock.h>
 
@@ -18,14 +13,6 @@ import aspect_gui;
 // import mp_units;
 
 namespace asp::tests {
-
-static_assert(is_quantity_point<
-              mp_units::quantity_point<decltype(mp_units::isq::width[pixel]){}>,
-              decltype(mp_units::isq::width[pixel]){}>);
-static_assert(rectangle_with_unit<basic_rectangle<pixel, int>, pixel>);
-static_assert(
-    has_unit_of<mp_units::quantity_point<mp_units::isq::width[pixel]>, pixel>);
-static_assert(rectangle_with_unit<basic_rectangle<point, float>, point>);
 
 constexpr default_colour_t straight_alpha_blend(default_colour_t const &fg,
                                                 default_colour_t const &bg) {
