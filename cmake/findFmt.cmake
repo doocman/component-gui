@@ -2,7 +2,7 @@
 fetchcontent_declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG 123913715afeb8a437e6388b4473fcc4753e1c9a # 11.1.4
+        GIT_TAG 407c905e45ad75fc29bf0f9bb7c5c2fd3475976f # 12.1.0
         #OVERRIDE_FIND_PACKAGE
 )
 
