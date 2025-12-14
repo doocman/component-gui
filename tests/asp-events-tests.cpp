@@ -355,8 +355,8 @@ TEST_F(GestureEventsTests, MouseDrag) // NOLINT
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_mouse_down_event<float>{});
   invoke_tt(default_mouse_move_event<float>{
-      .pos = {mp_units::quantity_point(20.f * width[point]),
-              mp_units::quantity_point(20 * height[point])}});
+      .pos = {mp_units::quantity_point(20.f * mp_units::isq::width[point]),
+              mp_units::quantity_point(20 * mp_units::isq::height[point])}});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_drag_start,
                           interpreted_events::pointer_drag_move));
@@ -374,8 +374,8 @@ TEST_F(GestureEventsTests, MouseNoDrag) // NOLINT
   auto invoke_tt = get_invoke_tt(to_test);
   invoke_tt(default_mouse_down_event<float>{});
   invoke_tt(default_mouse_move_event<float>{
-      .pos = {mp_units::quantity_point(20.f * width[point]),
-              mp_units::quantity_point(20.f * height[point])}});
+      .pos = {mp_units::quantity_point(20.f * mp_units::isq::width[point]),
+              mp_units::quantity_point(20.f * mp_units::isq::height[point])}});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_hold));
   invoke_tt(default_mouse_up_event<float>{});
@@ -431,7 +431,7 @@ TEST_F(GestureEventsTests, MouseScrollToZoomRCtrl) // NOLINT
   });
   invoke_tt(default_mouse_move_event<float>{});
   invoke_tt(default_key_down_event<float>(keycode::rctrl));
-  invoke_tt(default_mouse_scroll_event<float>{.dy = 1.f * height[point] / frame});
+  invoke_tt(default_mouse_scroll_event<float>{.dy = 1.f * mp_units::isq::height[point] / frame});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
   EXPECT_THAT(scale_x, FloatEq(1.1f));
   EXPECT_THAT(scale_y, FloatEq(1.1f));
@@ -485,10 +485,10 @@ TEST_F(GestureEventsTests, TouchClick) // NOLINT
 }
 
 constexpr auto operator""_wpf_point(long double f) {
-  return make_point(static_cast<float>(f) * width[point]);
+  return make_point(static_cast<float>(f) * mp_units::isq::width[point]);
 }
 constexpr auto operator""_hpf_point(long double f) {
-  return make_point(static_cast<float>(f) * height[point]);
+  return make_point(static_cast<float>(f) * mp_units::isq::height[point]);
 }
 
 TEST_F(GestureEventsTests, TouchZoom) // NOLINT
@@ -496,7 +496,7 @@ TEST_F(GestureEventsTests, TouchZoom) // NOLINT
   enable_all_events();
   auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt(to_test);
-  invoke_tt(default_touch_down_event<float>{.pos = {make_point(10.f * width[point]), make_point(0.f * height[point])}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {10._wpf_point, 0._hpf_point}, .finger_index = 0});
   invoke_tt(default_touch_down_event<float>{.pos = {20._wpf_point, 0._hpf_point}, .finger_index = 1});
   invoke_tt(default_touch_move_event<float>{.pos = {8._wpf_point, 0._hpf_point}, .finger_index = 0});
   invoke_tt(default_touch_move_event<float>{.pos = {22._wpf_point, 0._hpf_point}, .finger_index = 1});
