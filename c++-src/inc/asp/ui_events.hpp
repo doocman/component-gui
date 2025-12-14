@@ -1002,7 +1002,9 @@ public:
              interpreter_widget_cache<R2> const &rhs) noexcept;
 
   template <interpreted_events... Events>
-  constexpr bool access(auto &&q, auto &&cb) const {
+  constexpr bool access(auto &&q, auto &&cb) const
+  //requires (std::invocable<decltype(cb), interpreted_event<Events, int>> && ...)
+  {
     bool called{};
     q(query_interpreted_events<Events...>(
         is_cached_widget(*this), [&]<typename W>(W &&w) {
@@ -1787,7 +1789,7 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
                                    s.down_position, call::position(e), conf_)) {
           auto [dx, dy] = *zl;
           s.widget.template access<interpreted_events::zoom>(
-              q, [&]<typename W>(W &&w) {
+              q, [&]<has_zoom_factor W>(W &&w) {
                 static_assert(has_zoom_factor<W>,
                               "You must implement 'zoom_factor_t zoom_factor() "
                               "const' for your widget-like object (member, "
