@@ -58,10 +58,10 @@ template <is_scalar Rep> struct zoom_factor_t {
 };
 
 template <typename T>
-concept is_zoom_factor = requires(T const &t) {
+concept is_zoom_factor = true; /*requires(T const &t) {
   { t.scale_x } -> is_scalar;
   { t.scale_y } -> is_scalar;
-};
+};*/
 
 template <typename T>
 concept has_zoom_factor = requires(T const &t) {
@@ -979,8 +979,8 @@ template <is_scalar Rep> class interpreter_widget_cache {
 public:
   constexpr explicit interpreter_widget_cache(widget_type_erasable auto &w)
     requires(!bp::cvref_type<decltype(w), interpreter_widget_cache>)
-      : impl_(&w), area_(copy_box<basic_rectangle<point, Rep>>(call::area(w))),
-        id_(call::widget_id(w)) {}
+      : impl_(&w),
+        id_(call::widget_id(w)), area_(copy_box<basic_rectangle<point, Rep>>(call::area(w))) {}
   constexpr interpreter_widget_cache() noexcept = default;
 
   constexpr void reset() noexcept { impl_ = nullptr; }
@@ -1497,9 +1497,9 @@ struct _touch_translator_base : _touch_no_rep_base {
         auto const &...opt_zoom_value) {
     using time_point_t = std::remove_cvref_t<decltype(call::time_stamp(e))>;
     using scroll_event_t =
-        interpreted_event<interpreted_events::scroll, time_point_t>;
+        interpreted_event<interpreted_events::scroll, float, time_point_t>;
     using zoom_event_t =
-        interpreted_event<interpreted_events::zoom, time_point_t>;
+        interpreted_event<interpreted_events::zoom, float, time_point_t>;
     auto const down_positions = std::pair(s1.down_position, s2.down_position);
     auto const r2_position = s2.last_position;
     auto get_zoom = [&]() {
@@ -1829,18 +1829,21 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
             org_w.reset(w);
             if constexpr (has_handle<W &, interpreted_event<
                                               interpreted_events::pointer_enter,
+                                              float,
                                               TimePoint>>) {
               call::handle(w,
                            interpreted_event<interpreted_events::pointer_enter,
+                           float,
                                              TimePoint>(tp, call::position(e)));
             }
           }
           if constexpr (has_handle<W &, interpreted_event<
                                             interpreted_events::pointer_hold,
+                                            float,
                                             TimePoint>>) {
             call::handle(
                 w,
-                interpreted_event<interpreted_events::pointer_hold, TimePoint>(
+                interpreted_event<interpreted_events::pointer_hold, float, TimePoint>(
                     tp, call::position(e)));
           }
         },
@@ -1958,7 +1961,7 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
                     return;
                   }
 
-                  auto dist_sqr = distance_sqr(sv.down_position,
+                  auto dist_sqr = length_square(sv.down_position -
                                                call::position(e));
 
                   if (dist_sqr > (conf.drag_threshold * conf.drag_threshold)) {
@@ -1996,7 +1999,7 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
                 // ===
                 else if constexpr (std::is_same_v<S, hold_no_drag_t>) {
                   _create_invoke_with_interpreted_event<
-                      interpreted_events::pointer_hold, TimePoint>(
+                      interpreted_events::pointer_hold>(
                       q, call::position(e), call::time_stamp(e),
                       call::position(e));
                 }

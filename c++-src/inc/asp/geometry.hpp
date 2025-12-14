@@ -243,13 +243,13 @@ using sum_square_result_t = sum_result_t<square_result_t<Ts>...>;
 
 template <typename X, typename Y>
 requires(all_sum_squarable<X, Y>)
-constexpr sum_square_result_t<X, Y> distance_square(xy_pair<X, Y> const& v) {
+constexpr sum_square_result_t<X, Y> length_square(xy_pair<X, Y> const& v) {
   return call::x_of(v) * call::x_of(v) + call::y_of(v) * call::y_of(v);
 }
 template <typename X, typename Y>
 constexpr decltype(sqrt(std::declval<sum_square_result_t<X, Y>>())) length(xy_pair<X, Y> const& v) {
   using std::sqrt;
-  return sqrt(distance_square(v));
+  return sqrt(length_square(v));
 }
 
 template <typename X, typename Y, typename Den>
