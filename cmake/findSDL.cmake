@@ -17,6 +17,7 @@ foreach (E IN LISTS ASP_SDL_FETCH)
                     sdl3
                     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
                     GIT_TAG 5c8bed378040007d0e2e9267ff4bc76c016cee8f # main (SDL3-prerelease)
+                    SYSTEM EXCLUDE_FROM_ALL
             )
             if (ASP_SDL_STATIC)
                 set(SDL_STATIC ON)

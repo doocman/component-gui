@@ -586,10 +586,10 @@ TEST_F(GestureEventsTests, TouchPanLevels) {
                 interpreted_event<interpreted_events::scroll, float, time_point_t>>());
   auto invoke_tt = get_invoke_tt(to_test, [&]<typename E>(E const &e) {
     if constexpr (can_be_event<interpreted_events::scroll, E>()) {
-      last_scroll_x = call::delta_x(e);
-      last_scroll_y = call::delta_y(e);
-      total_scroll_x += call::delta_x(e);
-      total_scroll_y += call::delta_y(e);
+      last_scroll_x = call::delta_x(e).numerical_value_in(point / frame);
+      last_scroll_y = call::delta_y(e).numerical_value_in(point / frame);
+      total_scroll_x += last_scroll_x;
+      total_scroll_y += last_scroll_y;
     }
   });
   invoke_tt(default_touch_down_event<float>{.pos = {10._wpf_point, 10._hpf_point}, .finger_index = 0});
@@ -606,9 +606,9 @@ TEST_F(GestureEventsTests, TouchPanLevels) {
       last_gen_x = std::clamp(i, last_gen_x, end_x);
       last_gen_y = std::clamp(i, last_gen_y, end_y);
       invoke_tt(default_touch_move_event<float>{
-          .pos = {(10.f + last_gen_x) * mp_units::isq::width[point], (10.f + last_gen_y) * mp_units::isq::height[point]}, .finger_index = 0});
+          .pos = {10._wpf_point + last_gen_x * mp_units::isq::width[point], 10._hpf_point + last_gen_y * mp_units::isq::height[point]}, .finger_index = 0});
       invoke_tt(default_touch_move_event<float>{
-          .pos = {(20.f + last_gen_x) * mp_units::isq::width[point], (20.f + last_gen_y) * mp_units::isq::height[point]}, .finger_index = 1});
+          .pos = {20._wpf_point + last_gen_x * mp_units::isq::width[point], 20._hpf_point + last_gen_y * mp_units::isq::height[point]}, .finger_index = 1});
     }
   };
   generate_pan(1, 0);
@@ -625,11 +625,11 @@ TEST_F(GestureEventsTests, TouchPanLevels) {
   EXPECT_THAT(total_scroll_x, FloatEq(8.f));
   EXPECT_THAT(total_scroll_y, FloatEq(2.f));
 
-  invoke_tt(default_touch_up_event{.pos = {(10 + last_gen_x)*mp_units::isq::width[point], (10 + last_gen_y)*mp_units::isq::height[point]},
+  invoke_tt(default_touch_up_event{.pos = {10._wpf_point + last_gen_x*mp_units::isq::width[point], 10._hpf_point + last_gen_y*mp_units::isq::height[point]},
                                    .finger_index = 0});
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::pointer_exit));
-  invoke_tt(default_touch_up_event{.pos = {(20 + last_gen_x)*mp_units::isq::width[point], (20 + last_gen_y)*mp_units::isq::height[point]},
+  invoke_tt(default_touch_up_event{.pos = {20._wpf_point + last_gen_x *mp_units::isq::width[point], 20._hpf_point + last_gen_y*mp_units::isq::height[point]},
                                    .finger_index = 1});
   EXPECT_THAT(counter.event_types, IsEmpty());
 
@@ -646,23 +646,23 @@ TEST_F(GestureEventsTests, PanThenZoom) // NOLINT
   settings<touch_translator>(to_test).zoom_threshold = 5;
   auto invoke_tt = get_invoke_tt(to_test);
 
-  invoke_tt(default_touch_down_event<float>{.pos = {10, 0}, .finger_index = 0});
-  invoke_tt(default_touch_down_event<float>{.pos = {20, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event<float>{.pos = {12, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event<float>{.pos = {22, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event<float>{.pos = {14, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {10._wpf_point, 0._hpf_point}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {20._wpf_point, 0._hpf_point}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {12._wpf_point, 0._hpf_point}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {22._wpf_point, 0._hpf_point}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {14._wpf_point, 0._hpf_point}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
-  invoke_tt(default_touch_move_event<float>{.pos = {21, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {21._wpf_point, 0._hpf_point}, .finger_index = 1});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::scroll));
-  invoke_tt(default_touch_move_event<float>{.pos = {16, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {16._wpf_point, 0._hpf_point}, .finger_index = 0});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
-  invoke_tt(default_touch_move_event<float>{.pos = {20, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {20._wpf_point, 0._hpf_point}, .finger_index = 1});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
-  invoke_tt(default_touch_move_event<float>{.pos = {18, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {18._wpf_point, 0._hpf_point}, .finger_index = 0});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
@@ -677,42 +677,43 @@ TEST_F(GestureEventsTests, ZoomThenPan) // NOLINT
   settings<touch_translator>(to_test).zoom_threshold = 3;
   auto invoke_tt = get_invoke_tt(to_test);
 
-  invoke_tt(default_touch_down_event<float>{.pos = {10, 0}, .finger_index = 0});
-  invoke_tt(default_touch_down_event<float>{.pos = {20, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event<float>{.pos = {11, 0}, .finger_index = 0});
-  invoke_tt(default_touch_move_event<float>{.pos = {19, 0}, .finger_index = 1});
-  invoke_tt(default_touch_move_event<float>{.pos = {12, 0}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {10._wpf_point, 0._hpf_point}, .finger_index = 0});
+  invoke_tt(default_touch_down_event<float>{.pos = {20._wpf_point, 0._hpf_point}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {11._wpf_point, 0._hpf_point}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {19._wpf_point, 0._hpf_point}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {12._wpf_point, 0._hpf_point}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
-  invoke_tt(default_touch_move_event<float>{.pos = {21, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {21._wpf_point, 0._hpf_point}, .finger_index = 1});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
-  invoke_tt(default_touch_move_event<float>{.pos = {15, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {15._wpf_point, 0._hpf_point}, .finger_index = 0});
   EXPECT_THAT(counter.event_types, ElementsAre(interpreted_events::zoom));
-  invoke_tt(default_touch_move_event<float>{.pos = {23, 0}, .finger_index = 1});
+  invoke_tt(default_touch_move_event<float>{.pos = {23._wpf_point, 0._hpf_point}, .finger_index = 1});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
-  invoke_tt(default_touch_move_event<float>{.pos = {18, 0}, .finger_index = 0});
+  invoke_tt(default_touch_move_event<float>{.pos = {18._wpf_point, 0._hpf_point}, .finger_index = 0});
   EXPECT_THAT(counter.event_types,
               UnorderedElementsAre(interpreted_events::scroll,
                                    interpreted_events::zoom));
 }
-constexpr void apply_touch_zoom_x(auto &&handler, int start_distance,
-                                  int end_distance, int start_x = 0) {
+constexpr void apply_touch_zoom_x(auto &&handler, float start_distance,
+                                  float end_distance, float start_x_raw = 0) {
   auto distance_diff = (end_distance - start_distance) / 2;
-  auto sign_i = 1;
+  auto sign_i = 1.f;
   if (distance_diff < 0) {
-    sign_i = -1;
+    sign_i = -1.f;
     distance_diff = -distance_diff;
   }
-  ASP_TEST_ASSERT(distance_diff >= 0);
-  handler(default_touch_down_event<float>{.pos = {start_x, 0}, .finger_index = 0});
-  handler(default_touch_down_event<float>{.pos = {start_x + start_distance, 0},
+  ASP_TEST_ASSERT(distance_diff >= 0.f);
+  auto start_x = mp_units::quantity_point(start_x_raw * mp_units::isq::width[point]);
+  handler(default_touch_down_event<float>{.pos = {start_x, {}}, .finger_index = 0});
+  handler(default_touch_down_event<float>{.pos = {start_x + start_distance * mp_units::isq::width[point], {}},
                                    .finger_index = 1});
-  for (auto i = 1; i <= distance_diff; ++i) {
-    auto xl = start_x - i * sign_i;
-    auto xr = start_x + start_distance + i * sign_i;
-    handler(default_touch_move_event<float>{.pos = {xl, 0}, .finger_index = 0});
-    handler(default_touch_move_event<float>{.pos = {xr, 0}, .finger_index = 1});
+  for (auto i = 1.f; i <= distance_diff; ++i) {
+    auto xl = start_x - i * sign_i * mp_units::isq::width[point];
+    auto xr = start_x + start_distance + i * sign_i * mp_units::isq::width[point];
+    handler(default_touch_move_event<float>{.pos = {xl, {}}, .finger_index = 0});
+    handler(default_touch_move_event<float>{.pos = {xr, {}}, .finger_index = 1});
   }
 }
 constexpr void apply_touch_pan_x(auto &&handler, int distance,

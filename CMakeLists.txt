@@ -5,7 +5,7 @@ project(aspect-gui LANGUAGES CXX)
 
 cmake_policy(SET CMP0077 NEW)
 
-set(ASP_SDL_FETCH fetch CACHE STRING
+set(ASP_SDL_FETCH system;fetch CACHE STRING
         "List of options to use for linking sdl. Options: fetch, system"
 )
 set(ASP_CXX_MODULE ON CACHE BOOL "If true, will compile the library into a CXX-module")
