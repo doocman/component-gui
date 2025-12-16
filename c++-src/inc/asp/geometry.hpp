@@ -172,8 +172,9 @@ template <typename TX, typename TY> struct xy_pair : common_aliases_base<TX, TY>
   using y_t = TY;
   TX x{};
   TY y{};
-  
-  constexpr xy_pair(std::convertible_to<TX> auto&& x_in, std::convertible_to<TY> auto&& y_in)
+
+  template <std::convertible_to<TX> X = TX, std::convertible_to<TY> Y = TY>
+  constexpr xy_pair(X&& x_in, Y&& y_in)
   : x(std::forward<decltype(x_in)>(x_in)), y(std::forward<decltype(y_in)>(y_in)) {}
   constexpr xy_pair() = default;
   template <std::convertible_to<TX> XIn, std::convertible_to<TY> YIn>
