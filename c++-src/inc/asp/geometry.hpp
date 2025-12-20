@@ -304,50 +304,72 @@ template <typename TX, typename TY> constexpr TY &y_of(xy_pair<TX, TY> &c) {
   return c.y;
 }
 
+template <mp_units::Reference auto R, typename Rep> struct basic_rectangle {
+  static constexpr auto reference = R;
+  static constexpr auto unit = mp_units::get_unit(R);
+  using rep = Rep;
+
+  using x_t =
+      mp_units::quantity_point<mp_units::isq::width[R],
+                               default_point_origin(mp_units::isq::width[R]),
+                               Rep>;
+  using y_t =
+      mp_units::quantity_point<mp_units::isq::height[R],
+                               default_point_origin(mp_units::isq::height[R]),
+                               Rep>;
+  using width_t = mp_units::quantity<mp_units::isq::width[R], Rep>;
+  using height_t = mp_units::quantity<mp_units::isq::height[R], Rep>;
+  x_t left_x_{};
+  x_t right_x_{};
+  y_t top_y_{};
+  y_t bottom_y_{};
+
+  constexpr basic_rectangle() noexcept(
+      std::is_nothrow_default_constructible_v<Rep>) = default;
+  
+  constexpr basic_rectangle(x_t left, y_t top, x_t right, y_t bottom)
+: left_x_(left), right_x_(right), top_y_(top), bottom_y_(bottom)  {
+			assert(left_x_ <= right_x_);
+			assert(top_y_ <= bottom_y_);
+	  
+  }
+  template <std::convertible_to<x_t> LX = x_t,
+            std::convertible_to<y_t> TY = y_t,
+            std::convertible_to<width_t> W = width_t,
+            std::convertible_to<height_t> H = height_t>
+  constexpr basic_rectangle(LX lx, TY yt, W w, H h)
+      : left_x_(std::forward<decltype(lx)>(lx)),
+	    right_x_(left_x_ + w),
+        top_y_(std::forward<decltype(yt)>(yt)),
+        bottom_y_(top_y_ + h)
+		{
+			assert(left_x_ <= right_x_);
+			assert(top_y_ <= bottom_y_);
+		}
+  static constexpr basic_rectangle from_xywh(x_t lx, y_t ty, width_t w,
+                                             height_t h) {
+    return {lx, ty, w, h};
+  }
+
+  constexpr auto &&l_x(this auto &&s) noexcept {
+    return std::forward<decltype(s)>(s).left_x_;
+  }
+  constexpr auto &&t_y(this auto &&s) noexcept {
+    return std::forward<decltype(s)>(s).top_y_;
+  }
+  constexpr auto &&width(this auto &&s) noexcept {
+    return std::forward<decltype(s)>(s).width_;
+  }
+  constexpr auto &&height(this auto &&s) noexcept {
+    return std::forward<decltype(s)>(s).height_;
+  }
+  constexpr bool operator==(basic_rectangle const &) const noexcept = default;
+};
+
+using default_point_rect = basic_rectangle<point, float>;
+
 ASP_EXPORT_END
 #if 0
-/// @brief Concept for pixel coordinates that can be set to a value.
-template <typename T, typename TVal>
-concept pixel_coord_set =
-    requires(bp::as_forward<T> t, bp::as_forward<TVal> v) {
-      call::x_of(*t, *v);
-      call::y_of(*t, *v);
-    };
-
-/// @brief Concept for pixel coordinates that support reference assignment.
-template <typename T, typename TVal>
-concept pixel_coord_ref = requires(bp::as_forward<T> t) {
-  { call::x_of(*t) } -> std::assignable_from<TVal>;
-  { call::y_of(*t) } -> std::assignable_from<TVal>;
-};
-
-/// @brief Concept for pixel coordinates that support mutation.
-template <typename T, typename TVal>
-concept pixel_coord_mut = pixel_coord_ref<T, TVal> || pixel_coord_set<T, TVal>;
-
-/// @brief Concept for readable position.
-template <typename T>
-concept has_position = requires(bp::as_forward<T> t) {
-  { call::position(*t) } -> two_dimensional_coordinate;
-};
-
-/// @brief Concept to check if a type is mutable by TFrom and is a valid pixel
-/// coordinate value.
-template <typename T, typename TFrom>
-concept mutable_pixel_coord_value =
-    bp::is_mutable_by<T, TFrom>;
-
-/// Maps a coordinate to a new coordinate through function f.
-/// \tparam T Resulting type.
-/// \tparam U
-/// \tparam F
-/// \param u
-/// \param f
-/// \return mapped coordinate of type T.
-template <two_dimensional_coordinate T, two_dimensional_coordinate U, typename F>
-constexpr T map_coord(U const &u, F &&f) {
-  return {f(call::x_of(u)), f(call::y_of(u))};
-}
 
 /// @brief Concept for types that represent a size with width and height.
 template <typename T>

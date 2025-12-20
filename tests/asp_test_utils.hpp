@@ -6,7 +6,11 @@
 
 #include <gmock/gmock.h>
 
-import aspect_gui;
+#if ASP_CXX_MODULE
+import aspect_gui
+#else
+#include <asp/ui_events.hpp>
+#endif
 
 #define ASP_TEST_ASSERT(EXPR) ::asp::asp_assert(!!(EXPR), #EXPR)
 

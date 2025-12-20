@@ -248,7 +248,8 @@ public:
     }
   }
 
-  template <std::convertible_to<Args>... Ts>
+  template <typename... Ts>
+  requires (std::convertible_to<Ts, Args> && ...)
   constexpr R operator()(Ts &&...args) const {
     return f_(data_, std::forward<Ts>(args)...);
   }

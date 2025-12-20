@@ -159,62 +159,6 @@ template <mp_units::Reference auto R, typename Rep> struct basic_width_height {
   operator==(basic_width_height const &) const noexcept = default;
 };
 
-template <mp_units::Reference auto R, typename Rep> struct basic_rectangle {
-  static constexpr auto reference = R;
-  static constexpr auto unit = mp_units::get_unit(R);
-  using rep = Rep;
-
-  using left_x_t =
-      mp_units::quantity_point<mp_units::isq::width[R],
-                               default_point_origin(mp_units::isq::width[R]),
-                               Rep>;
-  using top_y_t =
-      mp_units::quantity_point<mp_units::isq::height[R],
-                               default_point_origin(mp_units::isq::height[R]),
-                               Rep>;
-  using width_t = mp_units::quantity<mp_units::isq::width[R], Rep>;
-  using height_t = mp_units::quantity<mp_units::isq::height[R], Rep>;
-  left_x_t left_x_{};
-  top_y_t top_y_{};
-  width_t width_{};
-  height_t height_{};
-
-  constexpr basic_rectangle() noexcept(
-      std::is_nothrow_default_constructible_v<Rep>) = default;
-  template <std::convertible_to<left_x_t> LX = left_x_t,
-            std::convertible_to<top_y_t> TY = top_y_t,
-            std::convertible_to<width_t> W = width_t,
-            std::convertible_to<height_t> H = height_t>
-  constexpr basic_rectangle(LX lx, TY yt, W w, H h)
-      : left_x_(std::forward<decltype(lx)>(lx)),
-        top_y_(std::forward<decltype(yt)>(yt)),
-        width_(std::forward<decltype(w)>(w)),
-        height_(std::forward<decltype(h)>(h)) {}
-  static constexpr basic_rectangle from_xywh(left_x_t lx, top_y_t ty, width_t w,
-                                             height_t h) {
-    return {lx, ty, w, h};
-  }
-
-  constexpr auto &&l_x(this auto &&s) noexcept {
-    return std::forward<decltype(s)>(s).left_x_;
-  }
-  constexpr auto &&t_y(this auto &&s) noexcept {
-    return std::forward<decltype(s)>(s).top_y_;
-  }
-  constexpr auto &&width(this auto &&s) noexcept {
-    return std::forward<decltype(s)>(s).width_;
-  }
-  constexpr auto &&height(this auto &&s) noexcept {
-    return std::forward<decltype(s)>(s).height_;
-  }
-  constexpr bool operator==(basic_rectangle const &) const noexcept = default;
-  static_assert(requires() {
-    mp_units::get_common_reference(left_x_t::reference, top_y_t::reference,
-                                   width_t::reference, height_t::reference);
-  });
-  static_assert(left_x_t::unit == R);
-};
-
 template <typename T, typename... Ts>
   requires(std::equality_comparable_with<T, Ts> && ...)
 constexpr bool equals_all_of(T const &t, Ts const &...ts) noexcept {

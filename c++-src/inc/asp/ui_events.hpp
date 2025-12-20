@@ -1710,11 +1710,12 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
     //return {call::x_of(center_diff), call::y_of(center_diff)};
     return (new_center - old_center) / (1 * frame);
   }
+  template <point_coordinate P>
   static constexpr auto
-  get_opt_scroll_value(point_coordinate auto const &p1_org,
-                       point_coordinate auto const &p1_new,
-                       point_coordinate auto const &p2_org,
-                       point_coordinate auto const &p2_new, settings const &s) -> std::optional<decltype(get_scroll_value(center_between(p1_org, p2_org), center_between(p1_new, p2_new)))> {
+  get_opt_scroll_value(P const p1_org,
+                       P const p1_new,
+                       P const p2_org,
+                       P const p2_new, settings const &s) -> std::optional<decltype(get_scroll_value(center_between(p1_org, p2_org), center_between(p1_new, p2_new)))> {
     auto old_center = center_between(p1_org, p2_org);//divide(add(p1_org, p2_org), 2);
     auto new_center = center_between(p1_new, p2_new);//divide(add(p1_new, p2_new), 2);
     auto pot_value = get_scroll_value(old_center, new_center);
