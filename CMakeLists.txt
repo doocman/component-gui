@@ -54,13 +54,8 @@ else ()
     endfunction()
 endif ()
 
-if (WIN32)
-    set(_ASP_SDL_STATIC_DEFAULT ON)
-endif ()
-
 set(ASP_SDL_STATIC
         OFF
-        #${_ASP_SDL_STATIC_DEFAULT}
         CACHE BOOL "")
 set(ASP_EXAMPLES ${_ASP_DEFAULT_EXAMPLES} CACHE BOOL "")
 set(ASP_DEVELOP ${_ASP_DEVELOP_DEFAULT} CACHE BOOL "")
