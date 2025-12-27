@@ -35,7 +35,8 @@ inline constexpr struct frame final
 } frame;
 
 template <mp_units::Reference auto R, typename Rep>
-using from_zero_quantity_point_t = mp_units::quantity_point<R, mp_units::default_point_origin(R), Rep>;
+using from_zero_quantity_point_t =
+    mp_units::quantity_point<R, mp_units::default_point_origin(R), Rep>;
 
 template <typename T>
 concept has_rep = requires() { typename std::remove_cvref_t<T>::rep; };
@@ -80,27 +81,28 @@ concept is_quantity_point =
     has_unit_of<QP, get_unit(R)>;
 
 template <typename T>
-concept two_dimensional_point = two_dimensional_coordinate<T> && has_unit<T> && has_rep<T> && 
-  requires(T const& t) {
-	  { call::x_of(t) } -> is_any_quantity_point;
-	  { call::y_of(t) } -> is_any_quantity_point;
-  };
+concept two_dimensional_point = two_dimensional_coordinate<T> && has_unit<T> &&
+                                has_rep<T> && requires(T const &t) {
+                                  { call::x_of(t) } -> is_any_quantity_point;
+                                  { call::y_of(t) } -> is_any_quantity_point;
+                                };
 template <typename T>
-concept two_dimensional_delta = two_dimensional_coordinate<T> && has_unit<T> && 
-  requires(T const& t) {
-	  { call::x_of(t) } -> is_any_quantity;
-	  { call::y_of(t) } -> is_any_quantity;
-  };
+concept two_dimensional_delta =
+    two_dimensional_coordinate<T> && has_unit<T> && requires(T const &t) {
+      { call::x_of(t) } -> is_any_quantity;
+      { call::y_of(t) } -> is_any_quantity;
+    };
 template <typename T>
-concept is_width_and_height = requires(T const& t) {
-  { call::x_of(t)} -> is_any_quantity;
-  { call::y_of(t)} -> is_any_quantity;
+concept is_width_and_height = requires(T const &t) {
+  { call::x_of(t) } -> is_any_quantity;
+  { call::y_of(t) } -> is_any_quantity;
 };
 template <typename T, auto U>
-concept is_width_and_height_with_unit = is_width_and_height<T> && requires(T const& t) {
-  { call::x_of(t)} -> is_quantity<mp_units::isq::width[U]>;
-  { call::y_of(t)} -> is_quantity<mp_units::isq::height[U]>;
-};
+concept is_width_and_height_with_unit =
+    is_width_and_height<T> && requires(T const &t) {
+      { call::x_of(t) } -> is_quantity<mp_units::isq::width[U]>;
+      { call::y_of(t) } -> is_quantity<mp_units::isq::height[U]>;
+    };
 
 template <has_unit T>
 inline constexpr auto unit_of_type = std::remove_cvref_t<T>::unit;
@@ -108,21 +110,19 @@ inline constexpr auto unit_of_type = std::remove_cvref_t<T>::unit;
 template <typename T, typename U>
 concept same_unit_as =
     has_unit<T> && has_unit<U> && unit_of_type<T> == unit_of_type<U>;
-	
-template <typename T, auto R>
-concept two_dimensional_delta_of = two_dimensional_delta<T> && unit_of_type<T> == R;
 
-template <typename...>
-struct common_unit_base {};
-template <has_unit T, same_unit_as<T>... Ts>
-struct common_unit_base<T, Ts...> {
+template <typename T, auto R>
+concept two_dimensional_delta_of =
+    two_dimensional_delta<T> && unit_of_type<T> == R;
+
+template <typename...> struct common_unit_base {};
+template <has_unit T, same_unit_as<T>... Ts> struct common_unit_base<T, Ts...> {
   static constexpr mp_units::Unit auto unit = unit_of_type<T>;
 };
 
-template <typename... Ts>
-struct common_rep_base : common_unit_base<Ts...> {};
+template <typename... Ts> struct common_rep_base : common_unit_base<Ts...> {};
 template <has_rep T, has_rep... Ts>
-requires (std::same_as<representation_of_t<T>, representation_of_t<Ts>> &&...)
+  requires(std::same_as<representation_of_t<T>, representation_of_t<Ts>> && ...)
 struct common_rep_base<T, Ts...> : common_unit_base<T, Ts...> {
   using rep = representation_of_t<T>;
 };
@@ -167,37 +167,46 @@ template <typename T> constexpr auto get_unit_or_no_unit_reference() {
 }
 
 /// @brief Basic structure for representing screen coordinates.
-template <typename TX, typename TY> struct xy_pair : common_aliases_base<TX, TY> {
+template <typename TX, typename TY>
+struct xy_pair : common_aliases_base<TX, TY> {
   using x_t = TX;
   using y_t = TY;
   TX x{};
   TY y{};
 
   template <std::convertible_to<TX> X = TX, std::convertible_to<TY> Y = TY>
-  constexpr xy_pair(X&& x_in, Y&& y_in)
-  : x(std::forward<decltype(x_in)>(x_in)), y(std::forward<decltype(y_in)>(y_in)) {}
+  constexpr xy_pair(X &&x_in, Y &&y_in)
+      : x(std::forward<decltype(x_in)>(x_in)),
+        y(std::forward<decltype(y_in)>(y_in)) {}
   constexpr xy_pair() = default;
   template <std::convertible_to<TX> XIn, std::convertible_to<TY> YIn>
-  requires(!std::convertible_to<XIn, TY> && std::convertible_to<YIn, TX>)
-  constexpr xy_pair(YIn&& y_in, XIn&& x_in)
-   : x(std::forward<XIn>(x_in)), y(std::forward<YIn>(y_in)) {}
+    requires(!std::convertible_to<XIn, TY> && std::convertible_to<YIn, TX>)
+  constexpr xy_pair(YIn &&y_in, XIn &&x_in)
+      : x(std::forward<XIn>(x_in)), y(std::forward<YIn>(y_in)) {}
 };
 
 template <mp_units::Unit auto R, typename Rep>
 using basic_coordinate =
     xy_pair<from_zero_quantity_point_t<mp_units::isq::width[R], Rep>,
-            from_zero_quantity_point_t<
-                mp_units::isq::height[R], Rep>>;
+            from_zero_quantity_point_t<mp_units::isq::height[R], Rep>>;
 
 template <mp_units::Unit auto R, typename Rep>
-using basic_coordinate_delta = xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>, mp_units::quantity<mp_units::isq::height[R], Rep>>;
+using basic_coordinate_delta =
+    xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>,
+            mp_units::quantity<mp_units::isq::height[R], Rep>>;
 
 template <mp_units::Unit auto R, typename Rep>
-constexpr mp_units::quantity<mp_units::isq::width[R], Rep> width(xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>, mp_units::quantity<mp_units::isq::height[R], Rep>> xy) {
+constexpr mp_units::quantity<mp_units::isq::width[R], Rep>
+width(xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>,
+              mp_units::quantity<mp_units::isq::height[R], Rep>>
+          xy) {
   return xy.x;
 };
 template <mp_units::Unit auto R, typename Rep>
-constexpr mp_units::quantity<mp_units::isq::height[R], Rep> height(xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>, mp_units::quantity<mp_units::isq::height[R], Rep>> xy) {
+constexpr mp_units::quantity<mp_units::isq::height[R], Rep>
+height(xy_pair<mp_units::quantity<mp_units::isq::width[R], Rep>,
+               mp_units::quantity<mp_units::isq::height[R], Rep>>
+           xy) {
   return xy.y;
 };
 
@@ -208,55 +217,51 @@ constexpr bool operator==(xy_pair<X1, Y1> const &l, xy_pair<X2, Y2> const &r) {
 }
 
 template <typename... Ts>
-concept all_multipliable = requires(Ts&&... ts) {
-	(ts * ...);
-};
+concept all_multipliable = requires(Ts &&...ts) { (ts * ...); };
 template <typename T>
 concept squarable = all_multipliable<T, T>;
 template <typename... Ts>
-concept all_summable = requires(Ts&&... ts) {
-	(ts + ...);
-};
+concept all_summable = requires(Ts &&...ts) { (ts + ...); };
 template <typename Num, typename Den>
-concept dividable_with = requires(Num n, Den d) {
-	n / d;
-};
+concept dividable_with = requires(Num n, Den d) { n / d; };
 
 template <typename... Ts>
-requires all_multipliable<Ts...>
+  requires all_multipliable<Ts...>
 using product_result_t = decltype((std::declval<Ts>() * ...));
 template <typename T>
-requires all_multipliable<T, T>
+  requires all_multipliable<T, T>
 using square_result_t = product_result_t<T, T>;
 template <typename Num, typename Den>
-requires dividable_with<Num, Den>
+  requires dividable_with<Num, Den>
 using divide_result_t = decltype(std::declval<Num>() / std::declval<Den>());
 
 template <typename... Ts>
-concept all_sum_squarable = (squarable<Ts> &&...) && 
-all_summable<square_result_t<Ts>...>;
+concept all_sum_squarable =
+    (squarable<Ts> && ...) && all_summable<square_result_t<Ts>...>;
 
 template <typename... Ts>
-requires all_summable<Ts...>
+  requires all_summable<Ts...>
 using sum_result_t = decltype((std::declval<Ts>() + ...));
 template <typename... Ts>
 using sum_square_result_t = sum_result_t<square_result_t<Ts>...>;
 
 template <typename X, typename Y>
-requires(all_sum_squarable<X, Y>)
-constexpr sum_square_result_t<X, Y> length_square(xy_pair<X, Y> const& v) {
+  requires(all_sum_squarable<X, Y>)
+constexpr sum_square_result_t<X, Y> length_square(xy_pair<X, Y> const &v) {
   return call::x_of(v) * call::x_of(v) + call::y_of(v) * call::y_of(v);
 }
 template <typename X, typename Y>
-constexpr decltype(sqrt(std::declval<sum_square_result_t<X, Y>>())) length(xy_pair<X, Y> const& v) {
+constexpr decltype(sqrt(std::declval<sum_square_result_t<X, Y>>()))
+length(xy_pair<X, Y> const &v) {
   using std::sqrt;
   return sqrt(length_square(v));
 }
 
 template <typename X, typename Y, typename Den>
-requires (dividable_with<X, Den> && dividable_with<Y, Den>)
-constexpr xy_pair<divide_result_t<X, Den>, divide_result_t<Y, Den>> operator/(xy_pair<X, Y> const& xy, Den const& den) {
-	return {xy.x  / den, xy.y / den};
+  requires(dividable_with<X, Den> && dividable_with<Y, Den>)
+constexpr xy_pair<divide_result_t<X, Den>, divide_result_t<Y, Den>>
+operator/(xy_pair<X, Y> const &xy, Den const &den) {
+  return {xy.x / den, xy.y / den};
 }
 
 template <typename X1, typename Y1, std::totally_ordered_with<X1> X2,
@@ -271,10 +276,11 @@ constexpr bool operator==(xy_pair<X1, Y1> const &l, xy_pair<X2, Y2> const &r) {
 }
 
 template <typename X1, typename Y1, typename X2, typename Y2>
-requires(bp::subtractable_with<X1, X2> && bp::subtractable_with<Y1, Y2>)
-constexpr xy_pair<bp::subtract_result_t<X1 const&, X2 const&>, bp::subtract_result_t<Y1 const&, Y2 const&>>
-operator-(xy_pair<X1, Y1> const& lhs, xy_pair<X2, Y2> const& rhs) {
-	return {lhs.x - rhs.x, lhs.y - rhs.y};
+  requires(bp::subtractable_with<X1, X2> && bp::subtractable_with<Y1, Y2>)
+constexpr xy_pair<bp::subtract_result_t<X1 const &, X2 const &>,
+                  bp::subtract_result_t<Y1 const &, Y2 const &>>
+operator-(xy_pair<X1, Y1> const &lhs, xy_pair<X2, Y2> const &rhs) {
+  return {lhs.x - rhs.x, lhs.y - rhs.y};
 }
 
 template <typename TX, typename TY>
@@ -326,26 +332,31 @@ template <mp_units::Reference auto R, typename Rep> struct basic_rectangle {
 
   constexpr basic_rectangle() noexcept(
       std::is_nothrow_default_constructible_v<Rep>) = default;
-  
+
   constexpr basic_rectangle(x_t left, y_t top, x_t right, y_t bottom)
-: left_x_(left), right_x_(right), top_y_(top), bottom_y_(bottom)  {
-			assert(left_x_ <= right_x_);
-			assert(top_y_ <= bottom_y_);
-	  
+      : left_x_(left), right_x_(right), top_y_(top), bottom_y_(bottom) {
+    assert(left_x_ <= right_x_);
+    assert(top_y_ <= bottom_y_);
   }
   template <std::convertible_to<x_t> LX = x_t,
             std::convertible_to<y_t> TY = y_t,
             std::convertible_to<width_t> W = width_t,
             std::convertible_to<height_t> H = height_t>
   constexpr basic_rectangle(LX lx, TY yt, W w, H h)
-      : left_x_(std::forward<decltype(lx)>(lx)),
-	    right_x_(left_x_ + w),
-        top_y_(std::forward<decltype(yt)>(yt)),
-        bottom_y_(top_y_ + h)
-		{
-			assert(left_x_ <= right_x_);
-			assert(top_y_ <= bottom_y_);
-		}
+      : left_x_(std::forward<decltype(lx)>(lx)), right_x_(left_x_ + w),
+        top_y_(std::forward<decltype(yt)>(yt)), bottom_y_(top_y_ + h) {
+    assert(left_x_ <= right_x_);
+    assert(top_y_ <= bottom_y_);
+  }
+  template <two_dimensional_coordinate Corner = xy_pair<x_t, y_t>>
+  constexpr basic_rectangle(Corner top_left, Corner bottom_right)
+    requires(requires() {
+              { call::x_of(top_left) } -> std::convertible_to<x_t>;
+              { call::y_of(top_left) } -> std::convertible_to<y_t>;
+            })
+      : left_x_(call::x_of(top_left)), right_x_(call::x_of(bottom_right)),
+        top_y_(call::y_of(top_left)), bottom_y_(call::y_of(bottom_right)) {}
+
   static constexpr basic_rectangle from_xywh(x_t lx, y_t ty, width_t w,
                                              height_t h) {
     return {lx, ty, w, h};
@@ -357,11 +368,11 @@ template <mp_units::Reference auto R, typename Rep> struct basic_rectangle {
   constexpr auto &&t_y(this auto &&s) noexcept {
     return std::forward<decltype(s)>(s).top_y_;
   }
-  constexpr auto &&width(this auto &&s) noexcept {
-    return std::forward<decltype(s)>(s).width_;
+  constexpr auto &&r_x(this auto &&s) noexcept {
+    return std::forward<decltype(s)>(s).right_x_;
   }
-  constexpr auto &&height(this auto &&s) noexcept {
-    return std::forward<decltype(s)>(s).height_;
+  constexpr auto &&b_y(this auto &&s) noexcept {
+    return std::forward<decltype(s)>(s).bottom_y_;
   }
   constexpr bool operator==(basic_rectangle const &) const noexcept = default;
 };
@@ -901,9 +912,9 @@ struct extend_api<pixelpoint_unit<SizeTag, T>> {
     requires(impl::has_bbox_init<T, typename TXY::value_type> ||               \
              impl::has_bbox_init<extend_api_t<T>, typename TXY::value_type>)   \
   static constexpr auto from_##X(Ts &&...args)                                 \
-      ->pixelpoint_unit<SizeTag,                                               \
-                        std::remove_cvref_t<decltype(box_from_##X<T>(          \
-                            TXY(std::forward<Ts>(args)).value()...))>> {       \
+      -> pixelpoint_unit<SizeTag,                                              \
+                         std::remove_cvref_t<decltype(box_from_##X<T>(         \
+                             TXY(std::forward<Ts>(args)).value()...))>> {      \
     return {SizeTag{},                                                         \
             box_from_##X<T, typename TXY::value_type>(                         \
                 _wrap_with_pixelpoint<SizeTag>(std::forward<Ts>(args))         \

@@ -45,7 +45,7 @@ foreach (E IN LISTS ASP_SDL_FETCH)
             endif ()
 
         elseif (E STREQUAL "system")
-            find_package(SDL3 REQUIRED)
+            find_package(SDL3)
             if (NOT TARGET ${_ASP_SDL_LIB})
                 if (NOT TARGET SDL3)
                     add_library(SDL3 INTERFACE)
@@ -63,5 +63,9 @@ foreach (E IN LISTS ASP_SDL_FETCH)
         endif ()
     endif ()
 endforeach ()
+
+if (NOT TARGET SDL3::SDL3)
+    message(SEND_ERROR "Could not locate SDL")
+endif ()
 
 

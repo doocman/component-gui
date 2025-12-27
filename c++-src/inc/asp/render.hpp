@@ -4,6 +4,7 @@
 
 #include <asp/assert.hpp>
 #include <asp/call.hpp>
+#include <asp/compat.hpp>
 #include <asp/import/mp-units.hpp>
 #include <asp/import/stl.hpp>
 #include <asp/geometry.hpp>
@@ -521,20 +522,20 @@ template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
 }
 
 /// Range checker that models the open range min < c < max.
-inline constexpr auto inside_open_range = [](auto &&c, auto &&min, auto &&max) {
-  return (min < c) && (c < max);
-};
+inline constexpr struct inside_open_range_t {
+  ASP_STATIC_CALL constexpr bool operator()(auto &&c, auto &&min, auto &&max) ASP_STATIC_CALL_POST {
+    return (min < c) && (c < max);
+  }
+} inside_open_range;
 /// Range checker that models the closed range min <= c <= max.
-inline constexpr auto inside_closed_range =
-    [](auto &&c, auto &&min, auto &&max) { return (min <= c) && (c <= max); };
+inline constexpr struct inside_closed_range_t {
+  ASP_STATIC_CALL constexpr bool operator()(auto &&c, auto &&min, auto &&max) ASP_STATIC_CALL_POST { return (min <= c) && (c <= max); }
+} inside_closed_range;
 
 /// Range checker that models the closed-open range min <= c < max.
-inline constexpr auto inside_semiopen_range =
-    [](auto &&c, auto &&min, auto &&max) { return (min <= c) && (c < max); };
-
-using inside_open_range_t = decltype(inside_open_range);
-using inside_closed_range_t = decltype(inside_closed_range);
-using inside_semiopen_range_t = decltype(inside_semiopen_range);
+inline constexpr struct inside_semiopen_range_t {
+  ASP_STATIC_CALL constexpr bool operator()(auto &&c, auto &&min, auto &&max) ASP_STATIC_CALL_POST { return (min <= c) && (c < max); }
+} inside_semiopen_range;
 
 /// Returns true if width and height are non-negative.
 constexpr bool valid_box(bounding_box auto const &b) {

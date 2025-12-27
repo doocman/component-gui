@@ -7,7 +7,7 @@
 #include <gmock/gmock.h>
 
 #if ASP_CXX_MODULE
-import aspect_gui
+import aspect_gui;
 #else
 #include <asp/ui_events.hpp>
 #endif

@@ -11,7 +11,6 @@ endif ()
 function(asp_add_test FILE)
     string(REPLACE ".cpp" "" TEST "${FILE}")
     add_executable(${TEST} ${FILE})
-    target_compile_definitions(${TEST} PRIVATE ASP_CXX_MODULE=${ASP_CXX_MODULE})
 
     target_link_libraries(${TEST}
             PRIVATE
