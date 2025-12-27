@@ -1,5 +1,4 @@
 
-
 #if ASP_CXX_MODULE
 import aspect_gui;
 #else

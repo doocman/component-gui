@@ -8,9 +8,7 @@
 #define ASP_HAS_INCLUDE(X) false
 #endif
 
-#if !defined(ASP_NO_STL_MODULE) && __cpp_lib_modules >= 202207L
-import std;
-#else
+#if ASP_NO_STL_MODULE || __cpp_lib_modules < 202207L
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -50,6 +48,8 @@ import std;
 #else
 #define ASP_HAS_EXPECTED false
 #endif
+#else
+import std;
 #endif
 
 #endif

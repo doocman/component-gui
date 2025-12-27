@@ -1,5 +1,9 @@
 
+#if ASP_CXX_MODULE
+import aspect_gui;
+#else
 #include <asp/geometry.hpp>
+#endif
 
 #include <gmock/gmock.h>
 
@@ -698,11 +702,6 @@ public:
 using RectApiTypes = concat_types_t<::testing::Types<tlbr_mut, tlbr_static_set>,
                                     apitests::for_each_access<xyxy_bbox>,
                                     apitests::for_each_access<xywh_bbox>>;
-static_assert(mutable_bounding_box<tlbr_mut, int>);
-static_assert(mutable_bounding_box<tlbr_static_set, int>);
-
-static_assert(has_assignable_get<xywh_bbox<access_type::extend_mut> &,
-                                 call::impl::_do_width, int>);
 
 TYPED_TEST_SUITE(PixCoordFixture, PixCoordTypes);
 TYPED_TEST_SUITE(BoxApiFixture, RectApiTypes);

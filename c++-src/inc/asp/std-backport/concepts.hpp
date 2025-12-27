@@ -8,6 +8,7 @@
 #include <asp/import/stl.hpp>
 
 namespace asp::bp {
+ASP_EXPORT_BEGIN
 /// Concept that requires that the type has no reference nor volatile/const
 /// qualifier.
 /// \tparam T type to check
@@ -83,11 +84,13 @@ concept stateless =
 
 template <typename T>
 concept empty_type = std::is_empty_v<T>;
+ASP_EXPORT_END
 
 template <typename T, typename U>
 concept weakly_comparable_with_impl = requires(T &&t, U &&u) {
   { t == u } -> std::convertible_to<bool>;
 };
+ASP_EXPORT_BEGIN
 template <typename T, typename U>
 concept weakly_comparable_with =
     weakly_comparable_with_impl<T, U> && weakly_comparable_with_impl<U, T>;
@@ -126,6 +129,7 @@ concept invocable_r =
         std::invoke(std::forward<T>(t), std::forward<Ts>(args)...)
       } -> std::convertible_to<R>;
     };
+ASP_EXPORT_END
 } // namespace asp::bp
 
 #endif // COMPONENT_GUI_CONCEPTS_HPP
