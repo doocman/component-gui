@@ -15,6 +15,11 @@ if (ASP_MP_UNITS_MODULES)
             ASP_MP_UNITS_MODULES=1
     )
 endif ()
+if (ASP_NO_STL_MODULE)
+    target_compile_definitions(asp_headers INTERFACE
+            ASP_NO_STL_MODULE=1
+    )
+endif ()
 if (ASP_CXX_MODULE)
     asp_add_library(asp_modules)
     target_compile_definitions(asp_modules PUBLIC ASP_CXX_MODULE=1)

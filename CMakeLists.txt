@@ -9,6 +9,12 @@ set(ASP_SDL_FETCH system;fetch CACHE STRING
         "List of options to use for linking sdl. Options: fetch, system"
 )
 set(ASP_CXX_MODULE ON CACHE BOOL "If true, will compile the library into a CXX-module")
+if (ASP_CXX_MODULE)
+    set(_ASP_NO_STL_MODULE_DEFAULT OFF)
+else ()
+    set(_ASP_NO_STL_MODULE_DEFAULT ON)
+endif ()
+set(ASP_NO_STL_MODULE ${_ASP_NO_STL_MODULE_DEFAULT} CACHE BOOL "If true, will skip 'import std' in favour of legacy include:s")
 set(_ASP_SDL_STATIC_DEFAULT OFF)
 
 include(cmake/embeddBinary.cmake)

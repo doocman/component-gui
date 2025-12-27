@@ -780,8 +780,6 @@ TEST_F(GestureEventsTests, NoDragAfterTouchPan) // NOLINT
 {
   enable_all_events();
   auto to_test = default_event_interpreter<float, time_point_t>{};
-  float scale = 1.f;
-  int zoom_count{};
   auto invoke_tt = get_invoke_tt(to_test);
   apply_touch_pan_x(invoke_tt, 20);
   invoke_tt(default_touch_up_event<float>{.finger_index = 1});
@@ -793,8 +791,6 @@ TEST_F(GestureEventsTests, NoDragAfterTouchZoom) // NOLINT
 {
   enable_all_events();
   auto to_test = default_event_interpreter<float, time_point_t>{};
-  float scale = 1.f;
-  int zoom_count{};
   auto invoke_tt = get_invoke_tt(to_test);
   apply_touch_zoom_x(invoke_tt, 20, 40);
   invoke_tt(default_touch_up_event<float>{.finger_index = 1});
@@ -806,8 +802,6 @@ TEST_F(GestureEventsTests, NoDragAfterTouchPanZoom) // NOLINT
 {
   enable_all_events();
   auto to_test = default_event_interpreter<float, time_point_t>{};
-  float scale = 1.f;
-  int zoom_count{};
   auto invoke_tt = get_invoke_tt(to_test);
   apply_touch_pan_zoom_x(invoke_tt, 20, 20, 40);
   invoke_tt(default_touch_up_event<float>{.finger_index = 1});
@@ -1129,7 +1123,6 @@ TEST_F(GestureEventsHitTests, TouchParentPanCallsExitOnChild) // NOLINT
   });
   add_widget({{0._wpf_point, 0._hpf_point}, {100._wpf_point, 100._hpf_point}});
   auto &child = query.widgets[0].counter;
-  auto &parent = query.widgets[1].counter;
   auto to_test = default_event_interpreter<float, time_point_t>{};
   auto invoke_tt = get_invoke_tt_no_clear(to_test);
   apply_touch_pan_x(invoke_tt, 20, 40._wpf_point);

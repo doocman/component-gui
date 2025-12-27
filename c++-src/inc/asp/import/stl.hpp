@@ -8,7 +8,7 @@
 #define ASP_HAS_INCLUDE(X) false
 #endif
 
-#if !defined(ASP_NO_STL_MODULE) && __cpp_lib_modules
+#if !defined(ASP_NO_STL_MODULE) && __cpp_lib_modules >= 202207L
 import std;
 #else
 #include <algorithm>
