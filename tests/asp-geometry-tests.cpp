@@ -718,8 +718,6 @@ TYPED_TEST(PixCoordFixture, AssignAndFetch) // NOLINT
   EXPECT_THAT(call::get_y(this->value), Eq(3));
 }
 
-#if 0
-
 TYPED_TEST(BoxApiFixture, AssignAndFetchXxyy) // NOLINT
 {
   static_assert(bounding_box<decltype(this->value)>);
@@ -797,6 +795,8 @@ TYPED_TEST(BoxApiFixture, AssignAndFetchXwyh) // NOLINT
   EXPECT_THAT(call::get_x(call::bottom_right(this->value)), Eq(3));
   EXPECT_THAT(call::get_y(call::bottom_right(this->value)), Eq(8));
 }
+
+#if 0
 
 TYPED_TEST(BoxApiFixture, ConstructXYXY) // NOLINT
 {

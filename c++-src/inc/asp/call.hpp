@@ -545,7 +545,7 @@ constexpr decltype(auto) r_x_t::_fallback_mut(auto &&b, auto &&v) {
                     _do_bottom_right::call(*b)
                   } -> pixel_coord_mut<decltype(*v)>;
                 }) {
-    return _do_set_y::call(_do_bottom_right::call(*b), *v);
+    return _do_set_x::call(_do_bottom_right::call(*b), *v);
   } else {
     return width_t::call(*b, *v - l_x_t{}(*b));
   }
@@ -640,8 +640,8 @@ template <typename TX, typename TY> class fallback_coordinate {
 
 public:
   constexpr fallback_coordinate(TX x, TY y) : x_(x), y_(y) {}
-  constexpr TX const &set_x() const noexcept { return x_; }
-  constexpr TX const &set_y() const noexcept { return y_; }
+  constexpr TX const &get_x() const noexcept { return x_; }
+  constexpr TX const &get_y() const noexcept { return y_; }
 };
 
 constexpr decltype(auto) top_left_t::_fallback(auto const &b) {
