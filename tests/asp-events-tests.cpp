@@ -81,12 +81,6 @@ constexpr interpreted_events to_interpreted_event_enum() {
   return to_interpreted_event_enum(std::type_identity<Evt>());
 }
 
-template <auto Ref, typename Rep>
-constexpr mp_units::quantity_point<Ref, default_point_origin(Ref), Rep>
-make_point(mp_units::quantity<Ref, Rep> const &q) {
-  return mp_units::quantity_point{q};
-}
-
 struct event_counter {
   static widget_id_t next_id() {
     static widget_id_t next{0};
@@ -470,20 +464,6 @@ TEST_F(GestureEventsTests, TouchClick) // NOLINT
   EXPECT_THAT(counter.event_types,
               ElementsAre(interpreted_events::primary_click,
                           interpreted_events::pointer_exit));
-}
-
-constexpr auto make_width_point(float f) {
-	return make_point(f * mp_units::isq::width[point]);
-}
-constexpr auto make_height_point(float f) {
-	return make_point(f * mp_units::isq::height[point]);
-}
-
-constexpr auto operator""_wpf_point(long double f) {
-  return make_point(static_cast<float>(f) * mp_units::isq::width[point]);
-}
-constexpr auto operator""_hpf_point(long double f) {
-  return make_point(static_cast<float>(f) * mp_units::isq::height[point]);
 }
 
 TEST_F(GestureEventsTests, TouchZoom) // NOLINT

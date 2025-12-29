@@ -582,8 +582,8 @@ constexpr auto distance_squared(T1 const &p1, T2 const &p2) {
 
 template <bounding_box TB> class recursive_area_navigator {
   TB relative_area_;
-  using x_t = decltype(remove_unit_ref(call::l_x(relative_area_)));
-  using y_t = decltype(remove_unit_ref(call::t_y(relative_area_)));
+  using x_t = decltype(call::l_x(relative_area_) - call::l_x(relative_area_));
+  using y_t = decltype(call::t_y(relative_area_) - call::t_y(relative_area_));
   x_t offset_x_{};
   y_t offset_y_{};
 

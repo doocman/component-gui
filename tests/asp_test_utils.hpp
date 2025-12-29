@@ -15,6 +15,25 @@ import aspect_gui;
 #define ASP_TEST_ASSERT(EXPR) ::asp::asp_assert(!!(EXPR), #EXPR)
 
 namespace asp::tests {
+
+template <auto Ref, typename Rep>
+constexpr mp_units::quantity_point<Ref, default_point_origin(Ref), Rep>
+make_point(mp_units::quantity<Ref, Rep> const &q) {
+  return mp_units::quantity_point{q};
+}
+constexpr auto make_width_point(float f) {
+  return make_point(f * mp_units::isq::width[point]);
+}
+constexpr auto make_height_point(float f) {
+  return make_point(f * mp_units::isq::height[point]);
+}
+
+constexpr auto operator""_wpf_point(long double f) {
+  return make_point(static_cast<float>(f) * mp_units::isq::width[point]);
+}
+constexpr auto operator""_hpf_point(long double f) {
+  return make_point(static_cast<float>(f) * mp_units::isq::height[point]);
+}
 template <interpreted_events evt>
 constexpr interpreted_event<evt, std::chrono::steady_clock::time_point>
 create_event(auto &&...args) {

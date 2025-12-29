@@ -1,5 +1,10 @@
 
+
+#if ASP_CXX_MODULE
+import aspect_gui;
+#else
 #include <asp/asp.hpp>
+#endif
 
 #include <gmock/gmock.h>
 
@@ -11,33 +16,33 @@ using namespace ::testing;
 
 TEST(RecursiveAreaNavigator, NavigateSimple) // NOLINT
 {
-  auto nav = recursive_area_navigator({{0, 0}, {5, 5}});
-  expect_box_equal(nav.relative_area(), default_rect{{0, 0}, {5, 5}});
-  expect_box_equal(nav.absolute_area(), default_rect{{0, 0}, {5, 5}});
-  auto sub = nav.sub({{0, 0}, {4, 4}});
-  expect_box_equal(sub.relative_area(), default_rect{{0, 0}, {4, 4}});
-  expect_box_equal(sub.absolute_area(), default_rect{{0, 0}, {4, 4}});
+  auto nav = recursive_area_navigator<>({{}, {5, 5}});
+  expect_box_equal(nav.relative_area(), default_rect{{}, {5, 5}});
+  expect_box_equal(nav.absolute_area(), default_rect{{}, {5, 5}});
+  auto sub = nav.sub({{}, {4, 4}});
+  expect_box_equal(sub.relative_area(), default_rect{{}, {4, 4}});
+  expect_box_equal(sub.absolute_area(), default_rect{{}, {4, 4}});
   sub = nav.sub({{1, 1}, {2, 2}});
-  expect_box_equal(sub.relative_area(), default_rect{{0, 0}, {1, 1}});
+  expect_box_equal(sub.relative_area(), default_rect{{}, {1, 1}});
   expect_box_equal(sub.absolute_area(), default_rect{{1, 1}, {2, 2}});
-  sub = nav.sub({{0, 0}, {6, 6}});
-  expect_box_equal(sub.relative_area(), default_rect{{0, 0}, {5, 5}});
-  expect_box_equal(sub.absolute_area(), default_rect{{0, 0}, {5, 5}});
+  sub = nav.sub({{}, {6, 6}});
+  expect_box_equal(sub.relative_area(), default_rect{{}, {5, 5}});
+  expect_box_equal(sub.absolute_area(), default_rect{{}, {5, 5}});
 
   nav = recursive_area_navigator({{1, 1}, {5, 5}});
   sub = nav.sub({{0, 2}, {4, 4}});
   expect_box_equal(sub.relative_area(), default_rect{{1, 0}, {4, 2}});
   expect_box_equal(sub.absolute_area(), default_rect{{1, 2}, {4, 4}});
   auto sub2 = sub.sub({{2, 0}, {4, 3}});
-  expect_box_equal(sub2.relative_area(), default_rect{{0, 0}, {2, 2}});
+  expect_box_equal(sub2.relative_area(), default_rect{{}, {2, 2}});
   expect_box_equal(sub2.absolute_area(), default_rect{{2, 2}, {4, 4}});
 }
 
 TEST(RecursiveAreaNavigator, Nudger) // NOLINT
 {
-  auto nav = recursive_area_navigator({{0, 0}, {5, 5}});
+  auto nav = recursive_area_navigator({{}, {5, 5}});
   auto nudger = nav.relative_to_absolute_nudger();
-  auto xy = nudger(default_coordinate{0, 0});
+  auto xy = nudger(default_coordinate{});
   auto &[x, y] = xy;
   EXPECT_THAT(x, Eq(0));
   EXPECT_THAT(y, Eq(0));
@@ -47,7 +52,7 @@ TEST(RecursiveAreaNavigator, Nudger) // NOLINT
                       },
                       {5, 5}});
   nudger = sub.relative_to_absolute_nudger();
-  xy = nudger(default_coordinate{0, 0});
+  xy = nudger(default_coordinate{});
   EXPECT_THAT(x, Eq(1));
   EXPECT_THAT(y, Eq(1));
 }
@@ -73,7 +78,7 @@ TEST(BasicWidgetBackProp, MergeSub) // NOLINT
 
 TEST(SubRenderer, DrawPixels) // NOLINT
 {
-  auto r = test_renderer({{0, 0}, {6, 7}});
+  auto r = test_renderer({{}, {6, 7}});
   auto sr1 = sub_renderer(r, call::pixel_area(r));
   sr1.draw_pixels(
       call::pixel_area(r), [&](bounding_box auto &&b, auto &&drawer) {
@@ -130,7 +135,7 @@ TEST(SubRenderer, DrawPixels) // NOLINT
 
 TEST(SubRenderer, PartialDrawPixels) // NOLINT
 {
-  auto r = test_renderer({{0, 0}, {4, 4}});
+  auto r = test_renderer({{}, {4, 4}});
   auto s1 = sub_renderer(r, box_from_xyxy<default_pixel_rect>(1, 2, 3, 3));
   s1.draw_pixels(call::pixel_area(r),
                  [&r](bounding_box auto &&b, auto &&drawer) {
@@ -248,7 +253,7 @@ TEST(SubRenderer, PartialDrawPixels) // NOLINT
 
 TEST(SubRender, DrawPixelOutsideCanvas) // NOLINT
 {
-  auto r = test_renderer({{0, 0}, {4, 4}});
+  auto r = test_renderer({{}, {4, 4}});
   auto s_main = sub_renderer(r, call::pixel_area(r));
   auto s1 = s_main.sub(box_from_xyxy<default_pixel_rect>(4, 5, 5, 6));
   s1.draw_pixels(call::pixel_area(r),
