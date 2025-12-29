@@ -58,8 +58,8 @@ concept bounding_box = has_width_height<T> && requires(T const &t) {
 };
 template <typename T>
 concept two_dimensional_coordinate = requires(T const &t) {
-  { call::x_of(t) } -> bp::not_void;
-  { call::y_of(t) } -> bp::not_void;
+  { call::get_x(t) } -> bp::not_void;
+  { call::get_y(t) } -> bp::not_void;
 };
 template <typename T>
 concept has_unit = requires() { std::remove_cvref_t<T>::unit; };
@@ -83,25 +83,25 @@ concept is_quantity_point =
 template <typename T>
 concept two_dimensional_point = two_dimensional_coordinate<T> && has_unit<T> &&
                                 has_rep<T> && requires(T const &t) {
-                                  { call::x_of(t) } -> is_any_quantity_point;
-                                  { call::y_of(t) } -> is_any_quantity_point;
+                                  { call::get_x(t) } -> is_any_quantity_point;
+                                  { call::get_y(t) } -> is_any_quantity_point;
                                 };
 template <typename T>
 concept two_dimensional_delta =
     two_dimensional_coordinate<T> && has_unit<T> && requires(T const &t) {
-      { call::x_of(t) } -> is_any_quantity;
-      { call::y_of(t) } -> is_any_quantity;
+      { call::get_x(t) } -> is_any_quantity;
+      { call::get_y(t) } -> is_any_quantity;
     };
 template <typename T>
 concept is_width_and_height = requires(T const &t) {
-  { call::x_of(t) } -> is_any_quantity;
-  { call::y_of(t) } -> is_any_quantity;
+  { call::get_x(t) } -> is_any_quantity;
+  { call::get_y(t) } -> is_any_quantity;
 };
 template <typename T, auto U>
 concept is_width_and_height_with_unit =
     is_width_and_height<T> && requires(T const &t) {
-      { call::x_of(t) } -> is_quantity<mp_units::isq::width[U]>;
-      { call::y_of(t) } -> is_quantity<mp_units::isq::height[U]>;
+      { call::get_x(t) } -> is_quantity<mp_units::isq::width[U]>;
+      { call::get_y(t) } -> is_quantity<mp_units::isq::height[U]>;
     };
 
 template <has_unit T>
@@ -143,8 +143,8 @@ constexpr QP center_between(QP lhs, QP rhs) {
 }
 template <two_dimensional_coordinate C>
 constexpr C center_between(C lhs, C rhs) {
-  return C(center_between(call::x_of(lhs), call::x_of(rhs)),
-           center_between(call::y_of(lhs), call::y_of(rhs)));
+  return C(center_between(call::get_x(lhs), call::get_x(rhs)),
+           center_between(call::get_y(lhs), call::get_y(rhs)));
 }
 
 template <typename T>
@@ -248,7 +248,7 @@ using sum_square_result_t = sum_result_t<square_result_t<Ts>...>;
 template <typename X, typename Y>
   requires(all_sum_squarable<X, Y>)
 constexpr sum_square_result_t<X, Y> length_square(xy_pair<X, Y> const &v) {
-  return call::x_of(v) * call::x_of(v) + call::y_of(v) * call::y_of(v);
+  return call::get_x(v) * call::get_x(v) + call::get_y(v) * call::get_y(v);
 }
 template <typename X, typename Y>
 constexpr decltype(sqrt(std::declval<sum_square_result_t<X, Y>>()))
@@ -289,24 +289,24 @@ xy_pair(TX &&, TY &&)
 
 /// @brief Retrieves the x-coordinate from a basic pixel coordinate.
 template <typename TX, typename TY>
-constexpr TX const &x_of(xy_pair<TX, TY> const &c) {
+constexpr TX const &get_x(xy_pair<TX, TY> const &c) {
   return c.x;
 }
 
 /// @brief Retrieves the y-coordinate from a basic pixel coordinate.
 template <typename TX, typename TY>
-constexpr TY const &y_of(xy_pair<TX, TY> const &c) {
+constexpr TY const &get_y(xy_pair<TX, TY> const &c) {
   return c.y;
 }
 
 /// @brief Returns a reference to the x-coordinate of a basic pixel coordinate.
-template <typename TX, typename TY> constexpr TX &x_of(xy_pair<TX, TY> &c) {
+template <typename TX, typename TY> constexpr TX &get_x(xy_pair<TX, TY> &c) {
   return c.x;
 }
 
 /// @brief Returns a reference to the y-coordinate of a default pixel
 /// coordinate.
-template <typename TX, typename TY> constexpr TY &y_of(xy_pair<TX, TY> &c) {
+template <typename TX, typename TY> constexpr TY &get_y(xy_pair<TX, TY> &c) {
   return c.y;
 }
 
@@ -351,11 +351,11 @@ template <mp_units::Reference auto R, typename Rep> struct basic_rectangle {
   template <two_dimensional_coordinate Corner = xy_pair<x_t, y_t>>
   constexpr basic_rectangle(Corner top_left, Corner bottom_right)
     requires(requires() {
-              { call::x_of(top_left) } -> std::convertible_to<x_t>;
-              { call::y_of(top_left) } -> std::convertible_to<y_t>;
+              { call::get_x(top_left) } -> std::convertible_to<x_t>;
+              { call::get_y(top_left) } -> std::convertible_to<y_t>;
             })
-      : left_x_(call::x_of(top_left)), right_x_(call::x_of(bottom_right)),
-        top_y_(call::y_of(top_left)), bottom_y_(call::y_of(bottom_right)) {}
+      : left_x_(call::get_x(top_left)), right_x_(call::get_x(bottom_right)),
+        top_y_(call::get_y(top_left)), bottom_y_(call::get_y(bottom_right)) {}
 
   static constexpr basic_rectangle from_xywh(x_t lx, y_t ty, width_t w,
                                              height_t h) {
@@ -430,8 +430,8 @@ constexpr RetType add(P1 const &p1, P2 const &p2) {
                 }) {
     return p1 + p2;
   } else {
-    auto x = call::x_of(p1) + call::x_of(p2).quantity_from_zero();
-    auto y = call::y_of(p1) + call::y_of(p2).quantity_from_zero();
+    auto x = call::get_x(p1) + call::get_x(p2).quantity_from_zero();
+    auto y = call::get_y(p1) + call::get_y(p2).quantity_from_zero();
     return RetType(x, y);
   }
 }
@@ -462,8 +462,8 @@ constexpr RetType sub(P1 const &p1, P2 const &p2) {
                 }) {
     return p1 - p2;
   } else {
-    auto x = call::x_of(p1) - call::x_of(p2);
-    auto y = call::y_of(p1) - call::y_of(p2);
+    auto x = call::get_x(p1) - call::get_x(p2);
+    auto y = call::get_y(p1) - call::get_y(p2);
     return RetType(x, y);
   }
 }
@@ -486,15 +486,15 @@ template <two_dimensional_coordinate P, typename Div>
   requires(
       requires(P p, Div d) { p / d; } ||
       requires(P p, Div d) {
-        call::x_of(p) / d;
-        call::y_of(p) / d;
+        call::get_x(p) / d;
+        call::get_y(p) / d;
       })
 constexpr P divide(P const &p, Div d) {
   if constexpr (requires() { p / d; }) {
     return p / d;
   } else {
-    auto x = call::x_of(p) / d;
-    auto y = call::y_of(p) / d;
+    auto x = call::get_x(p) / d;
+    auto y = call::get_y(p) / d;
     return P(x, y);
   }
 }
@@ -509,15 +509,15 @@ template <two_dimensional_coordinate P, typename F>
   requires(
       requires(P p, F f) { p * f; } ||
       requires(P p, F f) {
-        call::x_of(p) * f;
-        call::y_of(p) * f;
+        call::get_x(p) * f;
+        call::get_y(p) * f;
       })
 constexpr P multiply(P const &p, F const &f) {
   if constexpr (requires() { p * f; }) {
     return p * f;
   } else {
-    auto x = call::x_of(p) * f;
-    auto y = call::y_of(p) * f;
+    auto x = call::get_x(p) * f;
+    auto y = call::get_y(p) * f;
     return P(x, y);
   }
 }
@@ -1080,8 +1080,8 @@ template <bounding_box TB, pixel_coord TC>
 constexpr auto move_tl_to(TB b, TC tl) {
   auto w = call::width(b);
   auto h = call::height(b);
-  call::l_x(b, call::x_of(tl));
-  call::t_y(b, call::y_of(tl));
+  call::l_x(b, call::get_x(tl));
+  call::t_y(b, call::get_y(tl));
   call::width(b, w);
   call::height(b, h);
   return b;
@@ -1198,7 +1198,7 @@ constexpr auto box_intersection(T1 const &b1, T2 const &b2) {
 /// Creates a new pixel_coord that has moved left by val.
 constexpr auto nudge_left(pixel_coord auto c,
                           same_unit_as<decltype(c)> auto &&val) {
-  call::x_of(c, call::x_of(c) - val);
+  call::x_of(c, call::get_x(c) - val);
   return c;
 }
 /// Creates a new pixel_coord that has moved right by val.
@@ -1209,7 +1209,7 @@ constexpr auto nudge_right(pixel_coord auto c,
 /// Creates a new pixel_coord that has moved up by val.
 constexpr auto nudge_up(pixel_coord auto c,
                         same_unit_as<decltype(c)> auto &&val) {
-  call::y_of(c, call::y_of(c) - val);
+  call::y_of(c, call::get_y(c) - val);
   return c;
 }
 /// Creates a new pixel_coord that has moved down by val.
@@ -1265,7 +1265,7 @@ template <pixel_coord T> constexpr auto length_sqr(T const &p) {
     // We currently don't support 'unit to the power of ...'.
     return length_sqr(p.value());
   } else {
-    return square_value(call::x_of(p)) + square_value(call::y_of(p));
+    return square_value(call::get_x(p)) + square_value(call::get_y(p));
   }
 }
 

@@ -15,33 +15,35 @@
 #include "asp/std-backport/tuple.hpp"
 #include "asp/std-backport/utility.hpp"
 
-#define ASP_CALL_CONCEPT(NAME)                                                 \
-  [[maybe_unused]] inline void NAME() {}                                       \
-  template <typename T, typename... Ts>                                        \
-  concept member_##NAME =                                                      \
-      requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {              \
-        (*t).NAME(*args...);                                                   \
-      };                                                                       \
-  template <typename T, typename... Ts>                                        \
-  concept static_##NAME =                                                      \
-      requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {              \
-        std::remove_cvref_t<T>::NAME(*t, *args...);                            \
-      };                                                                       \
-  template <typename T, typename... Ts>                                        \
-  concept extend_##NAME =                                                      \
-      requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {              \
-        extend_api_t<T>::NAME(*t, *args...);                                   \
-      };                                                                       \
-  template <typename T, typename... Ts>                                        \
-  concept free_##NAME =                                                        \
-      requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {              \
-        NAME(*t, *args...);                                                    \
-      };                                                                       \
-  template <typename T, typename... Ts>                                        \
-  concept has_##NAME = member_##NAME<T, Ts...> || static_##NAME<T, Ts...> ||   \
-                       extend_##NAME<T, Ts...> || free_##NAME<T, Ts...>;       \
-  struct _do_##NAME {                                                          \
-                                                                               \
+#define ASP_CALL_CONCEPT(NAME) \
+[[maybe_unused]] inline void NAME() {}                                       \
+template <typename T, typename... Ts>                                        \
+concept member_##NAME =                                                      \
+requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {              \
+(*t).NAME(*args...);                                                   \
+};                                                                       \
+template <typename T, typename... Ts>                                        \
+concept static_##NAME =                                                      \
+requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {              \
+std::remove_cvref_t<T>::NAME(*t, *args...);                            \
+};                                                                       \
+template <typename T, typename... Ts>                                        \
+concept extend_##NAME =                                                      \
+requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {              \
+extend_api_t<T>::NAME(*t, *args...);                                   \
+};                                                                       \
+template <typename T, typename... Ts>                                        \
+concept free_##NAME =                                                        \
+requires(bp::as_forward<T> t, bp::as_forward<Ts>... args) {              \
+NAME(*t, *args...);                                                    \
+};                                                                       \
+template <typename T, typename... Ts>                                        \
+concept has_##NAME = member_##NAME<T, Ts...> || static_##NAME<T, Ts...> ||   \
+extend_##NAME<T, Ts...> || free_##NAME<T, Ts...>;       \
+
+#define ASP_SIMPLE_CALL(NAME)                                                 \
+  ASP_CALL_CONCEPT(NAME)\
+  struct _do_##NAME {                                                       \
     template <typename... Ts, has_##NAME<Ts...> T>                             \
     static constexpr decltype(auto) call(T &&torg, Ts &&...args) {             \
       auto t = bp::as_forward<T>(torg);                                        \
@@ -62,25 +64,30 @@
     }                                                                          \
   };
 #define ASP_CALL_CONCEPT_GETSET(NAME)                                          \
-  ASP_CALL_CONCEPT(NAME)                                                       \
+  ASP_CALL_CONCEPT(set_##NAME)                                                       \
+  ASP_SIMPLE_CALL(get_##NAME) \
   template <typename T, typename TVal>                                         \
-  concept has_##NAME##_assignable = has_assignable_get<T, _do_##NAME, TVal>;   \
+  concept has_get_##NAME##_assignable = has_assignable_get<T, _do_get_##NAME, TVal>;   \
+  template <typename T, typename Val> \
+  concept can_mutate_##NAME = has_set_##NAME<T, Val> || has_get_##NAME##_assignable<T, Val>;\
   struct _do_set_##NAME {                                                      \
     template <typename TObj, typename TVal>                                    \
-      requires(has_##NAME<TObj &&, TVal &&> ||                                 \
-               has_##NAME##_assignable<TObj, TVal>)                            \
-    static constexpr decltype(auto) call(TObj &&o, TVal &&v) {                 \
+      requires(can_mutate_##NAME<TObj, TVal>)                            \
+    static constexpr void call(TObj &&o, TVal &&v) {                 \
       auto of = bp::as_forward<TObj>(o);                                       \
       auto vf = bp::as_forward<TVal>(v);                                       \
-      if constexpr (has_##NAME<TObj, TVal>) {                                  \
-        return _do_##NAME::call(*of, *vf);                                     \
+      if constexpr (member_set_##NAME<TObj, TVal>) {                                  \
+        (*of).set_##NAME(*vf);                                     \
+      } else if constexpr (static_set_##NAME<TObj, TVal>) {                                  \
+        std::remove_cvref_t<TObj>::set_##NAME(*of, *vf);                                     \
+      } else if constexpr (extend_set_##NAME<TObj, TVal>) {                                  \
+        extend_api_t<TObj>::set_##NAME(*of, *vf);                                     \
+      } else if constexpr (free_set_##NAME<TObj, TVal>) {                                  \
+        set_##NAME(*of, *vf);                                     \
       } else {                                                                 \
-        static_assert(has_##NAME##_assignable<TObj, TVal>);                    \
-        return _do_##NAME::call(*of) = *vf;                                    \
+        static_assert(has_get_##NAME##_assignable<TObj, TVal>);                    \
+        _do_get_##NAME::call(*of) = *vf;                                    \
       }                                                                        \
-    }                                                                          \
-    static constexpr decltype(auto) call(has_##NAME auto &&t) {                \
-      return _do_##NAME::call(std::forward<decltype(t)>(t));                   \
     }                                                                          \
     template <typename... Ts>                                                  \
       requires(requires(Ts &&...ts) { call(std::forward<Ts>(ts)...); })        \
@@ -278,55 +285,55 @@ namespace call {
 
 /// @cond
 namespace impl {
-ASP_CALL_CONCEPT(apply_to)
-ASP_CALL_CONCEPT(for_each)
-ASP_CALL_CONCEPT(build)
-ASP_CALL_CONCEPT(size_of)
-ASP_CALL_CONCEPT(pixel_scale)
-ASP_CALL_CONCEPT(draw_pixels)
-ASP_CALL_CONCEPT(draw_alpha)
-ASP_CALL_CONCEPT(fill)
-ASP_CALL_CONCEPT(advance_x)
-ASP_CALL_CONCEPT(advance_y)
-ASP_CALL_CONCEPT(pixel_area)
-ASP_CALL_CONCEPT(point_area)
-ASP_CALL_CONCEPT(full_height)
-ASP_CALL_CONCEPT(ascender)
-ASP_CALL_CONCEPT(base_to_top)
-ASP_CALL_CONCEPT(position)
-ASP_CALL_CONCEPT(move_event)
-ASP_CALL_CONCEPT(time_stamp)
-ASP_CALL_CONCEPT(delta_x)
-ASP_CALL_CONCEPT(delta_y)
-ASP_CALL_CONCEPT(scale_x)
-ASP_CALL_CONCEPT(scale_y)
-ASP_CALL_CONCEPT(zoom_factor)
-ASP_CALL_CONCEPT(raw_key)
-ASP_CALL_CONCEPT(finger_index)
-ASP_CALL_CONCEPT(handle)
-ASP_CALL_CONCEPT(intrinsic_min_size)
-ASP_CALL_CONCEPT(set_state)
-ASP_CALL_CONCEPT(state)
-ASP_CALL_CONCEPT(mouse_button)
-ASP_CALL_CONCEPT(bitmap_top)
-ASP_CALL_CONCEPT(event_type)
-ASP_CALL_CONCEPT(render)
-ASP_CALL_CONCEPT(set_displayed)
-ASP_CALL_CONCEPT(set_text)
-ASP_CALL_CONCEPT(render_text)
-ASP_CALL_CONCEPT(area)
-ASP_CALL_CONCEPT(widget_id)
-ASP_CALL_CONCEPT(glyph)
-ASP_CALL_CONCEPT(text_colour)
-ASP_CALL_CONCEPT(colour)
-ASP_CALL_CONCEPT(execute)
-ASP_CALL_CONCEPT(initial_render_cache)
-ASP_CALL_CONCEPT(executing_renderer)
-ASP_CALL_CONCEPT(to_pixel)
-ASP_CALL_CONCEPT(find_sub)
-ASP_CALL_CONCEPT(find_sub_id)
-ASP_CALL_CONCEPT(find_sub_at_location)
-ASP_CALL_CONCEPT(sub_accessor)
+ASP_SIMPLE_CALL(apply_to)
+ASP_SIMPLE_CALL(for_each)
+ASP_SIMPLE_CALL(build)
+ASP_SIMPLE_CALL(size_of)
+ASP_SIMPLE_CALL(pixel_scale)
+ASP_SIMPLE_CALL(draw_pixels)
+ASP_SIMPLE_CALL(draw_alpha)
+ASP_SIMPLE_CALL(fill)
+ASP_SIMPLE_CALL(advance_x)
+ASP_SIMPLE_CALL(advance_y)
+ASP_SIMPLE_CALL(pixel_area)
+ASP_SIMPLE_CALL(point_area)
+ASP_SIMPLE_CALL(full_height)
+ASP_SIMPLE_CALL(ascender)
+ASP_SIMPLE_CALL(base_to_top)
+ASP_SIMPLE_CALL(position)
+ASP_SIMPLE_CALL(move_event)
+ASP_SIMPLE_CALL(time_stamp)
+ASP_SIMPLE_CALL(delta_x)
+ASP_SIMPLE_CALL(delta_y)
+ASP_SIMPLE_CALL(scale_x)
+ASP_SIMPLE_CALL(scale_y)
+ASP_SIMPLE_CALL(zoom_factor)
+ASP_SIMPLE_CALL(raw_key)
+ASP_SIMPLE_CALL(finger_index)
+ASP_SIMPLE_CALL(handle)
+ASP_SIMPLE_CALL(intrinsic_min_size)
+ASP_SIMPLE_CALL(set_state)
+ASP_SIMPLE_CALL(state)
+ASP_SIMPLE_CALL(mouse_button)
+ASP_SIMPLE_CALL(bitmap_top)
+ASP_SIMPLE_CALL(event_type)
+ASP_SIMPLE_CALL(render)
+ASP_SIMPLE_CALL(set_displayed)
+ASP_SIMPLE_CALL(set_text)
+ASP_SIMPLE_CALL(render_text)
+ASP_SIMPLE_CALL(area)
+ASP_SIMPLE_CALL(widget_id)
+ASP_SIMPLE_CALL(glyph)
+ASP_SIMPLE_CALL(text_colour)
+ASP_SIMPLE_CALL(colour)
+ASP_SIMPLE_CALL(execute)
+ASP_SIMPLE_CALL(initial_render_cache)
+ASP_SIMPLE_CALL(executing_renderer)
+ASP_SIMPLE_CALL(to_pixel)
+ASP_SIMPLE_CALL(find_sub)
+ASP_SIMPLE_CALL(find_sub_id)
+ASP_SIMPLE_CALL(find_sub_at_location)
+ASP_SIMPLE_CALL(sub_accessor)
 
 template <typename T>
 concept is_tuple_like_hack =
@@ -420,26 +427,25 @@ struct do_build {
   }
 };
 
-ASP_CALL_CONCEPT_GETSET(x_of)
-ASP_CALL_CONCEPT_GETSET(y_of)
+ASP_CALL_CONCEPT_GETSET(x)
+ASP_CALL_CONCEPT_GETSET(y)
 ASP_CALL_CONCEPT_GETSET(red)
 ASP_CALL_CONCEPT_GETSET(green)
 ASP_CALL_CONCEPT_GETSET(blue)
 ASP_CALL_CONCEPT_GETSET(alpha)
 
-ASP_CALL_CONCEPT(l_x)
-ASP_CALL_CONCEPT(t_y)
-ASP_CALL_CONCEPT(r_x)
-ASP_CALL_CONCEPT(b_y)
-ASP_CALL_CONCEPT(width)
-ASP_CALL_CONCEPT(height)
-ASP_CALL_CONCEPT(top_left)
-ASP_CALL_CONCEPT(bottom_right)
+ASP_SIMPLE_CALL(l_x)
+ASP_SIMPLE_CALL(t_y)
+ASP_SIMPLE_CALL(r_x)
+ASP_SIMPLE_CALL(b_y)
+ASP_SIMPLE_CALL(width)
+ASP_SIMPLE_CALL(height)
+ASP_SIMPLE_CALL(top_left)
+ASP_SIMPLE_CALL(bottom_right)
 
 template <typename T, typename TVal>
 concept pixel_coord_mut =
-    (has_assignable_get<T, _do_x_of, TVal> || has_x_of<T, TVal>) &&
-    (has_assignable_get<T, _do_y_of, TVal> || has_y_of<T, TVal>);
+   can_mutate_x<T, TVal> && can_mutate_y<T, TVal>;
 template <typename T, typename Ts>
 concept has_mut_top_left = has_top_left<T> && requires(bp::as_forward<T> t) {
   { _do_top_left::call(*t) } -> pixel_coord_mut<Ts>;
@@ -515,20 +521,20 @@ struct bottom_right_t {
 };
 
 constexpr decltype(auto) l_x_t::_fallback(auto const &b) {
-  return _do_x_of::call(_do_top_left::call(*b));
+  return _do_get_x::call(_do_top_left::call(*b));
 }
 constexpr decltype(auto) l_x_t::_fallback_mut(auto &&b, auto &&v) {
-  return _do_set_x_of::call(_do_top_left::call(*b), *v);
+  return _do_set_x::call(_do_top_left::call(*b), *v);
 }
 constexpr decltype(auto) t_y_t::_fallback(auto const &b) {
-  return _do_y_of::call(_do_top_left::call(*b));
+  return _do_get_y::call(_do_top_left::call(*b));
 }
 constexpr decltype(auto) t_y_t::_fallback_mut(auto &&b, auto &&v) {
-  return _do_set_y_of::call(_do_top_left::call(*b), *v);
+  return _do_set_y::call(_do_top_left::call(*b), *v);
 }
 constexpr decltype(auto) r_x_t::_fallback(auto const &b) {
   if constexpr (requires() { _do_bottom_right::call(*b); }) {
-    return _do_x_of::call(_do_bottom_right::call(*b));
+    return _do_get_x::call(_do_bottom_right::call(*b));
   } else {
     return l_x_t::call(*b) + _do_width::call(*b);
   }
@@ -539,14 +545,14 @@ constexpr decltype(auto) r_x_t::_fallback_mut(auto &&b, auto &&v) {
                     _do_bottom_right::call(*b)
                   } -> pixel_coord_mut<decltype(*v)>;
                 }) {
-    return _do_set_x_of::call(_do_bottom_right::call(*b), *v);
+    return _do_set_y::call(_do_bottom_right::call(*b), *v);
   } else {
     return width_t::call(*b, *v - l_x_t{}(*b));
   }
 }
 constexpr decltype(auto) b_y_t::_fallback(auto const &b) {
   if constexpr (requires() { _do_bottom_right::call(*b); }) {
-    return _do_y_of::call(_do_bottom_right::call(*b));
+    return _do_get_y::call(_do_bottom_right::call(*b));
   } else {
     return t_y_t{}(*b) + _do_height::call(*b);
   }
@@ -557,7 +563,7 @@ constexpr decltype(auto) b_y_t::_fallback_mut(auto &&b, auto &&v) {
                     _do_bottom_right::call(*b)
                   } -> pixel_coord_mut<decltype(*v)>;
                 }) {
-    return _do_set_y_of::call(_do_bottom_right::call(*b), *v);
+    return _do_set_y::call(_do_bottom_right::call(*b), *v);
   } else {
     return height_t::call(*b, *v - t_y_t{}(*b));
   }
@@ -568,13 +574,13 @@ constexpr decltype(auto) width_t::_fallback(auto const &b) {
 constexpr decltype(auto) width_t::_fallback_mut(auto &&b, auto &&v) {
   if constexpr (requires() {
                   _do_bottom_right::call(*b);
-                  _do_x_of::call(_do_top_left::call(*b));
-                  _do_set_x_of::call(_do_bottom_right::call(*b),
-                                     _do_x_of::call(_do_top_left::call(*b)) +
+                  _do_get_x::call(_do_top_left::call(*b));
+                  _do_set_x::call(_do_bottom_right::call(*b),
+                                     _do_get_x::call(_do_top_left::call(*b)) +
                                          *v);
                 }) {
-    return _do_set_x_of::call(_do_bottom_right::call(*b),
-                              _do_x_of::call(_do_top_left::call(*b)) + *v);
+    return _do_set_x::call(_do_bottom_right::call(*b),
+                              _do_get_x::call(_do_top_left::call(*b)) + *v);
   } else {
     return r_x_t::call(*b, _do_l_x::call(*b) + *v);
   }
@@ -585,13 +591,13 @@ constexpr decltype(auto) height_t::_fallback(auto const &b) {
 constexpr decltype(auto) height_t::_fallback_mut(auto &&b, auto &&v) {
   if constexpr (requires() {
                   _do_bottom_right::call(*b);
-                  _do_y_of::call(_do_top_left::call(*b));
-                  _do_set_y_of::call(_do_bottom_right::call(*b),
-                                     _do_y_of::call(_do_top_left::call(*b)) +
+                  _do_get_y::call(_do_top_left::call(*b));
+                  _do_set_y::call(_do_bottom_right::call(*b),
+                                     _do_get_y::call(_do_top_left::call(*b)) +
                                          *v);
                 }) {
-    return _do_set_y_of::call(_do_bottom_right::call(*b),
-                              _do_y_of::call(_do_top_left::call(*b)) + *v);
+    return _do_set_y::call(_do_bottom_right::call(*b),
+                              _do_get_y::call(_do_top_left::call(*b)) + *v);
   } else {
     return b_y_t::call(*b, _do_t_y::call(*b) + *v);
   }
@@ -611,14 +617,14 @@ public:
     return {std::forward<T>(val_), TX{}, TY{}};
   }
 
-  constexpr decltype(auto) x_of() const { return TX{}(val_); }
-  constexpr decltype(auto) x_of(auto &&v)
+  constexpr decltype(auto) set_x() const { return TX{}(val_); }
+  constexpr decltype(auto) set_x(auto &&v)
     requires(std::invocable<TX, T &, decltype(v)>)
   {
     return TX{}(val_, std::forward<decltype(v)>(v));
   }
-  constexpr decltype(auto) y_of() const { return TY{}(val_); }
-  constexpr decltype(auto) y_of(auto &&v)
+  constexpr decltype(auto) set_y() const { return TY{}(val_); }
+  constexpr decltype(auto) set_y(auto &&v)
     requires(std::invocable<TY, T &, decltype(v)>)
   {
     return TY{}(val_, std::forward<decltype(v)>(v));
@@ -634,23 +640,23 @@ template <typename TX, typename TY> class fallback_coordinate {
 
 public:
   constexpr fallback_coordinate(TX x, TY y) : x_(x), y_(y) {}
-  constexpr TX const &x_of() const noexcept { return x_; }
-  constexpr TX const &y_of() const noexcept { return y_; }
+  constexpr TX const &set_x() const noexcept { return x_; }
+  constexpr TX const &set_y() const noexcept { return y_; }
 };
 
 constexpr decltype(auto) top_left_t::_fallback(auto const &b) {
   return fallback_coordinate(l_x_t::call(*b), t_y_t::call(*b));
 }
 constexpr decltype(auto) top_left_t::_fallback_mut(auto &&b, auto &&v) {
-  l_x_t::call(*b, _do_x_of::call(*v));
-  t_y_t::call(*b, _do_y_of::call(*v));
+  l_x_t::call(*b, _do_get_x::call(*v));
+  t_y_t::call(*b, _do_get_y::call(*v));
 }
 constexpr decltype(auto) bottom_right_t::_fallback(auto const &b) {
   return fallback_coordinate(r_x_t::call(*b), b_y_t::call(*b));
 }
 constexpr decltype(auto) bottom_right_t::_fallback_mut(auto &&b, auto &&v) {
-  r_x_t::call(*b, _do_x_of::call(*v));
-  b_y_t::call(*b, _do_y_of::call(*v));
+  r_x_t::call(*b, _do_get_x::call(*v));
+  b_y_t::call(*b, _do_get_y::call(*v));
 }
 
 struct do_move_event {
@@ -670,8 +676,8 @@ struct do_move_event {
     } else {
       auto res = *tf;
       decltype(auto) tp = _do_position::call(res);
-      _do_set_x_of::call(tp, _do_x_of::call(p));
-      _do_set_y_of::call(tp, _do_y_of::call(p));
+      _do_set_x::call(tp, _do_get_x::call(p));
+      _do_set_y::call(tp, _do_get_y::call(p));
       return res;
     }
   }
@@ -696,10 +702,10 @@ inline constexpr impl::_do_set_red red;
 inline constexpr impl::_do_set_green green;
 inline constexpr impl::_do_set_blue blue;
 inline constexpr impl::_do_set_alpha alpha;
-inline constexpr impl::_do_set_x_of x_of;
-using x_of_t = decltype(x_of);
-inline constexpr impl::_do_set_y_of y_of;
-using y_of_t = decltype(y_of);
+inline constexpr impl::_do_set_x set_x;
+inline constexpr impl::_do_get_x get_x;
+inline constexpr impl::_do_set_y set_y;
+inline constexpr impl::_do_get_y get_y;
 inline constexpr impl::_do_size_of size_of;
 
 /// Function like object that calls pixel_scale for a type. The function takes
@@ -784,8 +790,8 @@ inline constexpr impl::bottom_right_t bottom_right;
 /// @tparam Ts Argument types to be passed to `T`.
 /// @returns The type resulting from calling `T` with `Ts&&...`, maintaining
 /// const, volatile, and reference qualifiers.
-template <typename T, typename... Ts>
-using call_result_cvref_t = decltype(T{}(std::declval<Ts &&>()...));
+template <auto T, typename... Ts>
+using call_result_cvref_t = decltype(T(std::declval<Ts &&>()...));
 
 /// @brief Determines the result type of calling an instance of type `T` with
 /// arguments `Ts&&...`, with const, volatile, and reference qualifiers removed
@@ -794,7 +800,7 @@ using call_result_cvref_t = decltype(T{}(std::declval<Ts &&>()...));
 /// @tparam Ts Argument types to be passed to `T`.
 /// @returns The type resulting from calling `T` with `Ts&&...`, with qualifiers
 /// removed.
-template <typename T, typename... Ts>
+template <auto T, typename... Ts>
 using call_result_t = std::remove_cvref_t<call_result_cvref_t<T, Ts...>>;
 ASP_EXPORT_END
 } // namespace call
@@ -804,6 +810,6 @@ ASP_EXPORT_END
 #undef ASP_EXTRA_PARAMS
 #undef ASP_EXTRA_ARGS
 #undef ASP_EXTRA_ARGS_COMMA
-#undef ASP_CALL_CONCEPT
+#undef ASP_SIMPLE_CALL
 #undef ASP_CALL_BBOX_MEMBER
 #endif

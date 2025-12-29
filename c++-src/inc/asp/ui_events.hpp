@@ -582,7 +582,7 @@ struct interpreted_event_impl<interpreted_events::pointer_hold, R> {
   using position_t = basic_coordinate<point, R>;
   position_t pos{};
   constexpr explicit interpreted_event_impl(point_coordinate auto const &p)
-      : pos(call::x_of(p), call::y_of(p)) {}
+      : pos(call::get_x(p), call::get_y(p)) {}
 };
 template <typename R>
 struct interpreted_event_impl<interpreted_events::pointer_enter, R> {
@@ -1668,15 +1668,15 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
   static constexpr std::pair<float, float>
   zoom_from_distances(mp_units::quantity<point, float> const &old_distance,
                       two_dimensional_delta_of<point> auto const &new_distances) {
-    auto get_scale = [&](auto xy_of) {
+    auto get_scale = [&](auto xget_y) {
       auto denom = std::max(old_distance, 1e-2f * point);
 	  using std::clamp;
 	  using std::abs;
       return clamp(
-          abs(xy_of(new_distances) / denom).numerical_value_in(mp_units::one),
+          abs(xget_y(new_distances) / denom).numerical_value_in(mp_units::one),
           1.f / 128.f, 128.f);
     };
-    return {get_scale(call::x_of), get_scale(call::y_of)};
+    return {get_scale(call::get_x), get_scale(call::get_y)};
   }
 
   static constexpr std::pair<float, float>
@@ -1707,7 +1707,7 @@ ASP_EXPORT template <is_scalar Rep, typename TimePoint> class touch_translator :
   static constexpr two_dimensional_delta auto
   get_scroll_value(auto const &old_center, auto const &new_center) {
     //auto center_diff = sub(new_center, old_center).value();
-    //return {call::x_of(center_diff), call::y_of(center_diff)};
+    //return {call::get_x(center_diff), call::get_y(center_diff)};
     return (new_center - old_center) / (1 * frame);
   }
   template <point_coordinate P>

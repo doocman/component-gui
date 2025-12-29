@@ -167,12 +167,12 @@ constexpr bool equals_all_of(T const &t, Ts const &...ts) noexcept {
 }
 
 template <typename T, typename... Ts>
-concept same_as_any_of = (std::same_as<T, Ts> || ...);
+concept same_as_anget_y = (std::same_as<T, Ts> || ...);
 
 template <typename T>
 concept is_integer =
     std::integral<T> &&
-    !same_as_any_of<T, bool, char, char8_t, char16_t, char32_t, wchar_t>;
+    !same_as_anget_y<T, bool, char, char8_t, char16_t, char32_t, wchar_t>;
 
 template <typename... Ts>
 concept all_is_integers = (is_integer<Ts> && ...);
@@ -252,10 +252,10 @@ template <typename T, auto R>
 concept two_dimensional_coordinate_with_unit =
     two_dimensional_coordinate<T> && requires(T &&t) {
       {
-        call::x_of(t)
+        call::get_x(t)
       } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::width[R])>;
       {
-        call::y_of(t)
+        call::get_y(t)
       } -> is_quantity_point<ASP_NO_CONST(mp_units::isq::height[R])>;
     };
 template <typename T>
@@ -275,8 +275,8 @@ concept is_rectangle_with_integer_rep = bounding_box<T> && requires(T &&t) {
 template <typename T>
 concept is_two_dimensional_coordinate_with_integer_rep =
     two_dimensional_coordinate<T> && requires(T &&t) {
-      { call::x_of(t) } -> rep_is_integer;
-      { call::y_of(t) } -> rep_is_integer;
+      { call::get_x(t) } -> rep_is_integer;
+      { call::get_y(t) } -> rep_is_integer;
     };
 template <typename T>
 concept is_int_pixel_rectangle =
@@ -546,13 +546,13 @@ constexpr bool valid_box(bounding_box auto const &b) {
 /// Check if coordinate c is inside box b, by the range checking policy
 /// inside_range.
 template <bounding_box TB, two_dimensional_coordinate TC,
-          range_condition<decltype(call::x_of(std::declval<TC>()))> TRC =
+          range_condition<decltype(call::get_x(std::declval<TC>()))> TRC =
               inside_semiopen_range_t>
   requires(same_unit_as<TB, TC>)
 constexpr bool hit_box(TB const &b, TC const &c, TRC &&inside_range = {}) {
   ASP_ASSERT(valid_box(b));
-  return inside_range(call::x_of(c), call::l_x(b), call::r_x(b)) &&
-         inside_range(call::y_of(c), call::t_y(b), call::b_y(b));
+  return inside_range(call::get_x(c), call::l_x(b), call::r_x(b)) &&
+         inside_range(call::get_y(c), call::t_y(b), call::b_y(b));
 }
 
 template <two_dimensional_coordinate T1, same_unit_geometry_as<T1> T2>
@@ -560,14 +560,14 @@ constexpr T1 copy_coordinate(T2 &&p) {
   if constexpr (std::constructible_from<T1, T2>) {
     return T1(std::forward<T2>(p));
   } else {
-    using out_x = call::call_result_t<call::x_of_t, T1>;
-    using in_x = call::call_result_t<call::x_of_t, T2>;
+    using out_x = call::call_result_t<call::get_x, T1>;
+    using in_x = call::call_result_t<call::get_x, T2>;
     if constexpr (std::is_integral_v<out_x> && !std::is_integral_v<in_x>) {
       // We assume x and y are the same types for both T1 and T2.
-      return T1(static_cast<out_x>(call::x_of(p)),
-                static_cast<out_x>(call::y_of(p)));
+      return T1(static_cast<out_x>(call::get_x(p)),
+                static_cast<out_x>(call::get_y(p)));
     } else {
-      return T1(call::x_of(p), call::y_of(p));
+      return T1(call::get_x(p), call::get_y(p));
     }
   }
 }
@@ -576,8 +576,8 @@ constexpr auto square_value(auto &&v) { return v * v; }
 
 template <two_dimensional_coordinate T1, same_unit_geometry_as<T1> T2>
 constexpr auto distance_squared(T1 const &p1, T2 const &p2) {
-  return square_value(call::x_of(p1) - call::x_of(p2)) +
-         square_value(call::y_of(p1) - call::y_of(p2));
+  return square_value(call::get_x(p1) - call::get_x(p2)) +
+         square_value(call::get_y(p1) - call::get_y(p2));
 }
 
 template <bounding_box TB> class recursive_area_navigator {
@@ -612,8 +612,8 @@ public:
             typename /*pixel_coord*/ C>
   // requires(same_unit_as<C, TB>)
   constexpr TB2 relative_area(TB2 b, C const &rel_point) const {
-    return box_from_xywh<TB2>(call::l_x(b) + offset_x_ - call::x_of(rel_point),
-                              call::t_y(b) + offset_y_ - call::y_of(rel_point),
+    return box_from_xywh<TB2>(call::l_x(b) + offset_x_ - call::get_x(rel_point),
+                              call::t_y(b) + offset_y_ - call::get_y(rel_point),
                               call::width(b), call::height(b));
   }
 
@@ -643,8 +643,8 @@ public:
   // requires(same_unit_as<V, TB>)
   constexpr recursive_area_navigator translate(V const &v) const {
     return {
-        nudge_down(nudge_right(relative_area_, call::x_of(v)), call::y_of(v)),
-        offset_x_ - call::x_of(v), offset_y_ - call::y_of(v)};
+        nudge_down(nudge_right(relative_area_, call::get_x(v)), call::get_y(v)),
+        offset_x_ - call::get_x(v), offset_y_ - call::get_y(v)};
   }
 };
 
