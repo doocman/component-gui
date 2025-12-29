@@ -5,6 +5,8 @@ import aspect_gui;
 #include <asp/geometry.hpp>
 #endif
 
+#include <asp_test_utils.hpp>
+
 #include <gmock/gmock.h>
 
 namespace asp::tests {
@@ -15,21 +17,6 @@ static_assert(rectangle_with_unit<basic_rectangle<pixel, int>, pixel>);
 static_assert(
     has_unit_of<mp_units::quantity_point<mp_units::isq::width[pixel]>, pixel>);
 static_assert(rectangle_with_unit<basic_rectangle<point, float>, point>);
-
-#if 0
-static_assert(pixel_or_point_rect<
-              autoconverting_pixelpoint_unit<pixel_size_tag, default_rect>>);
-static_assert(bounding_box<default_rect>);
-static_assert(impl::has_bbox_init<default_rect, int>);
-static_assert(
-    std::is_same_v<
-        pixelpoint_unit<pixel_size_tag, default_rect>,
-        decltype(extend_api_t<pixelpoint_unit<pixel_size_tag, default_rect>>::
-                     from_xyxy(0, 0, 0, 0))>);
-static_assert(
-    mutable_bounding_box<pixelpoint_unit<pixel_size_tag, default_rect>,
-                         pixelpoint_unit<pixel_size_tag, int>>);
-#endif
 
 using namespace ::testing;
 
@@ -674,6 +661,10 @@ template <> struct extend_api<tests::apitests::tlbr_mut> {
             tests::apitests::set_pix_coord br) {
     return {tl, br};
   }
+  static constexpr tests::apitests::tlbr_mut
+  from_xyxy(int x, int y, int x2, int y2) {
+    return {{x, y}, {x2, y2}};
+  }
 };
 
 template <> struct extend_api<tests::apitests::tlbr_static_set> {
@@ -681,6 +672,10 @@ template <> struct extend_api<tests::apitests::tlbr_static_set> {
   from_tlbr(tests::apitests::set_pix_coord tl,
             tests::apitests::mut_pix_coord br) {
     return tests::apitests::tlbr_static_set{tl, br};
+  }
+  static constexpr tests::apitests::tlbr_static_set
+  from_xyxy(int x, int y, int x2, int y2) {
+    return tests::apitests::tlbr_static_set{{x, y}, {x2, y2}};
   }
 };
 } // namespace asp
@@ -796,8 +791,6 @@ TYPED_TEST(BoxApiFixture, AssignAndFetchXwyh) // NOLINT
   EXPECT_THAT(call::get_y(call::bottom_right(this->value)), Eq(8));
 }
 
-#if 0
-
 TYPED_TEST(BoxApiFixture, ConstructXYXY) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
@@ -808,6 +801,8 @@ TYPED_TEST(BoxApiFixture, ConstructXYXY) // NOLINT
   EXPECT_THAT(call::r_x(v), Eq(3));
   EXPECT_THAT(call::b_y(v), Eq(4));
 }
+
+#if 0
 
 TYPED_TEST(BoxApiFixture, ConstructXYWH) // NOLINT
 {
@@ -841,7 +836,7 @@ TYPED_TEST(BoxApiFixture, SplitBoxX) // NOLINT
   call::b_y(box, org_by);
   call::l_x(box, 1);
   call::r_x(box, 5);
-  auto b2 = split_x(&box, 3);
+  auto b2 = split_x(out(box), 3);
   EXPECT_THAT(call::l_x(box), Eq(1));
   EXPECT_THAT(call::r_x(box), Eq(3));
   EXPECT_THAT(call::t_y(box), Eq(org_ty));

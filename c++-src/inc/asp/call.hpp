@@ -135,6 +135,9 @@ extend_##NAME<T, Ts...> || free_##NAME<T, Ts...>;       \
 /// Primary ASP namespace
 namespace asp {
 ASP_EXPORT_BEGIN
+template <typename T>
+concept is_scalar = std::totally_ordered<T> && bp::has_arithmetic_operators<T>;
+
 /// @brief Class used as a placeholder when no special functionality is
 /// expected.
 struct empty_placeholder_t {};
@@ -759,22 +762,34 @@ inline constexpr impl::_do_to_pixel to_pixel;
 /// the desired result. Width and right x are undetermined after using this to
 /// set the value.
 inline constexpr impl::l_x_t l_x;
+inline constexpr impl::l_x_t set_left_x;
+inline constexpr impl::l_x_t get_left_x;
 /// Get or set top y (y = 0). May use the other geometric functions to achieve
 /// the desired result. Height and bottom y are undetermined after using this to
 /// set the value.
 inline constexpr impl::t_y_t t_y;
+inline constexpr impl::t_y_t set_top_y;
+inline constexpr impl::t_y_t get_top_y;
 /// Get or set right x. May use the other geometric functions to achieve the
 /// desired result. This should never change the left x.
 inline constexpr impl::r_x_t r_x;
+inline constexpr impl::r_x_t set_right_x;
+inline constexpr impl::r_x_t get_right_x;
 /// Get or set bottom y. May use the other geometric functions to achieve the
 /// desired result. This should never change the top y.
 inline constexpr impl::b_y_t b_y;
+inline constexpr impl::b_y_t set_bottom_y;
+inline constexpr impl::b_y_t get_bottom_y;
 /// Get or set width. May use the other geometric functions to achieve the
 /// desired result. This should never change the left x.
 inline constexpr impl::width_t width;
+inline constexpr impl::width_t set_width;
+inline constexpr impl::width_t get_width;
 /// Get or set height. May use the other geometric functions to achieve the
 /// desired result. This should never change the top y.
 inline constexpr impl::height_t height;
+inline constexpr impl::height_t set_height;
+inline constexpr impl::height_t get_height;
 /// Get or set left x (x = 0) and top y (y = 0) as a coordinate type. May use
 /// the other geometric functions to achieve the desired result. Right/Bottom xy
 /// and width/height are undetermined after using this to set the value.

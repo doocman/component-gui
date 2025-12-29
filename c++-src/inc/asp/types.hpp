@@ -19,33 +19,6 @@
 
 namespace asp {
 ASP_EXPORT_BEGIN
-template <typename T>
-concept has_arithmetic_plus = requires(T const& v, T& mut) {
-  { v + v} -> std::same_as<T>;
-  { mut += v} -> std::same_as<T&>;
-};
-template <typename T>
-concept has_arithmetic_minus = requires(T const& v, T& mut) {
-  { v - v} -> std::same_as<T>;
-  { mut -= v} -> std::same_as<T&>;
-};
-template <typename T>
-concept has_arithmetic_multiplication = requires(T const& v, T& mut) {
-  { v * v} -> std::same_as<T>;
-  { mut *= v} -> std::same_as<T&>;
-};
-template <typename T>
-concept has_arithmetic_division = requires(T const& v, T& mut) {
-  { v / v} -> std::same_as<T>;
-  { mut /= v} -> std::same_as<T&>;
-};
-
-template <typename T>
-concept has_arithmetic_operators = has_arithmetic_plus<T> && has_arithmetic_minus<T> && has_arithmetic_division<T> && has_arithmetic_multiplication<T>;
-
-template <typename T>
-concept is_scalar = std::totally_ordered<T> && has_arithmetic_operators<T>;
-
 struct widget_id_t {
   std::intptr_t value = bp::lowest_possible;
 

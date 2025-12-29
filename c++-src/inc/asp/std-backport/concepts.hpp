@@ -129,6 +129,31 @@ concept invocable_r =
         std::invoke(std::forward<T>(t), std::forward<Ts>(args)...)
       } -> std::convertible_to<R>;
     };
+
+template <typename T>
+concept has_arithmetic_plus = requires(T const& v, T& mut) {
+  { v + v} -> std::same_as<T>;
+  { mut += v} -> std::same_as<T&>;
+};
+template <typename T>
+concept has_arithmetic_minus = requires(T const& v, T& mut) {
+  { v - v} -> std::same_as<T>;
+  { mut -= v} -> std::same_as<T&>;
+};
+template <typename T>
+concept has_arithmetic_multiplication = requires(T const& v, T& mut) {
+  { v * v} -> std::same_as<T>;
+  { mut *= v} -> std::same_as<T&>;
+};
+template <typename T>
+concept has_arithmetic_division = requires(T const& v, T& mut) {
+  { v / v} -> std::same_as<T>;
+  { mut /= v} -> std::same_as<T&>;
+};
+
+template <typename T>
+concept has_arithmetic_operators = has_arithmetic_plus<T> && has_arithmetic_minus<T> && has_arithmetic_division<T> && has_arithmetic_multiplication<T>;
+
 ASP_EXPORT_END
 } // namespace asp::bp
 

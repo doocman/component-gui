@@ -51,9 +51,7 @@ expect_colour_eq(asp::colour auto const &val, asp::colour auto const &expected,
       << "Called at line " << s.line();
 }
 
-#if 0
 template <bounding_box ToTest, bounding_box ToExpect>
-  requires(!size_tagged<ToTest> && !size_tagged<ToExpect>)
 inline void expect_box_equal(
     ToTest const &to_test, ToExpect const &to_expect,
     std::source_location const &sl = std::source_location::current()) {
@@ -68,13 +66,7 @@ inline void expect_box_equal(
       << "At " << sl.file_name() << ':' << sl.line();
 }
 
-inline void expect_box_equal(
-    pixel_or_point_rect_basic auto const &to_test,
-    pixel_or_point_rect_basic auto const &to_expect,
-    std::source_location const &sl = std::source_location::current()) {
-  return expect_box_equal(to_test.value(), to_expect.value(), sl);
-}
-
+#if 0
 struct test_renderer {
   struct individual_colours_t {
     std::vector<std::uint_least8_t> red, green, blue, alpha;

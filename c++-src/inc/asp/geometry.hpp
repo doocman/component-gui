@@ -13,7 +13,9 @@
 #include <asp/std-backport/concepts.hpp>
 #include <asp/std-backport/limits.hpp>
 #include <asp/std-backport/type_traits.hpp>
+#include <asp/annotate.hpp>
 #include <asp/warnings.hpp>
+#include <asp/compat.hpp>
 
 namespace asp {
 ASP_EXPORT_BEGIN
@@ -106,6 +108,15 @@ concept is_width_and_height_with_unit =
 
 template <has_unit T>
 inline constexpr auto unit_of_type = std::remove_cvref_t<T>::unit;
+
+template <typename T>
+using x_ref_of_t = call::call_result_cvref_t<call::get_x, T>;
+template <typename T>
+using y_ref_of_t = call::call_result_cvref_t<call::get_x, T>;
+template <typename T>
+using x_of_t = call::call_result_t<call::get_x, T>;
+template <typename T>
+using y_of_t = call::call_result_t<call::get_x, T>;
 
 template <typename T, typename U>
 concept same_unit_as =
@@ -224,6 +235,17 @@ template <typename... Ts>
 concept all_summable = requires(Ts &&...ts) { (ts + ...); };
 template <typename Num, typename Den>
 concept dividable_with = requires(Num n, Den d) { n / d; };
+
+template <typename T>
+concept is_geometric = bounding_box<T> || two_dimensional_coordinate<T>;
+
+template <typename T, typename U>
+concept same_geometry_as =
+    is_geometric<T> && is_geometric<U> && bounding_box<T> == bounding_box<U> &&
+    two_dimensional_coordinate<T> == two_dimensional_coordinate<U>;
+
+template <typename T, typename U>
+concept same_unit_geometry_as = same_geometry_as<T, U> && same_unit_as<T, U>;
 
 template <typename... Ts>
   requires all_multipliable<Ts...>
@@ -377,10 +399,27 @@ template <mp_units::Reference auto R, typename Rep> struct basic_rectangle {
   constexpr bool operator==(basic_rectangle const &) const noexcept = default;
 };
 
-using default_point_rect = basic_rectangle<point, float>;
+template <mp_units::QuantityPoint X, mp_units::QuantityPoint Y, mp_units::Quantity W, mp_units::Quantity H>
+requires (
+  bp::all_are_equal(unit_of_type<X>, unit_of_type<Y>, unit_of_type<W>, unit_of_type<H>)
+  && bp::all_are_same_types<representation_of_t<X>, representation_of_t<Y>, representation_of_t<W>, representation_of_t<H>>)
+basic_rectangle(X, Y, W, H) -> basic_rectangle<unit_of_type<X>, representation_of_t<X>>;
 
-ASP_EXPORT_END
-#if 0
+template <mp_units::QuantityPoint X, mp_units::QuantityPoint Y>
+requires (
+  bp::all_are_equal(unit_of_type<X>, unit_of_type<Y>)
+  && bp::all_are_same_types<representation_of_t<X>, representation_of_t<Y>>)
+basic_rectangle(X, Y, X, Y) -> basic_rectangle<unit_of_type<X>, representation_of_t<X>>;
+template <two_dimensional_point P>
+basic_rectangle(P, P) -> basic_rectangle<unit_of_type<P>, representation_of_t<P>>;
+
+template <is_scalar T>
+using point_rect = basic_rectangle<point, T>;
+template <is_scalar T>
+using pixel_rect = basic_rectangle<pixel, T>;
+
+using default_point_rect = point_rect<float>;
+using default_pixel_rect = pixel_rect<float>;
 
 /// @brief Concept for types that represent a size with width and height.
 template <typename T>
@@ -390,9 +429,9 @@ concept size_wh = requires(T const &t) {
 };
 
 /// @brief Basic structure for representing size with width and height.
-template <typename T = int> struct basic_size_wh {
-  T w;
-  T h;
+template <typename W, typename H> struct basic_size_wh : common_aliases_base<W, H> {
+  W width_;
+  H height_;
 
   /// @brief Retrieves the width of the size. Best invoked with call::width()
   static constexpr auto &&width(bp::cvref_type<basic_size_wh> auto &&wh) {
@@ -404,649 +443,16 @@ template <typename T = int> struct basic_size_wh {
   }
 };
 
-/// @brief Adds two coordinate vectors through elementwise addition.
-/// @tparam Ret Specifies the return type. Defaults to `void`, which resolves
-///             to the common type of the two input types unless explicitly
-///             provided.
-/// @tparam P1 The type of the first input coordinate vector.
-/// @tparam P2 The type of the second input coordinate vector.
-/// @tparam RetType The resolved return type, either explicitly provided by
-/// `Ret`
-///                 or deduced as the common type of P1 and P2.
-/// @param p1 The first coordinate vector.
-/// @param p2 The second coordinate vector.
-/// @return The result of adding the two coordinate vectors elementwise.
-///         If both input vectors support operator+, it uses that operator;
-///         otherwise, individual components are summed.
-/// @note The function ensures compatibility with vectors that define an `x_of`
-///       and `y_of` accessor instead of operator+.
-template <typename Ret = void, two_dimensional_coordinate P1, two_dimensional_coordinate P2,
-          two_dimensional_coordinate RetType = typename std::conditional_t<
-              std::is_same_v<void, Ret>, std::common_type<P1, P2>,
-              std::type_identity<Ret>>::type>
-constexpr RetType add(P1 const &p1, P2 const &p2) {
-  if constexpr (requires() {
-                  { p1 + p2 } -> std::convertible_to<RetType>;
-                }) {
-    return p1 + p2;
-  } else {
-    auto x = call::get_x(p1) + call::get_x(p2).quantity_from_zero();
-    auto y = call::get_y(p1) + call::get_y(p2).quantity_from_zero();
-    return RetType(x, y);
-  }
-}
+template <mp_units::Unit auto u, typename Rep>
+using basic_unit_size_wh = basic_size_wh<
+  mp_units::quantity<mp_units::isq::width[u], Rep>,
+  mp_units::quantity<mp_units::isq::height[u], Rep>
+>;
 
-/// @brief Subtracts two coordinate vectors through elementwise addition.
-/// @tparam Ret Specifies the return type. Defaults to `void`, which resolves
-///             to the common type of the two input types unless explicitly
-///             provided.
-/// @tparam P1 The type of the first input coordinate vector.
-/// @tparam P2 The type of the second input coordinate vector.
-/// @tparam RetType The resolved return type, either explicitly provided by
-/// `Ret`
-///                 or deduced as the common type of P1 and P2.
-/// @param p1 The first coordinate vector.
-/// @param p2 The second coordinate vector.
-/// @return The result of adding the two coordinate vectors elementwise.
-///         If both input vectors support operator-, it uses that operator;
-///         otherwise, individual components are summed.
-/// @note The function ensures compatibility with vectors that define an `x_of`
-///       and `y_of` accessor instead of operator+.
-template <typename Ret = void, two_dimensional_coordinate P1, two_dimensional_coordinate P2,
-          two_dimensional_coordinate RetType = typename std::conditional_t<
-              std::is_same_v<void, Ret>, std::common_type<P1, P2>,
-              std::type_identity<Ret>>::type>
-constexpr RetType sub(P1 const &p1, P2 const &p2) {
-  if constexpr (requires() {
-                  { p1 - p2 } -> std::convertible_to<RetType>;
-                }) {
-    return p1 - p2;
-  } else {
-    auto x = call::get_x(p1) - call::get_x(p2);
-    auto y = call::get_y(p1) - call::get_y(p2);
-    return RetType(x, y);
-  }
-}
-
-/// @brief Divides the components of a coordinate vector by a scalar.
-/// @tparam P The type of the input coordinate vector.
-/// @tparam Div The type of the divisor, which must be compatible with the
-/// division operation.
-/// @param p The coordinate vector to be divided.
-/// @param d The scalar divisor.
-/// @return A coordinate vector resulting from dividing each component of `p` by
-/// `d`.
-///         If the vector type supports operator/, it uses that operator;
-///         otherwise, the division is performed component-wise using `x_of` and
-///         `y_of`.
-/// @note The function ensures compatibility with coordinate types that may not
-/// natively
-///       support operator/ by falling back to elementwise division.
-template <two_dimensional_coordinate P, typename Div>
-  requires(
-      requires(P p, Div d) { p / d; } ||
-      requires(P p, Div d) {
-        call::get_x(p) / d;
-        call::get_y(p) / d;
-      })
-constexpr P divide(P const &p, Div d) {
-  if constexpr (requires() { p / d; }) {
-    return p / d;
-  } else {
-    auto x = call::get_x(p) / d;
-    auto y = call::get_y(p) / d;
-    return P(x, y);
-  }
-}
-
-/// @brief Multiplies the components of a vector by a scalar.
-/// @tparam P The type of input vector
-/// @tparam F The type of the factor.
-/// @param p The vector to be multiplied.
-/// @param f The scalar factor.
-/// @return Vector with all elements multiplied with f.
-template <two_dimensional_coordinate P, typename F>
-  requires(
-      requires(P p, F f) { p * f; } ||
-      requires(P p, F f) {
-        call::get_x(p) * f;
-        call::get_y(p) * f;
-      })
-constexpr P multiply(P const &p, F const &f) {
-  if constexpr (requires() { p * f; }) {
-    return p * f;
-  } else {
-    auto x = call::get_x(p) * f;
-    auto y = call::get_y(p) * f;
-    return P(x, y);
-  }
-}
-
-/// @brief Generate a new point right between two other points. All points must
-/// share the same unit.
-/// @tparam Ret Specifies the return type. Defaults to `void`, which resolves
-///             to the common type of the two input types unless explicitly
-///             provided.
-/// @tparam P1 The type of the first input coordinate vector.
-/// @tparam P2 The type of the second input coordinate vector.
-/// @tparam RetType The resolved return type, either explicitly provided by
-/// `Ret`
-///                 or deduced as the common type of P1 and P2.
-/// @param p1 The first coordinate vector.
-/// @param p2 The second coordinate vector.
-/// @return A coordinate vector pointing to the center of the input vectors.
-template <typename Ret = void, two_dimensional_coordinate P1, two_dimensional_coordinate P2,
-          two_dimensional_coordinate RetType = typename std::conditional_t<
-              std::is_same_v<void, Ret>, std::common_type<P1, P2>,
-              std::type_identity<Ret>>::type>
-constexpr RetType center_between(P1 const &p1, P2 const &p2) {
-  //return divide(p1 + sub(p1, p2), 2);
-  return p1 + (p1 - p2) / 2;
-}
-
-template <typename T>
-basic_size_wh(T &&, T &&) -> basic_size_wh<std::remove_cvref_t<T>>;
-
-using default_size_wh = basic_size_wh<int>;
-
-/// @brief Concept for mutable bounding box types.
-template <typename T, typename TFrom>
-concept mutable_bounding_box =
-    requires(bp::as_forward<T> t, bp::as_forward<TFrom> v) {
-      call::l_x(*t, *v);
-      call::t_y(*t, *v);
-      call::r_x(*t, *v);
-      call::b_y(*t, *v);
-      call::width(*t, *v);
-      call::height(*t, *v);
-    };
-
-/// Concept to check that a type is a pointer to a mutable bounding box.
-template <typename T, typename TX>
-concept mut_box_pointer =
-    bp::pointer_type<T> && mutable_bounding_box<bp::dereferenced_t<T>, TX>;
-
-/// Specialised concept, requires that T is a pointer to a mutable box that can
-/// mutate from TVs or, if TVs is a placeholder, from the evaluation of TVs for
-/// all TVs.
-template <typename T, typename... TVs>
-concept mut_box_pair =
-    ((mut_box_pointer<T, TVs> || is_placeholder_v<TVs>) && ...);
-
-/// @cond
-struct pixel_size_tag {};
-struct point_size_tag {};
-
-template <typename T, typename V = int>
-concept pixelpoint_scale = requires(T const &t, V const &v) {
-  { v * t } -> std::convertible_to<std::remove_cvref_t<V>>;
-  { v / t } -> std::convertible_to<std::remove_cvref_t<V>>;
-};
-
-template <typename T, pixelpoint_scale<T> S>
-constexpr auto convert(pixel_size_tag, point_size_tag, T &&in, S &&scaler) {
-  auto res = in / scaler;
-  using in_t = std::remove_cvref_t<T>;
-  if constexpr (std::is_integral_v<in_t> &&
-                !std::is_integral_v<decltype(res)>) {
-    return static_cast<in_t>(std::lround(res));
-  } else {
-    return res;
-  }
-}
-template <typename T, pixelpoint_scale<T> S>
-constexpr auto convert(point_size_tag, pixel_size_tag, T &&in, S &&scaler) {
-  auto res = in * scaler;
-  using in_t = std::remove_cvref_t<T>;
-  if constexpr (std::is_integral_v<in_t> &&
-                !std::is_integral_v<decltype(res)>) {
-    return static_cast<in_t>(std::lround(res));
-  } else {
-    return res;
-  }
-}
-template <bp::empty_type Tag, typename In, pixelpoint_scale<In> Scaler>
-constexpr auto convert(Tag, Tag, In &&in, Scaler const &) {
-  return in;
-}
-
-template <typename T, typename To, typename ValT = int, typename Scaler = int>
-concept can_convert_tag =
-    bp::empty_type<T> && bp::empty_type<To> &&
-    requires(T t, To to, ValT &&v, Scaler const &s) { convert(t, to, v, s); };
-template <typename T, typename To, typename ValT = int, typename Scaler = int>
-concept bidirection_convert_tag = can_convert_tag<T, To, ValT, Scaler> &&
-                                  can_convert_tag<To, T, ValT, Scaler>;
-
-template <typename T, typename ValT = int, typename Scaler = int>
-concept pixelpoint_tag =
-    bidirection_convert_tag<T, pixel_size_tag, ValT, Scaler> &&
-    bidirection_convert_tag<T, point_size_tag, ValT, Scaler>;
-
-template <pixelpoint_tag From, pixelpoint_tag To, pixelpoint_scale<int> S>
-struct pixelpoint_converter {
-  S &&s_;
-  constexpr auto operator()(auto &&in) const {
-    return convert(From{}, To{}, in, s_);
-  }
-};
-
-template <typename T>
-concept has_tag_t = requires() { typename std::remove_cvref_t<T>::tag_t; };
-
-template <typename T> using tag_t_of = typename std::remove_cvref_t<T>::tag_t;
-
-template <typename T>
-concept size_tagged = has_tag_t<T> && pixelpoint_tag<tag_t_of<T>>;
-template <typename T, typename Tag>
-concept size_tagged_with = size_tagged<T> && std::is_same_v<Tag, tag_t_of<T>>;
-
-template <typename T>
-concept scalar = std::is_integral_v<T> || std::is_floating_point_v<T>;
-
-
-template <typename T>
-concept is_pixel_sized =
-    size_tagged<T> && std::is_same_v<tag_t_of<T>, pixel_size_tag>;
-template <typename T>
-concept is_point_sized =
-    size_tagged<T> && std::is_same_v<tag_t_of<T>, point_size_tag>;
-
-template <typename T>
-concept pixel_rect = bounding_box<T> && is_pixel_sized<T>;
-template <typename T>
-concept point_rect = bounding_box<T> && is_point_sized<T>;
-template <typename T>
-concept pixel_or_point_rect_basic = pixel_rect<T> || point_rect<T>;
-template <typename T>
-concept pixel_or_point_rect = pixel_or_point_rect_basic<T> || requires(T &&t) {
-  { t.convert() } -> pixel_or_point_rect_basic;
-};
-
-template <typename T>
-concept pixel_size_wh = size_wh<T> && is_pixel_sized<T>;
-template <typename T>
-concept point_size_wh = size_wh<T> && is_point_sized<T>;
-template <typename T>
-concept pixel_or_point_size_wh_basic = pixel_size_wh<T> || point_size_wh<T>;
-template <typename T>
-concept pixel_or_point_size_wh =
-    pixel_or_point_size_wh_basic<T> || requires(T &&t) {
-      { t.convert() } -> pixel_or_point_size_wh_basic;
-    };
-
-template <pixelpoint_tag SizeTag, typename T> class pixelpoint_unit {
-  using this_t = pixelpoint_unit;
-  T value_{};
-
-  template <typename U, typename C = std::identity>
-  static constexpr T conv_value(U &&v, C &&converter = {}) {
-    if constexpr (bounding_box<T>) {
-      return map_box<T>(v, converter);
-    } else if constexpr (pixel_coord<T>) {
-      return map_coord<T>(v, converter);
-    } else {
-      static_assert(std::is_integral_v<T> || std::is_floating_point_v<T>);
-      return converter(v);
-    }
-  }
-
-  template <pixelpoint_tag ST2, typename U, pixelpoint_scale S>
-  static constexpr T conv_t(pixelpoint_unit<ST2, U> const &v, S const &scaler) {
-    if constexpr (std::is_same_v<ST2, SizeTag> &&
-                  std::constructible_from<T, U>) {
-      return T(v.value());
-    } else {
-      auto conv = pixelpoint_converter<ST2, SizeTag, S const &>(scaler);
-      return conv_value(v.value(), conv);
-    }
-  }
-
-public:
-  using value_type = T;
-  constexpr T &value() noexcept { return value_; }
-  constexpr T const &value() const noexcept { return value_; }
-
-  constexpr pixelpoint_unit<SizeTag, std::remove_cvref_t<T>>
-  remove_ref() const {
-    return {SizeTag{}, value()};
-  }
-
-  constexpr pixelpoint_unit() noexcept(
-      std::is_nothrow_default_constructible_v<T>) = default;
-  constexpr pixelpoint_unit(pixelpoint_unit const &) noexcept(
-      std::is_nothrow_copy_constructible_v<T>) = default;
-  constexpr pixelpoint_unit &operator=(pixelpoint_unit const &) noexcept(
-      std::is_nothrow_copy_assignable_v<T>) = default;
-  constexpr pixelpoint_unit(pixelpoint_unit &&) noexcept(
-      std::is_nothrow_move_constructible_v<T>) = default;
-  constexpr pixelpoint_unit &operator=(pixelpoint_unit &&) noexcept(
-      std::is_nothrow_move_assignable_v<T>) = default;
-
-  template <typename ST2, typename T2, pixelpoint_scale S>
-    requires(same_geometry_as<T, T2> || (scalar<T> && scalar<T2>))
-  constexpr pixelpoint_unit(pixelpoint_unit<ST2, T2> const &v, S const &s)
-      : value_(conv_t(v, s)) {}
-
-  template <typename T2, typename... Ts>
-    requires(std::constructible_from<T, T2, Ts...>)
-  constexpr explicit(!std::convertible_to<T2, T> && sizeof...(Ts) == 0)
-      pixelpoint_unit(pixelpoint_unit<SizeTag, T2> const &v,
-                      pixelpoint_unit<SizeTag, Ts> const &...vs)
-      : value_(v.value(), vs.value()...) {}
-
-  template <typename T2 = T, typename... Ts>
-    requires(std::constructible_from<T, T2, Ts...>)
-  constexpr explicit(sizeof...(Ts) == 0) pixelpoint_unit(T2 &&v, Ts &&...args)
-      : value_(std::forward<T2>(v), std::forward<Ts>(args)...) {}
-
-  template <typename T2>
-    requires(!std::constructible_from<T, T2> && same_unit_geometry_as<T2, T>)
-  constexpr explicit pixelpoint_unit(T2 &&v) : value_(conv_value(v)) {}
-
-  template <typename T2 = T>
-    requires(std::constructible_from<T, T2>)
-  constexpr pixelpoint_unit(SizeTag, T2 &&v) : value_(std::forward<T2>(v)) {}
-
-  static constexpr decltype(auto) x_of(bp::cvref_type<T> auto &&v,
-                                       auto &&...args)
-    requires(requires() { call::x_of(v, args...); })
-  {}
-
-#define ASP_FWD_GETSET_(X)                                                     \
-  template <bp::cvref_type<this_t> U,                                          \
-            typename OpRes = decltype(call::X(std::declval<U &&>().value())),  \
-            typename OpResClean = std::remove_cvref_t<OpRes>>                  \
-    requires(!std::is_void_v<OpRes> &&                                         \
-             std::constructible_from<OpResClean, OpRes>)                       \
-  static constexpr pixelpoint_unit<SizeTag, OpResClean> X(U &&u) {             \
-    return {SizeTag{}, call::X(std::forward<U>(u).value())};                   \
-  }                                                                            \
-  template <bp::cvref_type<this_t> U, size_tagged_with<SizeTag> Arg>           \
-    requires(requires(bp::as_forward<U> u, bp::as_forward<Arg> a) {            \
-      call::X((*u).value(), (*a).value());                                     \
-    })                                                                         \
-  static constexpr void X(U &&u, Arg &&a) {                                    \
-    call::X(std::forward<U>(u).value(), std::forward<Arg>(a).value());         \
-  }
-  ASP_FWD_GETSET_(x_of)
-  ASP_FWD_GETSET_(y_of)
-  ASP_FWD_GETSET_(r_x)
-  ASP_FWD_GETSET_(l_x)
-  ASP_FWD_GETSET_(t_y)
-  ASP_FWD_GETSET_(b_y)
-  ASP_FWD_GETSET_(width)
-  ASP_FWD_GETSET_(height)
-  ASP_FWD_GETSET_(top_left)
-  ASP_FWD_GETSET_(bottom_right)
-
-  using tag_t = SizeTag;
-#undef ASP_FWD_GETSET_
-
-  constexpr pixelpoint_unit &operator++()
-    requires(bp::value_incrementable<T>)
-  {
-    ++value();
-    return *this;
-  }
-  constexpr pixelpoint_unit &operator--()
-    requires(bp::value_decrementable<T>)
-  {
-    --value();
-    return *this;
-  }
-  constexpr pixelpoint_unit operator++(int)
-    requires(bp::value_incrementable<T> && std::is_copy_constructible_v<T>)
-  {
-    auto r = *this;
-    ++value();
-    return r;
-  }
-  constexpr pixelpoint_unit operator--(int)
-    requires(bp::value_decrementable<T> && std::is_copy_constructible_v<T>)
-  {
-    auto r = *this;
-    --value();
-    return r;
-  }
-};
-
-template <pixelpoint_tag Tag, typename OldTag, typename T, pixelpoint_scale S>
-// requires(!std::is_reference_v<T>)
-constexpr pixelpoint_unit<Tag, T>
-convert_pixelpoint(pixelpoint_unit<OldTag, T> const &t, S &&s) {
-  static_assert(!std::is_reference_v<T>);
-  return {t, std::forward<S>(s)};
-}
-
-template <pixelpoint_tag Tag, size_tagged T>
-using convert_pixelpoint_t =
-    decltype(convert_pixelpoint<Tag>(std::declval<T>(), int{}));
-
-template <pixelpoint_tag Tag, typename T>
-  requires(!size_tagged<T> || size_tagged_with<T, Tag>)
-constexpr auto _wrap_with_pixelpoint(T &&t) {
-  if constexpr (size_tagged<T>) {
-    return std::forward<T>(t);
-  } else {
-    return pixelpoint_unit(Tag{}, std::forward<T>(t));
-  }
-}
-} // namespace asp
-namespace std {
-template <typename ST, typename T, typename U>
-  requires(requires() { typename common_type<T, U>::type; })
-struct common_type<::asp::pixelpoint_unit<ST, T>,
-                   ::asp::pixelpoint_unit<ST, U>> {
-  using type = ::asp::pixelpoint_unit<ST, common_type_t<T, U>>;
-};
-template <typename ST, typename T, typename U>
-  requires(!::asp::bp::is_low_high_placeholder<U> &&
-           requires() { typename common_type<T, U>::type; })
-struct common_type<::asp::pixelpoint_unit<ST, T>, U> {
-  using type = ::asp::pixelpoint_unit<ST, common_type_t<T, U>>;
-};
-template <typename ST, typename T, typename U>
-  requires(!::asp::bp::is_low_high_placeholder<U> &&
-           requires() { typename common_type<T, U>::type; })
-struct common_type<U, ::asp::pixelpoint_unit<ST, T>> {
-  using type = ::asp::pixelpoint_unit<ST, common_type_t<T, U>>;
-};
-template <typename ST, typename T>
-  requires(numeric_limits<T>::is_specialized)
-struct numeric_limits<::asp::pixelpoint_unit<ST, T>>
-    : private numeric_limits<T> {
-  using _base = numeric_limits<T>;
-  using _this_t = ::asp::pixelpoint_unit<ST, T>;
-  static constexpr bool is_specialized = true;
-  static constexpr _this_t min() { return {ST{}, numeric_limits<T>::min()}; }
-  static constexpr _this_t lowest() { return {ST{}, numeric_limits<T>::min()}; }
-  static constexpr _this_t max() { return {ST{}, numeric_limits<T>::max()}; }
-  static constexpr _this_t epsilon() { return {ST{}, _base::epsilon()}; }
-  static constexpr _this_t round_error() {
-    return {ST{}, _base::round_error()};
-  }
-  static constexpr _this_t infinity() { return {ST{}, _base::infinity()}; }
-  static constexpr _this_t quiet_NaN() { return {ST{}, _base::quiet_NaN()}; }
-  static constexpr _this_t signaling_NaN() {
-    return {ST{}, _base::signaling_NaN()};
-  }
-  static constexpr _this_t denorm_min() { return {ST{}, _base::denorm_min()}; }
-  using _base::digits;
-  using _base::digits10;
-  using _base::has_denorm;
-  using _base::has_denorm_loss;
-  using _base::has_infinity;
-  using _base::has_quiet_NaN;
-  using _base::has_signaling_NaN;
-  using _base::is_bounded;
-  using _base::is_exact;
-  using _base::is_iec559;
-  using _base::is_integer;
-  using _base::is_modulo;
-  using _base::is_signed;
-  using _base::max_exponent;
-  using _base::max_exponent10;
-  using _base::min_exponent;
-  using _base::min_exponent10;
-  using _base::round_style;
-  using _base::tinyness_before;
-  using _base::traps;
-};
-template <typename St, typename T>
-struct iterator_traits<::asp::pixelpoint_unit<St, T>> {
-  using difference_type = T;
-};
-} // namespace std
-namespace asp {
-
-template <typename SizeTag, typename T>
-struct extend_api<pixelpoint_unit<SizeTag, T>> {
-  using this_t = pixelpoint_unit<SizeTag, T>;
-
-#define ASP_BOX_INIT_FWD_(X)                                                   \
-  template <typename... Ts,                                                    \
-            typename TXY =                                                     \
-                std::common_type_t<decltype(_wrap_with_pixelpoint<SizeTag>(    \
-                    std::declval<Ts>()))...>>                                  \
-    requires(impl::has_bbox_init<T, typename TXY::value_type> ||               \
-             impl::has_bbox_init<extend_api_t<T>, typename TXY::value_type>)   \
-  static constexpr auto from_##X(Ts &&...args)                                 \
-      -> pixelpoint_unit<SizeTag,                                              \
-                         std::remove_cvref_t<decltype(box_from_##X<T>(         \
-                             TXY(std::forward<Ts>(args)).value()...))>> {      \
-    return {SizeTag{},                                                         \
-            box_from_##X<T, typename TXY::value_type>(                         \
-                _wrap_with_pixelpoint<SizeTag>(std::forward<Ts>(args))         \
-                    .value()...)};                                             \
-  }
-
-  ASP_BOX_INIT_FWD_(xyxy)
-  ASP_BOX_INIT_FWD_(xywh)
-  ASP_BOX_INIT_FWD_(tlbr)
-#undef ASP_BOX_INIT_FWD_
-};
-
-template <typename SizeTag, typename T, typename U>
-  requires(bp::weakly_comparable_with<T const &, U const &>)
-constexpr bool operator==(pixelpoint_unit<SizeTag, T> const &l,
-                          pixelpoint_unit<SizeTag, U> const &r) noexcept {
-  return l.value() == r.value();
-}
-template <typename SizeTag, typename T, typename U>
-  requires(bp::weakly_totally_ordered_with<T, U>)
-constexpr auto operator<=>(pixelpoint_unit<SizeTag, T> const &l,
-                           pixelpoint_unit<SizeTag, U> const &r) noexcept {
-  return l.value() <=> r.value();
-}
-
-template <typename SizeTag, typename T, typename U,
-          typename R = decltype(std::declval<T const &>() +
-                                std::declval<U const &>())>
-constexpr pixelpoint_unit<SizeTag, R>
-operator+(pixelpoint_unit<SizeTag, T> const &l,
-          pixelpoint_unit<SizeTag, U> const &r) {
-  return pixelpoint_unit<SizeTag, R>(l.value() + r.value());
-}
-template <typename SizeTag, typename T, typename U>
-  requires(requires(T &t, U const &r) { t += r; })
-constexpr pixelpoint_unit<SizeTag, T> &
-operator+=(pixelpoint_unit<SizeTag, T> &l,
-           pixelpoint_unit<SizeTag, U> const &r) {
-  l.value() += r.value();
-  return l;
-}
-
-template <typename SizeTag, typename T, typename U,
-          typename R = decltype(std::declval<T const &>() -
-                                std::declval<U const &>())>
-constexpr pixelpoint_unit<SizeTag, R>
-operator-(pixelpoint_unit<SizeTag, T> const &l,
-          pixelpoint_unit<SizeTag, U> const &r) {
-  return pixelpoint_unit<SizeTag, R>(l.value() - r.value());
-}
-template <typename SizeTag, typename T, typename U>
-  requires(requires(T &t, U const &r) { t -= r; })
-constexpr pixelpoint_unit<SizeTag, T> &
-operator-=(pixelpoint_unit<SizeTag, T> &l,
-           pixelpoint_unit<SizeTag, U> const &r) {
-  l.value() -= r.value();
-  return l;
-}
-
-template <typename SizeTag, typename T, typename U,
-          typename R = decltype(std::declval<T const &>() *
-                                std::declval<U const &>())>
-constexpr pixelpoint_unit<SizeTag, R>
-operator*(pixelpoint_unit<SizeTag, T> const &l, U const &r) {
-  return pixelpoint_unit<SizeTag, R>(l.value() * r);
-}
-template <typename SizeTag, typename T, typename U,
-          typename R = decltype(std::declval<U const &>() *
-                                std::declval<T const &>())>
-constexpr pixelpoint_unit<SizeTag, R>
-operator*(U const &l, pixelpoint_unit<SizeTag, T> const &r) {
-  return pixelpoint_unit<SizeTag, R>(l * r.value());
-}
-template <typename SizeTag, typename T, typename U,
-          typename R = decltype(std::declval<T const &>() /
-                                std::declval<U const &>())>
-constexpr pixelpoint_unit<SizeTag, R>
-operator/(pixelpoint_unit<SizeTag, T> const &l, U const &r) {
-  return pixelpoint_unit<SizeTag, R>(l.value() / r);
-}
-template <typename ST, typename T>
-  requires(requires(T const &t) {
-    { -t } -> bp::not_void;
-  })
-constexpr auto operator-(pixelpoint_unit<ST, T> const &o) -> pixelpoint_unit<
-    ST, std::remove_cvref_t<decltype(-std::declval<T const &>())>> {
-  return {ST{}, -o.value()};
-}
-template <typename ST, typename T>
-  requires(requires(T const &t) {
-    { +t } -> bp::not_void;
-  })
-constexpr auto operator+(pixelpoint_unit<ST, T> const &o) -> pixelpoint_unit<
-    ST, std::remove_cvref_t<decltype(-std::declval<T const &>())>> {
-  return {ST{}, -o.value()};
-}
-
-template <typename SizeTag, typename T>
-pixelpoint_unit(SizeTag, T &&)
-    -> pixelpoint_unit<SizeTag, std::remove_cvref_t<T>>;
-
-template <typename T> using pixel_unit_t = pixelpoint_unit<pixel_size_tag, T>;
-template <typename T> using point_unit_t = pixelpoint_unit<point_size_tag, T>;
-
-template <typename T, typename U = std::unwrap_ref_decay_t<T>>
-constexpr pixel_unit_t<U> pixel_unit(T &&in) {
-  return pixel_unit_t<U>(std::forward<T>(in));
-}
-template <typename T, typename U = std::unwrap_ref_decay_t<T>>
-constexpr point_unit_t<U> point_unit(T &&in) {
-  return point_unit_t<U>(std::forward<T>(in));
-}
-
-template <typename T> constexpr auto strip_unit(T const &t) {
-  if constexpr(std::integral<T> || std::floating_point<T>) {
-    return t;
-  }else if constexpr (size_tagged<T>) {
-    return t.value();
-  } else if constexpr (mp_units::Quantity<T>) {
-    return t.numerical_value_in(T::unit);
-  } else if constexpr (mp_units::QuantityPoint<T>) {
-    return t.quantity_from_zero().numerical_value_in(T::unit);
-  } else {
-    static_assert(std::integral<T>);
-  }
-}
-
-/// @brief Concept for readable position declared in point units.
-template <typename T>
-concept has_point_position = requires(bp::as_forward<T> t) {
-  { call::position(*t) } -> point_coordinate;
-};
+template <typename Rep>
+using point_size_wh = basic_unit_size_wh<point, Rep>;
+template <typename Rep>
+using pixel_size_wh = basic_unit_size_wh<pixel, Rep>;
 
 /// Generates a lazy view of all (integer) pointer between left and right x of
 /// b.
@@ -1059,6 +465,205 @@ constexpr auto x_view(bounding_box auto &&b) {
 constexpr auto y_view(bounding_box auto &&b) {
   return std::views::iota(call::t_y(b), call::b_y(b));
 }
+
+ASP_EXPORT_END
+
+namespace impl {
+template <typename T, typename... Args>
+concept has_from_xyxy = requires(bp::as_forward<Args>... vs) {
+  { std::remove_cvref_t<T>::from_xyxy(*vs...) } -> bounding_box;
+};
+template <typename T, typename... Args>
+concept has_from_xywh = requires(bp::as_forward<Args>... vs) {
+  { std::remove_cvref_t<T>::from_xywh(*vs...) } -> bounding_box;
+};
+template <typename T, typename... Args>
+concept has_bbox_init = has_from_xyxy<T, Args...> || has_from_xywh<T, Args...>;
+
+struct do_from_xyxy {
+  template <typename X, typename Y, has_bbox_init<X, Y, X, Y> T>
+  constexpr bounding_box auto operator()(std::type_identity<T> const &, X xl,
+                                         Y yt, X xr, Y yb) const {
+    using raw_t = std::remove_cvref_t<T>;
+    if constexpr (has_from_xyxy<T, X, Y, X, Y>) {
+      return raw_t::from_xyxy(std::move(xl), std::move(yt), std::move(xr),
+                              std::move(yb));
+    } else if constexpr (has_from_xywh<T, X, Y, X, Y>) {
+      auto w = xr - xl;
+      auto h = yb - yt;
+      return raw_t::from_xywh(std::move(xl), std::move(yt), w, h);
+    }
+  }
+};
+struct do_from_xywh {
+  template <typename X, typename Y, typename W, typename H,
+            has_bbox_init<X, Y, W, H> T>
+  constexpr bounding_box auto operator()(std::type_identity<T> const &ti, X x,
+                                         Y y, W w, H h) const {
+    if constexpr (has_from_xywh<T, X, Y, W, H>) {
+      return T::from_xywh(x, y, w, h);
+    } else {
+      return do_from_xyxy{}(ti, x, y, x + w, y + h);
+    }
+  }
+};
+
+template <typename TV1, typename TV2, typename /*mut_box_pair<TV1, TV2>*/ T,
+          typename TTL, typename TBR>
+constexpr void set_xx_or_yy(T b, TV1 tl, TV2 br, TTL getset1, TBR getset2) {
+  if constexpr (is_placeholder_v<TV1>) {
+    impl::set_xx_or_yy(b, tl(getset1, *b), br, getset1, getset2);
+  } else if constexpr (is_placeholder_v<TV2>) {
+    impl::set_xx_or_yy(b, tl, br(getset2, *b), getset1, getset2);
+  } else {
+    getset1(*b, tl);
+    getset2(*b, br);
+  }
+}
+
+}; // namespace impl
+/// @endcond
+
+ASP_EXPORT_BEGIN
+
+/// Creates a box (presumably of type T) from two XY coordinates.
+template <typename T, typename X, typename Y>
+  requires(impl::has_bbox_init<T, X, Y, X, Y> ||
+           impl::has_bbox_init<extend_api_t<T>, X, Y, X, Y>)
+constexpr auto box_from_xyxy(X xl, Y yt, X xr, Y yb,
+                             std::type_identity<T> = {}) {
+  if constexpr (impl::has_bbox_init<T, X, Y, X, Y>) {
+    return impl::do_from_xyxy{}(std::type_identity<T>{}, xl, yt, xr, yb);
+  } else {
+    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{}, xl, yt,
+                                 xr, yb);
+  }
+}
+
+/// Creates a box (presumably of type T) from a top-left coordinate + width and
+/// height.
+template <typename T, typename X, typename Y, typename W, typename H>
+  requires(impl::has_bbox_init<T, X, Y, W, H> ||
+           impl::has_bbox_init<extend_api_t<T>, X, Y, W, H>)
+constexpr auto box_from_xywh(X x, Y y, W w, H h, std::type_identity<T> = {}) {
+  if constexpr (impl::has_bbox_init<T, X, Y, W, H>) {
+    return impl::do_from_xywh{}(std::type_identity<T>{}, x, y, w, h);
+  } else {
+    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w,
+                                h);
+  }
+}
+
+/// Copies a box of type T2 into a box of type T.
+template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
+  if constexpr (bp::cvref_type<T2, T>) {
+    return std::forward<T2>(b);
+  } else if constexpr (std::constructible_from<T, T2 &&>) {
+    return T(std::forward<T2>(b));
+  } else if constexpr (impl::has_from_xywh<T, decltype(call::l_x(b)),
+                                           decltype(call::t_y(b)),
+                                           decltype(call::width(b)),
+                                           decltype(call::height(b))>) {
+    return box_from_xywh<T>(call::l_x(b), call::t_y(b), call::width(b),
+                            call::height(b));
+  } else {
+    return box_from_xyxy<T>(call::l_x(b), call::t_y(b), call::r_x(b),
+                            call::b_y(b));
+  }
+}
+
+/// Range checker that models the open range min < c < max.
+inline constexpr struct inside_open_range_t {
+  ASP_STATIC_CALL constexpr bool operator()(auto &&c, auto &&min, auto &&max) ASP_STATIC_CALL_POST {
+    return (min < c) && (c < max);
+  }
+} inside_open_range;
+/// Range checker that models the closed range min <= c <= max.
+inline constexpr struct inside_closed_range_t {
+  ASP_STATIC_CALL constexpr bool operator()(auto &&c, auto &&min, auto &&max) ASP_STATIC_CALL_POST { return (min <= c) && (c <= max); }
+} inside_closed_range;
+
+/// Range checker that models the closed-open range min <= c < max.
+inline constexpr struct inside_semiopen_range_t {
+  ASP_STATIC_CALL constexpr bool operator()(auto &&c, auto &&min, auto &&max) ASP_STATIC_CALL_POST { return (min <= c) && (c < max); }
+} inside_semiopen_range;
+
+/// Returns true if width and height are non-negative.
+constexpr bool valid_box(bounding_box auto const &b) {
+  return (call::width(b) >= decltype(call::width(b)){}) &&
+         (call::height(b) >= decltype(call::height(b)){});
+}
+
+/// @brief Concept to check if a type T meets the range condition for values of
+/// type TX. The range_condition should from a test value and min/max values
+/// determine if the test-value is inside the range of min max. Implementations
+/// are e.g. open-range, closed-range and semi-open (open-closed).
+template <typename T, typename TX>
+concept range_condition = requires(T t, TX v) {
+  { t(v, v, v) } -> std::convertible_to<bool>;
+};
+
+/// Check if coordinate c is inside box b, by the range checking policy
+/// inside_range.
+template <bounding_box TB, two_dimensional_coordinate TC,
+          range_condition<decltype(call::get_x(std::declval<TC>()))> TRC =
+              inside_semiopen_range_t>
+  requires(same_unit_as<TB, TC>)
+constexpr bool hit_box(TB const &b, TC const &c, TRC &&inside_range = {}) {
+  ASP_ASSERT(valid_box(b));
+  return inside_range(call::get_x(c), call::l_x(b), call::r_x(b)) &&
+         inside_range(call::get_y(c), call::t_y(b), call::b_y(b));
+}
+
+template <two_dimensional_coordinate T1, same_unit_geometry_as<T1> T2>
+constexpr T1 copy_coordinate(T2 &&p) {
+  if constexpr (std::constructible_from<T1, T2>) {
+    return T1(std::forward<T2>(p));
+  } else {
+    using out_x = call::call_result_t<call::get_x, T1>;
+    using in_x = call::call_result_t<call::get_x, T2>;
+    if constexpr (std::is_integral_v<out_x> && !std::is_integral_v<in_x>) {
+      // We assume x and y are the same types for both T1 and T2.
+      return T1(static_cast<out_x>(call::get_x(p)),
+                static_cast<out_x>(call::get_y(p)));
+    } else {
+      return T1(call::get_x(p), call::get_y(p));
+    }
+  }
+}
+
+constexpr auto square_value(auto &&v) { return v * v; }
+
+template <two_dimensional_coordinate T1, same_unit_geometry_as<T1> T2>
+constexpr auto distance_squared(T1 const &p1, T2 const &p2) {
+  return square_value(call::get_x(p1) - call::get_x(p2)) +
+         square_value(call::get_y(p1) - call::get_y(p2));
+}
+
+/// Split the bounding box pointed to by T at x. b keeps the left part while the
+/// returned area is the right part. Use "trim_from_*" to use width/height
+/// arithmetics instead.
+template <bounding_box B>
+constexpr auto split_x(out<B&> b, call::call_result_t<call::get_left_x, B> x) {
+  auto res = box_from_xyxy<B>(x, call::t_y(*b),call::r_x(*b), call::b_y(*b));
+  call::set_right_x(*b, x);
+  return res;
+}
+
+/// Split the bounding box pointed to by T at y. b keeps the upper part while
+/// the returned area is the lower part. Use "trim_from_*" to use width/height
+/// arithmetics instead.
+template <bounding_box B>
+constexpr auto split_y(out<B&> b, call::call_result_t<call::get_top_y, B> y) {
+  ASP_ASSERT(b != nullptr);
+  auto res = box_from_xyxy<B>(call::l_x(*b), y,
+                                                  call::r_x(*b), call::b_y(*b));
+  call::set_bottom_y(*b, y);
+  return res;
+}
+
+ASP_EXPORT_END
+#if 0
 
 /// Set the pointer b to have the x-values lx-rx. Use "keep_current" to only
 /// change a single value. May use placeholders.
@@ -1085,30 +690,6 @@ constexpr auto move_tl_to(TB b, TC tl) {
   call::width(b, w);
   call::height(b, h);
   return b;
-}
-
-/// Split the bounding box pointed to by T at x. b keeps the left part while the
-/// returned area is the right part. Use "trim_from_*" to use width/height
-/// arithmetics instead.
-template <typename TX, mut_box_pointer<TX> T>
-constexpr auto split_x(T b, TX x) {
-  ASP_ASSERT(b != nullptr);
-  auto res = box_from_xyxy<bp::dereferenced_t<T>>(x, call::t_y(*b),
-                                                  call::r_x(*b), call::b_y(*b));
-  call::r_x(*b, x);
-  return res;
-}
-
-/// Split the bounding box pointed to by T at y. b keeps the upper part while
-/// the returned area is the lower part. Use "trim_from_*" to use width/height
-/// arithmetics instead.
-template <typename TY, mut_box_pointer<TY> T>
-constexpr auto split_y(T b, TY y) {
-  ASP_ASSERT(b != nullptr);
-  auto res = box_from_xyxy<bp::dereferenced_t<T>>(call::l_x(*b), y,
-                                                  call::r_x(*b), call::b_y(*b));
-  call::b_y(*b, y);
-  return res;
 }
 
 /// Cut away a part v from the left side of the box pointer at by bptr. Returns

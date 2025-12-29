@@ -10,14 +10,6 @@
 #include <asp/geometry.hpp>
 
 namespace asp {
-/// @brief Concept to check if a type T meets the range condition for values of
-/// type TX. The range_condition should from a test value and min/max values
-/// determine if the test-value is inside the range of min max. Implementations
-/// are e.g. open-range, closed-range and semi-open (open-closed).
-template <typename T, typename TX>
-concept range_condition = requires(T t, TX v) {
-  { t(v, v, v) } -> std::convertible_to<bool>;
-};
 
 #define ASP_NO_CONST(X)                                                        \
   decltype(X) {}
@@ -60,17 +52,6 @@ ASP_EXPORT_END
 } // namespace call
 
 ASP_EXPORT_BEGIN
-
-template <typename T>
-concept is_geometric = bounding_box<T> || two_dimensional_coordinate<T>;
-
-template <typename T, typename U>
-concept same_geometry_as =
-    is_geometric<T> && is_geometric<U> && bounding_box<T> == bounding_box<U> &&
-    two_dimensional_coordinate<T> == two_dimensional_coordinate<U>;
-
-template <typename T, typename U>
-concept same_unit_geometry_as = same_geometry_as<T, U> && same_unit_as<T, U>;
 
 template <typename T>
 concept colour = requires(T &&t) {
@@ -416,170 +397,6 @@ constexpr auto fill = []<typename T, pixel_or_point_rect_basic TB, colour TC>(
 };
 #endif
 
-ASP_EXPORT_END
-
-namespace impl {
-template <typename T, typename... Args>
-concept has_from_xyxy = requires(bp::as_forward<Args>... vs) {
-  { std::remove_cvref_t<T>::from_xyxy(*vs...) } -> bounding_box;
-};
-template <typename T, typename... Args>
-concept has_from_xywh = requires(bp::as_forward<Args>... vs) {
-  { std::remove_cvref_t<T>::from_xywh(*vs...) } -> bounding_box;
-};
-template <typename T, typename... Args>
-concept has_bbox_init = has_from_xyxy<T, Args...> || has_from_xywh<T, Args...>;
-
-struct do_from_xyxy {
-  template <typename X, typename Y, has_bbox_init<X, Y, X, Y> T>
-  constexpr bounding_box auto operator()(std::type_identity<T> const &, X xl,
-                                         Y yt, X xr, Y yb) const {
-    using raw_t = std::remove_cvref_t<T>;
-    if constexpr (has_from_xyxy<T, X, Y, X, Y>) {
-      return raw_t::from_xyxy(std::move(xl), std::move(yt), std::move(xr),
-                              std::move(yb));
-    } else if constexpr (has_from_xywh<T, X, Y, X, Y>) {
-      auto w = xr - xl;
-      auto h = yb - yt;
-      return raw_t::from_xywh(std::move(xl), std::move(yt), w, h);
-    }
-  }
-};
-struct do_from_xywh {
-  template <typename X, typename Y, typename W, typename H,
-            has_bbox_init<X, Y, W, H> T>
-  constexpr bounding_box auto operator()(std::type_identity<T> const &ti, X x,
-                                         Y y, W w, H h) const {
-    if constexpr (has_from_xywh<T, X, Y, W, H>) {
-      return T::from_xywh(x, y, w, h);
-    } else {
-      return do_from_xyxy{}(ti, x, y, x + w, y + h);
-    }
-  }
-};
-
-template <typename TV1, typename TV2, typename /*mut_box_pair<TV1, TV2>*/ T,
-          typename TTL, typename TBR>
-constexpr void set_xx_or_yy(T b, TV1 tl, TV2 br, TTL getset1, TBR getset2) {
-  if constexpr (is_placeholder_v<TV1>) {
-    impl::set_xx_or_yy(b, tl(getset1, *b), br, getset1, getset2);
-  } else if constexpr (is_placeholder_v<TV2>) {
-    impl::set_xx_or_yy(b, tl, br(getset2, *b), getset1, getset2);
-  } else {
-    getset1(*b, tl);
-    getset2(*b, br);
-  }
-}
-
-}; // namespace impl
-/// @endcond
-
-ASP_EXPORT_BEGIN
-/// Creates a box (presumably of type T) from two XY coordinates.
-template <typename T, typename X, typename Y>
-  requires(impl::has_bbox_init<T, X, Y, X, Y> ||
-           impl::has_bbox_init<extend_api_t<T>, X, Y, X, Y>)
-constexpr auto box_from_xyxy(X xl, Y yt, X xr, Y yb,
-                             std::type_identity<T> = {}) {
-  if constexpr (impl::has_bbox_init<T, X, Y, X, Y>) {
-    return impl::do_from_xyxy{}(std::type_identity<T>{}, xl, yt, xr, yb);
-  } else {
-    return impl::do_from_xyxy{}(std::type_identity<extend_api_t<T>>{}, xl, yt,
-                                xr, yb);
-  }
-}
-
-/// Creates a box (presumably of type T) from a top-left coordinate + width and
-/// height.
-template <typename T, typename X, typename Y, typename W, typename H>
-  requires(impl::has_bbox_init<T, X, Y, W, H> ||
-           impl::has_bbox_init<extend_api_t<T>, X, Y, W, H>)
-constexpr auto box_from_xywh(X x, Y y, W w, H h, std::type_identity<T> = {}) {
-  if constexpr (impl::has_bbox_init<T, X, Y, W, H>) {
-    return impl::do_from_xywh{}(std::type_identity<T>{}, x, y, w, h);
-  } else {
-    return impl::do_from_xywh{}(std::type_identity<extend_api_t<T>>{}, x, y, w,
-                                h);
-  }
-}
-
-/// Copies a box of type T2 into a box of type T.
-template <bounding_box T, bounding_box T2> constexpr T copy_box(T2 &&b) {
-  if constexpr (bp::cvref_type<T2, T>) {
-    return std::forward<T2>(b);
-  } else if constexpr (std::constructible_from<T, T2 &&>) {
-    return T(std::forward<T2>(b));
-  } else if constexpr (impl::has_from_xywh<T, decltype(call::l_x(b)),
-                                           decltype(call::t_y(b)),
-                                           decltype(call::width(b)),
-                                           decltype(call::height(b))>) {
-    return box_from_xywh<T>(call::l_x(b), call::t_y(b), call::width(b),
-                            call::height(b));
-  } else {
-    return box_from_xyxy<T>(call::l_x(b), call::t_y(b), call::r_x(b),
-                            call::b_y(b));
-  }
-}
-
-/// Range checker that models the open range min < c < max.
-inline constexpr struct inside_open_range_t {
-  ASP_STATIC_CALL constexpr bool operator()(auto &&c, auto &&min, auto &&max) ASP_STATIC_CALL_POST {
-    return (min < c) && (c < max);
-  }
-} inside_open_range;
-/// Range checker that models the closed range min <= c <= max.
-inline constexpr struct inside_closed_range_t {
-  ASP_STATIC_CALL constexpr bool operator()(auto &&c, auto &&min, auto &&max) ASP_STATIC_CALL_POST { return (min <= c) && (c <= max); }
-} inside_closed_range;
-
-/// Range checker that models the closed-open range min <= c < max.
-inline constexpr struct inside_semiopen_range_t {
-  ASP_STATIC_CALL constexpr bool operator()(auto &&c, auto &&min, auto &&max) ASP_STATIC_CALL_POST { return (min <= c) && (c < max); }
-} inside_semiopen_range;
-
-/// Returns true if width and height are non-negative.
-constexpr bool valid_box(bounding_box auto const &b) {
-  return (call::width(b) >= decltype(call::width(b)){}) &&
-         (call::height(b) >= decltype(call::height(b)){});
-}
-
-/// Check if coordinate c is inside box b, by the range checking policy
-/// inside_range.
-template <bounding_box TB, two_dimensional_coordinate TC,
-          range_condition<decltype(call::get_x(std::declval<TC>()))> TRC =
-              inside_semiopen_range_t>
-  requires(same_unit_as<TB, TC>)
-constexpr bool hit_box(TB const &b, TC const &c, TRC &&inside_range = {}) {
-  ASP_ASSERT(valid_box(b));
-  return inside_range(call::get_x(c), call::l_x(b), call::r_x(b)) &&
-         inside_range(call::get_y(c), call::t_y(b), call::b_y(b));
-}
-
-template <two_dimensional_coordinate T1, same_unit_geometry_as<T1> T2>
-constexpr T1 copy_coordinate(T2 &&p) {
-  if constexpr (std::constructible_from<T1, T2>) {
-    return T1(std::forward<T2>(p));
-  } else {
-    using out_x = call::call_result_t<call::get_x, T1>;
-    using in_x = call::call_result_t<call::get_x, T2>;
-    if constexpr (std::is_integral_v<out_x> && !std::is_integral_v<in_x>) {
-      // We assume x and y are the same types for both T1 and T2.
-      return T1(static_cast<out_x>(call::get_x(p)),
-                static_cast<out_x>(call::get_y(p)));
-    } else {
-      return T1(call::get_x(p), call::get_y(p));
-    }
-  }
-}
-
-constexpr auto square_value(auto &&v) { return v * v; }
-
-template <two_dimensional_coordinate T1, same_unit_geometry_as<T1> T2>
-constexpr auto distance_squared(T1 const &p1, T2 const &p2) {
-  return square_value(call::get_x(p1) - call::get_x(p2)) +
-         square_value(call::get_y(p1) - call::get_y(p2));
-}
-
 template <bounding_box TB> class recursive_area_navigator {
   TB relative_area_;
   using x_t = decltype(call::l_x(relative_area_) - call::l_x(relative_area_));
@@ -595,7 +412,7 @@ template <bounding_box TB> class recursive_area_navigator {
 public:
   constexpr explicit recursive_area_navigator(TB const &b)
       : relative_area_(b) {}
-  template <typename /*same_unit_geometry_as<TB>*/ TB2 = TB>
+  template <rectangle_with_unit<unit_of_type<TB>> TB2 = TB>
   constexpr recursive_area_navigator sub(TB2 const &b) const {
     auto intersection = box_intersection<TB>(b, relative_area_);
     if (valid_box(intersection)) {
@@ -617,10 +434,10 @@ public:
                               call::width(b), call::height(b));
   }
 
-  template <rectangle_with_unit<point> TB2 = TB>
-  constexpr TB2 move_to_absolute(TB2 const &b) const {
-    return box_from_xywh<TB2>(offset_x_ + call::l_x(b).quantity_from_zero(),
-                              offset_y_ + call::t_y(b).quantity_from_zero(),
+  template <rectangle_with_unit<unit_of_type<TB>> TB2 = TB>
+  constexpr rectangle_with_unit<unit_of_type<TB>> auto move_to_absolute(TB2 const &b) const {
+    return basic_rectangle(call::l_x(b) + offset_x_,
+                              call::t_y(b) + offset_y_,
                               call::width(b), call::height(b));
   }
   constexpr TB absolute_area() const {

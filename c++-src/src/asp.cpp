@@ -13,6 +13,7 @@ export import mp_units;
 #include "asp/stl_extend.hpp"
 #include "asp/std-backport/expected.hpp"
 #include "asp/std-backport/concepts.hpp"
+#include "asp/annotate.hpp"
 #include "asp/call.hpp"
 #include "asp/geometry.hpp"
 #include "asp/render.hpp"

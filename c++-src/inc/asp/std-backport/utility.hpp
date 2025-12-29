@@ -153,6 +153,10 @@ constexpr void run_for_each(auto &&cb, auto &&...vals)
   cb_return(std::make_index_sequence<sizeof...(vals)>{},
             std::forward<decltype(vals)>(vals)...);
 }
+
+constexpr bool all_are_equal(auto&& v0, auto&&... vs) {
+  return ((v0 == vs) &&...);
+}
 ASP_EXPORT_END
 } // namespace asp::bp
 
