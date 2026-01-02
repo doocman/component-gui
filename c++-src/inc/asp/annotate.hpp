@@ -19,6 +19,18 @@ struct out {
 template <typename T>
 out(T&&) -> out<T>;
 
+ASP_EXPORT template <typename T>
+struct inout {
+  T&& result;
+
+  constexpr explicit inout(T&& t) : result(std::forward<T>(t)) {}
+  constexpr T& operator*() const { return result; }
+  constexpr T&& get_forwarded() const { return std::forward<T>(result); }
+};
+
+template <typename T>
+inout(T&&) -> inout<T>;
+
 }
 
 #endif // ASPECT_GUI_ANNOTATE_HPP

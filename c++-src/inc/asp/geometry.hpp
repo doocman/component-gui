@@ -121,6 +121,8 @@ using y_of_t = call::call_result_t<call::get_x, T>;
 template <typename T, typename U>
 concept same_unit_as =
     has_unit<T> && has_unit<U> && unit_of_type<T> == unit_of_type<U>;
+template <typename T, typename U>
+concept same_unit_or_unitless_as = same_unit_as<T, U> || (!has_unit<T> && !has_unit<U>);
 
 template <typename T, auto R>
 concept two_dimensional_delta_of =
@@ -245,7 +247,7 @@ concept same_geometry_as =
     two_dimensional_coordinate<T> == two_dimensional_coordinate<U>;
 
 template <typename T, typename U>
-concept same_unit_geometry_as = same_geometry_as<T, U> && same_unit_as<T, U>;
+concept same_unit_geometry_as = same_geometry_as<T, U> && same_unit_or_unitless_as<T, U>;
 
 template <typename... Ts>
   requires all_multipliable<Ts...>
@@ -608,7 +610,7 @@ concept range_condition = requires(T t, TX v) {
 template <bounding_box TB, two_dimensional_coordinate TC,
           range_condition<decltype(call::get_x(std::declval<TC>()))> TRC =
               inside_semiopen_range_t>
-  requires(same_unit_as<TB, TC>)
+  requires(same_unit_or_unitless_as<TB, TC>)
 constexpr bool hit_box(TB const &b, TC const &c, TRC &&inside_range = {}) {
   ASP_ASSERT(valid_box(b));
   return inside_range(call::get_x(c), call::l_x(b), call::r_x(b)) &&
@@ -644,7 +646,7 @@ constexpr auto distance_squared(T1 const &p1, T2 const &p2) {
 /// returned area is the right part. Use "trim_from_*" to use width/height
 /// arithmetics instead.
 template <bounding_box B>
-constexpr auto split_x(out<B&> b, call::call_result_t<call::get_left_x, B> x) {
+constexpr auto split_x(inout<B&> b, call::call_result_t<call::get_left_x, B> x) {
   auto res = box_from_xyxy<B>(x, call::t_y(*b),call::r_x(*b), call::b_y(*b));
   call::set_right_x(*b, x);
   return res;
@@ -654,34 +656,31 @@ constexpr auto split_x(out<B&> b, call::call_result_t<call::get_left_x, B> x) {
 /// the returned area is the lower part. Use "trim_from_*" to use width/height
 /// arithmetics instead.
 template <bounding_box B>
-constexpr auto split_y(out<B&> b, call::call_result_t<call::get_top_y, B> y) {
-  ASP_ASSERT(b != nullptr);
+constexpr auto split_y(inout<B&> b, call::call_result_t<call::get_top_y, B> y) {
   auto res = box_from_xyxy<B>(call::l_x(*b), y,
                                                   call::r_x(*b), call::b_y(*b));
   call::set_bottom_y(*b, y);
   return res;
 }
 
-ASP_EXPORT_END
-#if 0
-
 /// Set the pointer b to have the x-values lx-rx. Use "keep_current" to only
 /// change a single value. May use placeholders.
-template <typename TV1, typename TV2, mut_box_pair<TV1, TV2> T>
-constexpr void set_xx(T b, TV1 lx, TV2 rx) {
+template <typename TV1, typename TV2, bounding_box T>
+constexpr void set_xx(out<T&> b, TV1 lx, TV2 rx) {
   impl::set_xx_or_yy(b, lx, rx, call::l_x, call::r_x);
 }
 
 /// Set the pointer b to have the y-values ty-by. Use "keep_current" to only
 /// change a single value. May use placeholders.
-template <typename TV1, typename TV2, mut_box_pair<TV1, TV2> T>
-constexpr void set_yy(T b, TV1 ty, TV2 by) {
+template <typename TV1, typename TV2, bounding_box T>
+constexpr void set_yy(out<T&> b, TV1 ty, TV2 by) {
   impl::set_xx_or_yy(b, ty, by, call::t_y, call::b_y);
 }
 
 /// Create a bounding box that has the same dimensions as b, but with its top
 /// left corner at tl.
-template <bounding_box TB, pixel_coord TC>
+template <bounding_box TB, two_dimensional_coordinate TC>
+requires(same_unit_or_unitless_as<TC, TB>)
 constexpr auto move_tl_to(TB b, TC tl) {
   auto w = call::width(b);
   auto h = call::height(b);
@@ -694,53 +693,49 @@ constexpr auto move_tl_to(TB b, TC tl) {
 
 /// Cut away a part v from the left side of the box pointer at by bptr. Returns
 /// the new part.
-template <typename TV, mut_box_pointer<TV> T>
-constexpr auto trim_from_left(T bptr, TV v) {
-  ASP_ASSERT(bptr != nullptr);
+template <typename TV, bounding_box T>
+constexpr auto trim_from_left(inout<T&> bptr, TV v) {
   auto &b = *bptr;
   ASP_ASSERT(v <= call::width(b));
   auto org_lx = call::l_x(b);
   auto split_x = static_cast<decltype(org_lx)>(org_lx + v);
-  set_xx(&b, split_x, keep_current);
-  return box_from_xyxy<bp::dereferenced_t<T>>(org_lx, call::t_y(b), split_x,
+  set_xx(out(b), split_x, keep_current);
+  return box_from_xyxy<T>(org_lx, call::t_y(b), split_x,
                                               call::b_y(b));
 }
 
 /// Cut away a part v from the top side of the box pointer at by bptr. Returns
 /// the new part.
-template <typename TV, mut_box_pointer<TV> T>
-constexpr auto trim_from_above(T bptr, TV v) {
-  ASP_ASSERT(bptr != nullptr);
+template <typename TV, bounding_box T>
+constexpr auto trim_from_above(inout<T&> bptr, TV v) {
   auto &b = *bptr;
   ASP_ASSERT(v <= call::height(b));
   auto org_y = call::t_y(b);
   auto split_y = static_cast<decltype(org_y)>(org_y + v);
-  set_yy(&b, split_y, keep_current);
-  return box_from_xyxy<bp::dereferenced_t<T>>(call::l_x(b), org_y, call::r_x(b),
+  set_yy(out(b), split_y, keep_current);
+  return box_from_xyxy<T>(call::l_x(b), org_y, call::r_x(b),
                                               split_y);
 }
 
 /// Cut away a part v from the right side of the box pointer at by bptr. Returns
 /// the new part.
-template <typename TV, mut_box_pointer<TV> T>
-constexpr auto trim_from_right(T bptr, TV v) {
-  ASP_ASSERT(bptr != nullptr);
+template <typename TV, bounding_box T>
+constexpr auto trim_from_right(inout<T&> bptr, TV v) {
   auto &b = *bptr;
   ASP_ASSERT(v <= call::width(b));
   call::width(b, call::width(b) - v);
-  return box_from_xywh<bp::dereferenced_t<T>>(call::r_x(b), call::t_y(b), v,
+  return box_from_xywh<T>(call::r_x(b), call::t_y(b), v,
                                               call::height(b));
 }
 
 /// Cut away a part v from the lower side of the box pointer at by bptr. Returns
 /// the new part.
-template <typename TV, mut_box_pointer<TV> T>
-constexpr auto trim_from_below(T bptr, TV v) {
-  ASP_ASSERT(bptr != nullptr);
+template <typename TV, bounding_box T>
+constexpr auto trim_from_below(inout<T&> bptr, TV v) {
   auto &b = *bptr;
   ASP_ASSERT(v <= call::height(b));
   call::height(b, call::height(b) - v);
-  return box_from_xywh<bp::dereferenced_t<T>>(call::l_x(b), call::b_y(b),
+  return box_from_xywh<T>(call::l_x(b), call::b_y(b),
                                               call::width(b), v);
 }
 
@@ -760,9 +755,7 @@ constexpr auto box_union(T1 const &b1, T2 const &b2) {
 }
 
 /// Creates a larger box that is the intersection of both b1 and b2.
-template <typename TRes = void, bounding_box T1, bounding_box T2>
-  requires(same_unit_as<T1, T2> &&
-           (same_unit_as<TRes, T1> || std::is_void_v<TRes>))
+template <typename TRes = void, bounding_box T1, same_unit_geometry_as<T1> T2>
 constexpr auto box_intersection(T1 const &b1, T2 const &b2) {
   ASP_ASSERT(valid_box(b1));
   ASP_ASSERT(valid_box(b2));
@@ -777,31 +770,31 @@ constexpr auto box_intersection(T1 const &b1, T2 const &b2) {
 }
 
 /// Creates a new pixel_coord that has moved left by val.
-constexpr auto nudge_left(pixel_coord auto c,
-                          same_unit_as<decltype(c)> auto &&val) {
-  call::x_of(c, call::get_x(c) - val);
+constexpr auto nudge_left(two_dimensional_coordinate auto c,
+                          same_unit_or_unitless_as<decltype(c)> auto &&val) {
+  call::set_x(c, call::get_x(c) - val);
   return c;
 }
 /// Creates a new pixel_coord that has moved right by val.
-constexpr auto nudge_right(pixel_coord auto c,
-                           same_unit_as<decltype(c)> auto &&val) {
+constexpr auto nudge_right(two_dimensional_coordinate auto c,
+                           same_unit_or_unitless_as<decltype(c)> auto &&val) {
   return nudge_left(c, -val);
 }
 /// Creates a new pixel_coord that has moved up by val.
-constexpr auto nudge_up(pixel_coord auto c,
-                        same_unit_as<decltype(c)> auto &&val) {
-  call::y_of(c, call::get_y(c) - val);
+constexpr auto nudge_up(two_dimensional_coordinate auto c,
+                        same_unit_or_unitless_as<decltype(c)> auto &&val) {
+  call::set_y(c, call::get_y(c) - val);
   return c;
 }
 /// Creates a new pixel_coord that has moved down by val.
-constexpr auto nudge_down(pixel_coord auto c,
-                          same_unit_as<decltype(c)> auto &&val) {
+constexpr auto nudge_down(two_dimensional_coordinate auto c,
+                          same_unit_or_unitless_as<decltype(c)> auto &&val) {
   return nudge_up(c, -val);
 }
 
 /// Creates a new box that has moved left by val.
 constexpr auto nudge_left(bounding_box auto b, auto &&val) {
-  set_xx(&b, call::l_x(b) - val, call::r_x(b) - val);
+  set_xx(out(b), call::l_x(b) - val, call::r_x(b) - val);
   return std::forward<decltype(b)>(b);
 }
 /// Creates a new box that has moved right by val.
@@ -810,7 +803,7 @@ constexpr auto nudge_right(bounding_box auto b, auto &&val) {
 }
 /// Creates a new box that has moved up by val.
 constexpr auto nudge_up(bounding_box auto b, auto &&val) {
-  set_yy(&b, call::t_y(b) - val, call::b_y(b) - val);
+  set_yy(out(b), call::t_y(b) - val, call::b_y(b) - val);
   return std::forward<decltype(b)>(b);
 }
 /// Creates a new box that has moved down by val.
@@ -820,15 +813,9 @@ constexpr auto nudge_down(bounding_box auto b, auto &&val) {
 
 /// True if all corners of inner is inside the outer box.
 template <bounding_box TB1, same_unit_geometry_as<TB1> TB2>
-  requires(same_unit_as<TB1, TB2>)
 constexpr bool box_includes_box(TB1 const &outer, TB2 const &inner) {
-  if constexpr (size_tagged<TB1>) {
-    return hit_box(outer, TB2::top_left(inner), inside_closed_range) &&
-           hit_box(outer, TB2::bottom_right(inner), inside_closed_range);
-  } else {
     return hit_box(outer, call::top_left(inner), inside_closed_range) &&
            hit_box(outer, call::bottom_right(inner), inside_closed_range);
-  }
 }
 
 /// Returns true if the box is empty.
@@ -836,6 +823,9 @@ constexpr bool empty_box(bounding_box auto const &b) {
   return call::width(b) == bp::default_init_valued ||
          call::height(b) == bp::default_init_valued;
 }
+
+ASP_EXPORT_END
+#if 0
 
 /// Calculates the length-squared of a coordinate vector
 /// \tparam T Type of coordinate

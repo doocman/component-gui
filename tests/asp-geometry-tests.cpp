@@ -802,8 +802,6 @@ TYPED_TEST(BoxApiFixture, ConstructXYXY) // NOLINT
   EXPECT_THAT(call::b_y(v), Eq(4));
 }
 
-#if 0
-
 TYPED_TEST(BoxApiFixture, ConstructXYWH) // NOLINT
 {
   using box_t = std::remove_cvref_t<decltype(this->value)>;
@@ -815,18 +813,6 @@ TYPED_TEST(BoxApiFixture, ConstructXYWH) // NOLINT
   EXPECT_THAT(call::height(v), Eq(4));
 }
 
-TYPED_TEST(BoxApiFixture, ConstructTLBR) // NOLINT
-{
-  using box_t = std::remove_cvref_t<decltype(this->value)>;
-  auto v =
-      box_from_tlbr<box_t>(default_coordinate{1, 2}, default_coordinate{3, 4});
-  EXPECT_TRUE((std::is_same_v<box_t, decltype(v)>));
-  EXPECT_THAT(call::l_x(v), Eq(1));
-  EXPECT_THAT(call::t_y(v), Eq(2));
-  EXPECT_THAT(call::r_x(v), Eq(3));
-  EXPECT_THAT(call::b_y(v), Eq(4));
-}
-
 TYPED_TEST(BoxApiFixture, SplitBoxX) // NOLINT
 {
   auto &box = this->value;
@@ -836,7 +822,7 @@ TYPED_TEST(BoxApiFixture, SplitBoxX) // NOLINT
   call::b_y(box, org_by);
   call::l_x(box, 1);
   call::r_x(box, 5);
-  auto b2 = split_x(out(box), 3);
+  auto b2 = split_x(inout(box), 3);
   EXPECT_THAT(call::l_x(box), Eq(1));
   EXPECT_THAT(call::r_x(box), Eq(3));
   EXPECT_THAT(call::t_y(box), Eq(org_ty));
@@ -856,7 +842,7 @@ TYPED_TEST(BoxApiFixture, SplitBoxY) // NOLINT
   call::r_x(box, org_rx);
   call::t_y(box, 1);
   call::b_y(box, 5);
-  auto b2 = split_y(&box, 3);
+  auto b2 = split_y(inout(box), 3);
   EXPECT_THAT(call::t_y(box), Eq(1));
   EXPECT_THAT(call::b_y(box), Eq(3));
   EXPECT_THAT(call::l_x(box), Eq(org_lx));
@@ -874,7 +860,7 @@ TYPED_TEST(BoxApiFixture, TrimLeft) // NOLINT
   call::b_y(box, 70);
   call::l_x(box, 4);
   call::r_x(box, 15);
-  auto b2 = trim_from_left(&box, 4);
+  auto b2 = trim_from_left(inout(box), 4);
   EXPECT_THAT(call::t_y(box), Eq(4));
   EXPECT_THAT(call::b_y(box), Eq(70));
   EXPECT_THAT(call::l_x(box), Eq(4 + 4));
@@ -891,7 +877,7 @@ TYPED_TEST(BoxApiFixture, TrimUp) // NOLINT
   call::r_x(box, 70);
   call::t_y(box, 4);
   call::b_y(box, 15);
-  auto b2 = trim_from_above(&box, 4);
+  auto b2 = trim_from_above(inout(box), 4);
   EXPECT_THAT(call::l_x(box), Eq(4));
   EXPECT_THAT(call::r_x(box), Eq(70));
   EXPECT_THAT(call::t_y(box), Eq(4 + 4));
@@ -909,7 +895,7 @@ TYPED_TEST(BoxApiFixture, TrimRight) // NOLINT
   call::b_y(box, 70);
   call::l_x(box, 4);
   call::r_x(box, 15);
-  auto b2 = trim_from_right(&box, 4);
+  auto b2 = trim_from_right(inout(box), 4);
   EXPECT_THAT(call::t_y(box), Eq(4));
   EXPECT_THAT(call::b_y(box), Eq(70));
   EXPECT_THAT(call::l_x(box), Eq(4));
@@ -926,7 +912,7 @@ TYPED_TEST(BoxApiFixture, TrimDown) // NOLINT
   call::r_x(box, 70);
   call::t_y(box, 4);
   call::b_y(box, 15);
-  auto b2 = trim_from_below(&box, 4);
+  auto b2 = trim_from_below(inout(box), 4);
   EXPECT_THAT(call::l_x(box), Eq(4));
   EXPECT_THAT(call::r_x(box), Eq(70));
   EXPECT_THAT(call::t_y(box), Eq(4));
@@ -978,11 +964,11 @@ TYPED_TEST(BoxApiFixture, HitTest) // NOLINT
 {
   using box_t = decltype(this->value);
   auto b = box_from_xyxy<box_t>(1, 2, 3, 4);
-  EXPECT_TRUE(hit_box(b, {1, 2}));
-  EXPECT_TRUE(hit_box(b, {2, 3}));
-  EXPECT_FALSE(hit_box(b, {0, 3}));
-  EXPECT_FALSE(hit_box(b, {2, 1}));
-  EXPECT_FALSE(hit_box(b, {3, 4}));
+  EXPECT_TRUE(hit_box(b, xy_pair{1, 2}));
+  EXPECT_TRUE(hit_box(b, xy_pair{2, 3}));
+  EXPECT_FALSE(hit_box(b, xy_pair{0, 3}));
+  EXPECT_FALSE(hit_box(b, xy_pair{2, 1}));
+  EXPECT_FALSE(hit_box(b, xy_pair{3, 4}));
 }
 TYPED_TEST(BoxApiFixture, BoxIncludesBox) // NOLINT
 {
@@ -990,7 +976,7 @@ TYPED_TEST(BoxApiFixture, BoxIncludesBox) // NOLINT
   auto b = box_from_xyxy<box_t>(1, 2, 4, 5);
   EXPECT_TRUE(box_includes_box(b, box_from_xyxy<box_t>(1, 2, 2, 3)));
   EXPECT_FALSE(box_includes_box(b, box_from_xyxy<box_t>(0, 2, 2, 3)));
-  EXPECT_TRUE(box_includes_box(b, box_from_xyxy<default_rect>(1, 2, 2, 3)));
+  EXPECT_TRUE(box_includes_box(b, box_from_xyxy<box_t>(1, 2, 2, 3)));
   EXPECT_TRUE(box_includes_box(b, b));
 }
 TYPED_TEST(BoxApiFixture, NudgeLeft) // NOLINT
@@ -1017,15 +1003,12 @@ TYPED_TEST(BoxApiFixture, MoveTlTo) // NOLINT
 {
   using box_t = decltype(this->value);
   auto b = box_from_xywh<box_t>(1, 2, 4, 5);
-  auto b2 = move_tl_to(b, {0, -1});
+  auto b2 = move_tl_to(b, xy_pair{0, -1});
   EXPECT_THAT(call::l_x(b2), Eq(0));
   EXPECT_THAT(call::t_y(b2), Eq(-1));
   EXPECT_THAT(call::width(b2), Eq(4));
   EXPECT_THAT(call::height(b2), Eq(5));
 }
-
-#endif
-
 } // namespace apitests
 
 } // namespace asp::tests
