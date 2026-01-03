@@ -41,8 +41,15 @@ concept subtractable_with = requires(L&& lhs, R&& rhs) {
 	lhs - rhs;
 };
 template <typename L, typename R>
+concept addable_with = requires(L&& lhs, R&& rhs) {
+	lhs + rhs;
+};
+template <typename L, typename R>
 requires (subtractable_with<L, R>)
 using subtract_result_t = decltype(std::declval<L&&>() - std::declval<R&&>());
+template <typename L, typename R>
+requires(addable_with<L, R>)
+using addition_result_t = decltype(std::declval<L&&>() + std::declval<R&&>());
 
 template <typename T, typename... Ts>
 inline constexpr bool all_are_same_types = (std::is_same_v<T, Ts> && ...);
